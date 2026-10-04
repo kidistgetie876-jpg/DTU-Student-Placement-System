@@ -60,6 +60,15 @@ try {
     // 4. Count pending approvals (placement results awaiting approval)
      $pendingApprovals = countQuery($db, "SELECT COUNT(DISTINCT student_id) AS total FROM placement_results WHERE LOWER(status) IN ('pending', 'pending_approval')");
 
+        // 5. Count registered students without an assigned or pending placement
+        $unplacedStudents = countQuery($db, "
+                SELECT COUNT(DISTINCT u.id) AS total
+                FROM users u
+                LEFT JOIN placement_results pr ON u.id = pr.student_id
+                WHERE LOWER(u.role) = 'student'
+                    AND (pr.id IS NULL OR LOWER(pr.status) NOT IN ('approved', 'placed', 'published', 'pending', 'pending_approval'))
+        ");
+
     // Return successful response
      $db->close();
      respond([
@@ -68,6 +77,7 @@ try {
              'departments' => $departments,
              'activeStudents' => $activeStudents,
              'placementsCompleted' => $placementsCompleted,
+             'unplacedStudents' => $unplacedStudents,
              'pendingApprovals' => $pendingApprovals,
              'timestamp' => date('c'),
          ],

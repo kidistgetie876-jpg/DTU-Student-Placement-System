@@ -42,7 +42,13 @@ const MissingScoresForm = () => {
             email: s.email || '',
             first_name: s.first_name || '',
             last_name: s.last_name || '',
-            gender: s.gender || 'Male',
+            gender: s.gender == null
+              ? 'Male'
+              : String(s.gender).toLowerCase() === 'female'
+                ? 'Female'
+                : String(s.gender).toLowerCase() === 'male'
+                  ? 'Male'
+                  : s.gender,
             gpa: s.gpa || '',
             grade_12_result: s.grade_12_result || '',
             coc_result: s.coc_result || '',
@@ -78,6 +84,7 @@ const MissingScoresForm = () => {
     const response = await api.post('api/common/profile_update.php', {
       ...form,
       user_id: form.user_id || studentId,
+      gender: form.gender,
     });
     
     if (response.data.success) {
@@ -140,7 +147,7 @@ const MissingScoresForm = () => {
                 </div>
                 <div className="col-md-3">
                   <label className="form-label fw-bold">Gender</label>
-                  <select className="form-select" name="gender" value={form.gender} onChange={handleChange}>
+                  <select className="form-select" name="gender" value={form.gender} onChange={handleChange} required>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                   </select>

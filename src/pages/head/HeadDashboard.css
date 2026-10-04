@@ -61,6 +61,28 @@
 @media(max-width:1199.98px){.head-dashboard .dashboard-header{flex-direction:column;align-items:flex-start}} 
 @media(max-width:991.98px){.head-dashboard .sidebar{min-height:auto}.head-dashboard .main-section{padding:2rem 1.5rem}.head-dashboard .footer-bottom{flex-direction:column;align-items:flex-start}} 
 @media(max-width:767.98px){.head-dashboard .footer-inner,.head-dashboard .dashboard-header{gap:1rem}.head-dashboard .settings-grid{grid-template-columns:1fr}}
+
+.head-roster-signoff{display:none}
+.head-gender-female{background:#f7dce8;color:#8a1747}
+.head-gender-male{background:#dceaff;color:#164b91}
+
+@media print{
+  @page{margin:12mm}
+  body *{visibility:hidden!important}
+  .head-student-roster-print,.head-student-roster-print *{visibility:visible!important}
+  .head-dashboard .sidebar,.head-student-roster-actions{display:none!important}
+  .head-dashboard .main-section{margin:0!important;padding:0!important;width:100%!important;min-height:0!important}
+  .head-student-roster-print{position:absolute!important;left:0!important;top:0!important;width:100%!important;margin:0!important;border:0!important;box-shadow:none!important}
+  .head-student-roster-print .card-body{padding:0!important}
+  .head-student-roster-print .table-responsive{overflow:visible!important}
+  .head-student-roster-table{width:100%!important;font-size:9pt}
+  .head-student-roster-table thead{display:table-header-group}
+  .head-student-roster-table tr{break-inside:avoid}
+  .head-student-roster-table th,.head-student-roster-table td{padding:5pt!important}
+  .head-student-roster-table .badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .head-roster-signoff{display:flex!important;justify-content:space-between;align-items:flex-start;gap:12pt;margin-top:18pt;padding-top:8pt;border-top:1px solid #d2d7de;font-size:9pt}
+  .head-roster-stamp{display:flex;min-width:150pt;min-height:54pt;align-items:center;justify-content:center;border:1px solid #777;text-align:center}
+}
 .head-dashboard .dashboard-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem}
 .head-dashboard .dashboard-header h2{margin:0}
 .head-dashboard .status-chip{padding:.6rem 1rem;border-radius:999px;background:rgba(15,61,110,.12);color:var(--dtu-primary);font-weight:600;white-space:nowrap}

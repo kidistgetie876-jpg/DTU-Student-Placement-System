@@ -145,7 +145,6 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
 const ManageDepartments = () => {
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
-  const [headsCount, setHeadsCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -170,10 +169,6 @@ const ManageDepartments = () => {
       })));
 
       const resUsers = await api.get('api/admin/users_api.php');
-      const headUsers = (resUsers.data.users || resUsers.data || []).filter(u =>
-        u && (u.role?.toLowerCase() === 'head' || u.role?.toLowerCase() === 'coordinator')
-      );
-      setHeadsCount(headUsers.length);
     } catch (err) {
       setError('Backend connection error!');
     } finally {

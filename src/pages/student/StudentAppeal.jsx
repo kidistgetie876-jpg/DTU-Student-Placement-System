@@ -88,8 +88,6 @@ const StudentAppeal = ({ studentId, placement }) => {
         </div>
       )}
 
-      {feedback && <div className={`alert alert-${feedback.type}`}>{feedback.text}</div>}
-
       <form onSubmit={handleSubmit}>
         <div className="mb-3">
           <label className="form-label fw-semibold" htmlFor="appeal-subject">Subject</label>
@@ -117,6 +115,11 @@ const StudentAppeal = ({ studentId, placement }) => {
         <button type="submit" className="btn btn-primary fw-semibold" disabled={submitting || !studentId}>
           {submitting ? 'Submitting...' : 'Submit Appeal'}
         </button>
+        {feedback && (
+          <div className={`alert alert-${feedback.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={feedback.type === 'danger' ? 'alert' : 'status'}>
+            {feedback.text}
+          </div>
+        )}
       </form>
 
       <hr className="my-4" />

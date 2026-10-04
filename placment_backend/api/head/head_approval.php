@@ -64,7 +64,7 @@ try {
 
     $db->begin_transaction();
 
-    $placementSql = $db->prepare("SELECT student_id, dept_name FROM placement_results WHERE id = ? AND dept_id = ? AND status = 'Pending' FOR UPDATE");
+    $placementSql = $db->prepare("SELECT student_id, dept_name FROM placement_results WHERE id = ? AND dept_id = ? AND status = 'Pending' AND approved_at IS NULL FOR UPDATE");
     if (!$placementSql) throw new Exception('Unable to validate placement.');
     $departmentId = (int) $department['id'];
     $placementSql->bind_param('ii', $placementId, $departmentId);
@@ -76,25 +76,18 @@ try {
         throw new Exception('Placement is not pending or does not belong to your department.');
     }
 
-    $approveSql = $db->prepare("UPDATE placement_results SET status = 'Approved', approved_at = NOW() WHERE id = ? AND dept_id = ? AND status = 'Pending'");
-    $studentSql = $db->prepare("UPDATE student_data SET status = 'Approved', department = ? WHERE user_id = ?");
-    if (!$approveSql || !$studentSql) throw new Exception('Unable to prepare approval update.');
+    $approveSql = $db->prepare("UPDATE placement_results SET approved_at = NOW() WHERE id = ? AND dept_id = ? AND status = 'Pending' AND approved_at IS NULL");
+    if (!$approveSql) throw new Exception('Unable to prepare approval update.');
 
     $approveSql->bind_param('ii', $placementId, $departmentId);
     if (!$approveSql->execute() || $approveSql->affected_rows !== 1) {
         throw new Exception('Unable to approve placement.');
     }
 
-    $studentId = (int) $placement['student_id'];
-    $departmentName = (string) $placement['dept_name'];
-    $studentSql->bind_param('si', $departmentName, $studentId);
-    if (!$studentSql->execute()) {
-        throw new Exception('Unable to update student department.');
-    }
-
     $approveSql->close();
-    $studentSql->close();
     $db->commit();
+
+    $studentId = (int) $placement['student_id'];
 
     logActivity($db, $headId, $head['username'], 'head.placement_approve', json_encode([
         'placement_id' => $placementId,
@@ -102,7 +95,7 @@ try {
         'department_id' => $departmentId,
     ]));
 
-    respond(['success' => true, 'message' => 'Placement approved successfully.', 'placement_id' => $placementId]);
+    respond(['success' => true, 'message' => 'Placement reviewed and forwarded for Registrar publication.', 'placement_id' => $placementId]);
 } catch (Throwable $error) {
     if ($db->connect_errno === 0) {
         $db->rollback();

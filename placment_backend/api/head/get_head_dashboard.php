@@ -44,10 +44,12 @@ try {
 
     $departmentId = (int) $department['id'];
     $assignedSql = $db->prepare("SELECT COUNT(*) AS assigned_students FROM placement_results WHERE dept_id = ? AND status IN ('Pending', 'Approved', 'Published')");
-    $pendingSql = $db->prepare("SELECT COUNT(*) AS pending_approvals FROM placement_results WHERE dept_id = ? AND status = 'Pending'");
-    $studentsSql = $db->prepare("SELECT pr.id AS placement_id, pr.student_id, COALESCE(sd.username, u.username) AS username, COALESCE(sd.email, u.email) AS email, pr.dept_name, pr.final_score, pr.choice_rank, pr.status, pr.placed_at FROM placement_results pr INNER JOIN users u ON u.id = pr.student_id LEFT JOIN student_data sd ON sd.user_id = pr.student_id WHERE pr.dept_id = ? AND pr.status IN ('Pending', 'Approved', 'Published') ORDER BY pr.final_score DESC, pr.placed_at DESC");
+    $pendingSql = $db->prepare("SELECT COUNT(*) AS pending_approvals FROM placement_results WHERE dept_id = ? AND LOWER(status) = 'pending' AND approved_at IS NULL");
+    $studentFieldsSql = "SELECT pr.id AS placement_id, pr.student_id, COALESCE(NULLIF(u.id_number, ''), NULLIF(sd.id_number, '')) AS id_number, COALESCE(NULLIF(sd.first_name, ''), u.first_name) AS first_name, COALESCE(NULLIF(sd.last_name, ''), u.last_name) AS last_name, COALESCE(sd.username, u.username) AS username, COALESCE(sd.email, u.email) AS email, sd.gender, sd.gpa, sd.phone, sd.disability, sd.minority, pr.dept_name, pr.final_score, pr.choice_rank, pr.status, pr.placed_at FROM placement_results pr INNER JOIN users u ON u.id = pr.student_id LEFT JOIN student_data sd ON sd.user_id = pr.student_id WHERE pr.dept_id = ?";
+    $studentsSql = $db->prepare($studentFieldsSql . " AND LOWER(pr.status) IN ('approved', 'published') ORDER BY pr.final_score DESC, pr.placed_at DESC");
+    $pendingStudentsSql = $db->prepare($studentFieldsSql . " AND LOWER(pr.status) = 'pending' AND pr.approved_at IS NULL ORDER BY pr.final_score DESC, pr.placed_at DESC");
 
-    if (!$assignedSql || !$pendingSql || !$studentsSql) throw new Exception('Unable to load department placement data');
+    if (!$assignedSql || !$pendingSql || !$studentsSql || !$pendingStudentsSql) throw new Exception('Unable to load department placement data');
 
     $assignedSql->bind_param('i', $departmentId);
     $assignedSql->execute();
@@ -71,6 +73,18 @@ try {
     }
     $studentsSql->close();
 
+    $pendingStudentsSql->bind_param('i', $departmentId);
+    $pendingStudentsSql->execute();
+    $pendingStudentsResult = $pendingStudentsSql->get_result();
+    $pendingStudents = [];
+    while ($student = $pendingStudentsResult->fetch_assoc()) {
+        $student['student_id'] = (int) $student['student_id'];
+        $student['final_score'] = (float) $student['final_score'];
+        $student['choice_rank'] = (int) $student['choice_rank'];
+        $pendingStudents[] = $student;
+    }
+    $pendingStudentsSql->close();
+
     $department['id'] = $departmentId;
     $department['capacity'] = (int) $department['capacity'];
     $department['assigned'] = (int) ($assigned['assigned_students'] ?? 0);
@@ -80,8 +94,9 @@ try {
         'success' => true,
         'department' => $department,
         'students' => $students,
+        'pendingStudents' => $pendingStudents,
         'stats' => [
-            'totalStudents' => count($students),
+            'totalStudents' => $department['assigned'],
             'placedStudents' => count($students),
             'approvalRequests' => (int) ($pending['pending_approvals'] ?? 0),
             'capacityUsed' => $department['capacity'] > 0 ? round(($department['assigned'] / $department['capacity']) * 100, 1) : 0,

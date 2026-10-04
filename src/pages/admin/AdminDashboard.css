@@ -241,6 +241,117 @@
   padding: 1.5rem;
 }
 
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .main-header-container,
+  footer,
+  .sidebar {
+    display: none !important;
+  }
+
+  .admin-dashboard {
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .admin-dashboard .main-content {
+    display: block !important;
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .admin-dashboard .main-content .btn,
+  .admin-dashboard .main-content .btn-group,
+  .admin-dashboard .main-content input,
+  .admin-dashboard .main-content select,
+  .admin-dashboard .main-content textarea,
+  .admin-dashboard .main-content .form-control,
+  .admin-dashboard .main-content .form-select {
+    display: none !important;
+  }
+
+  .student-placement-result-print {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .student-dashboard .main-content > header {
+    display: none !important;
+  }
+
+  .student-result-verification {
+    display: flex;
+    min-height: 28mm;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 12mm 0 0 auto;
+    padding: 4mm;
+    width: 62mm;
+    border: 1px solid #777;
+    text-align: center;
+  }
+
+  .admin-dashboard .main-content .table-responsive {
+    overflow: visible !important;
+  }
+
+  .admin-dashboard .main-content .table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    color: #000000 !important;
+  }
+
+  .admin-dashboard .main-content .table th,
+  .admin-dashboard .main-content .table td {
+    border: 1px solid #555555 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .admin-dashboard .main-content .table thead {
+    display: table-header-group;
+  }
+
+  .admin-dashboard .main-content .table tr,
+  .admin-dashboard .main-content .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .admin-dashboard .main-content .card {
+    border: 1px solid #999999 !important;
+  }
+}
+
+.student-result-verification {
+  display: flex;
+  min-height: 28mm;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 12mm 0 0 auto;
+  padding: 4mm;
+  width: 62mm;
+  border: 1px solid #777;
+  text-align: center;
+}
+
 .admin-dashboard .card-title {
   font-size: 1.15rem;
   margin-bottom: 0.75rem;

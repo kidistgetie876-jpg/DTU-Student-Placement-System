@@ -1,14 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../../services/api.js';
 import { FiMail as Mail, FiPhone as Phone, FiMapPin as MapPin, FiClock as Clock, FiSend as Send, FiRefreshCcw as RefreshCcw, FiGlobe as Globe } from 'react-icons/fi';
 
 const Contact = () => {
+  const [contactInfo, setContactInfo] = useState({
+    location: 'Registrar Office, Ground Floor, Main Campus, Debre Tabor, Ethiopia',
+    phone1: '+251 988024266',
+    phone2: '+251 995015403',
+    supportEmail: 'placement@dtu.edu.et',
+    officeHours: 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)',
+  });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState({ type: '', message: '' });
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadContactSettings = async () => {
+      try {
+        const response = await api.get('api/common/system_settings_api.php');
+        if (isMounted && response.data?.settings?.contact) {
+          setContactInfo((current) => ({ ...current, ...response.data.settings.contact }));
+        }
+      } catch {
+      }
+    };
+
+    loadContactSettings();
+    window.addEventListener('system-settings-updated', loadContactSettings);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('system-settings-updated', loadContactSettings);
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -63,7 +91,7 @@ const Contact = () => {
               </div>
               <div>
                 <div className="fw-bold">Location</div>
-                <div className="small text-white-50">Registrar Office, Ground Floor, Main Campus, Debre Tabor, Ethiopia</div>
+                <div className="small text-white-50">{contactInfo.location}</div>
               </div>
             </div>
 
@@ -73,7 +101,7 @@ const Contact = () => {
               </div>
               <div>
                 <div className="fw-bold">Phone</div>
-                <div className="small text-white-50">+251 988024266 / +251 995015403</div>
+                <div className="small text-white-50">{[contactInfo.phone1, contactInfo.phone2].filter(Boolean).join(' / ')}</div>
               </div>
             </div>
 
@@ -83,7 +111,7 @@ const Contact = () => {
               </div>
               <div>
                 <div className="fw-bold">Email</div>
-                <div className="small text-white-50">tsegayaaderajew021@gmail.com<br />kidistgetie876@gmail.com</div>
+                <a className="small text-white-50" href={`mailto:${contactInfo.supportEmail}`}>{contactInfo.supportEmail}</a>
               </div>
             </div>
 
@@ -93,7 +121,7 @@ const Contact = () => {
               </div>
               <div>
                 <div className="fw-bold">Office Hours</div>
-                <div className="small text-white-50">Monday - Friday: 8:30 AM - 5:30 PM (Local Time)</div>
+                <div className="small text-white-50">{contactInfo.officeHours || 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)'}</div>
               </div>
             </div>
           </div>

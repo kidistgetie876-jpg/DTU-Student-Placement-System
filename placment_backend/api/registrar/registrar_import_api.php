@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/id_number.php';
 $db = getDbConnection();
 
 function sendJson(array $payload, int $code = 200): void
@@ -86,28 +87,38 @@ try {
             continue;
         }
 
-        $checkUser = $db->prepare('SELECT id, password FROM users WHERE email = ? LIMIT 1');
+        $checkUser = $db->prepare('SELECT id, password, id_number FROM users WHERE email = ? LIMIT 1');
         $checkUser->bind_param('s', $email);
         $checkUser->execute();
         $userResult = $checkUser->get_result();
 
         $userId = null;
+        $idNumber = normalizeText($student['id_number'] ?? '');
         if ($userResult && $userResult->num_rows > 0) {
             $existingUser = $userResult->fetch_assoc();
             $userId = (int) $existingUser['id'];
+            if ($idNumber === '') {
+                $idNumber = trim((string) ($existingUser['id_number'] ?? ''));
+            }
 
-            $updateUser = $db->prepare('UPDATE users SET username = ?, role = ? WHERE id = ? LIMIT 1');
+            if ($idNumber === '') {
+                $idNumber = getNextRoleIdNumber($db, 'student');
+            }
+            $updateUser = $db->prepare('UPDATE users SET id_number = ?, username = ?, role = ? WHERE id = ? LIMIT 1');
             $role = 'student';
-            $updateUser->bind_param('ssi', $username, $role, $userId);
+            $updateUser->bind_param('sssi', $idNumber, $username, $role, $userId);
             if (!$updateUser->execute()) {
                 $errors[] = 'Failed to update user for email: ' . $email;
                 continue;
             }
             $updatedCount++;
         } else {
-            $insertUser = $db->prepare('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)');
+            if ($idNumber === '') {
+                $idNumber = getNextRoleIdNumber($db, 'student');
+            }
+            $insertUser = $db->prepare('INSERT INTO users (id_number, username, email, password, role) VALUES (?, ?, ?, ?, ?)');
             $role = 'student';
-            $insertUser->bind_param('ssss', $username, $email, $hashedDefaultPassword, $role);
+            $insertUser->bind_param('sssss', $idNumber, $username, $email, $hashedDefaultPassword, $role);
             if (!$insertUser->execute()) {
                 $errors[] = 'Failed to create user for email: ' . $email;
                 continue;
@@ -130,16 +141,16 @@ try {
             $studentRow = $studentResult->fetch_assoc();
             $studentId = (int) $studentRow['id'];
 
-            $updateStudent = $db->prepare('UPDATE student_data SET username = ?, gpa = ?, stream = ?, user_id = ? WHERE id = ? LIMIT 1');
-            $updateStudent->bind_param('sdiii', $username, $gpa, $stream, $userId, $studentId);
+            $updateStudent = $db->prepare('UPDATE student_data SET id_number = ?, username = ?, gpa = ?, stream = ?, user_id = ? WHERE id = ? LIMIT 1');
+            $updateStudent->bind_param('ssdsii', $idNumber, $username, $gpa, $stream, $userId, $studentId);
             if (!$updateStudent->execute()) {
                 $errors[] = 'Failed to update student record for email: ' . $email;
                 continue;
             }
             $updatedCount++;
         } else {
-            $insertStudent = $db->prepare('INSERT INTO student_data (user_id, username, email, gpa, stream) VALUES (?, ?, ?, ?, ?)');
-            $insertStudent->bind_param('issds', $userId, $username, $email, $gpa, $stream);
+            $insertStudent = $db->prepare('INSERT INTO student_data (user_id, id_number, username, email, gpa, stream) VALUES (?, ?, ?, ?, ?, ?)');
+            $insertStudent->bind_param('isssds', $userId, $idNumber, $username, $email, $gpa, $stream);
             if (!$insertStudent->execute()) {
                 $errors[] = 'Failed to insert student record for email: ' . $email;
                 continue;

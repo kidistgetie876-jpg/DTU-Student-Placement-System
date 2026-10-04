@@ -1,16 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../../services/api.js';
 
 const EMPTY_STATUS = { type: '', message: '' };
+const ALLOWED_FILE_EXTENSIONS = ['pdf', 'xls', 'xlsx', 'doc', 'docx'];
+
+const getAttachmentUrl = (report) => {
+  const fileUrl = report.file_url || report.file_path;
+  if (!fileUrl) return null;
+
+  try {
+    return new URL(fileUrl, api.defaults.baseURL).toString();
+  } catch (error) {
+    return fileUrl;
+  }
+};
 
 const AdminReports = () => {
   const [reports, setReports] = useState([]);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
 
   const loadReports = async () => {
     setLoading(true);
@@ -30,6 +44,30 @@ const AdminReports = () => {
     loadReports();
   }, []);
 
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!ALLOWED_FILE_EXTENSIONS.includes(extension)) {
+      setSelectedFile(null);
+      event.target.value = '';
+      setStatus({ type: 'danger', message: 'Choose a PDF, Excel, or Word file.', action: 'send' });
+      return;
+    }
+
+    setStatus(EMPTY_STATUS);
+    setSelectedFile(file);
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const sendMessage = async (event) => {
     event.preventDefault();
     setStatus(EMPTY_STATUS);
@@ -37,27 +75,34 @@ const AdminReports = () => {
     const trimmedSubject = subject.trim();
 
     if (!trimmedMessage) {
-      setStatus({ type: 'danger', message: 'Write a message before sending.' });
+      setStatus({ type: 'danger', message: 'Write a message before sending.', action: 'send' });
       return;
     }
     if (trimmedMessage.length > 10000) {
-      setStatus({ type: 'danger', message: 'The message must be 10,000 characters or fewer.' });
+      setStatus({ type: 'danger', message: 'The message must be 10,000 characters or fewer.', action: 'send' });
       return;
     }
 
     setSending(true);
     try {
-      const response = await api.post('api/admin/send_message.php', {
-        subject: trimmedSubject,
-        message: trimmedMessage,
+      const formData = new FormData();
+      formData.append('subject', trimmedSubject);
+      formData.append('message', trimmedMessage);
+      formData.append('sender_role', 'admin');
+      formData.append('recipient_role', 'registrar');
+      if (selectedFile) formData.append('file', selectedFile);
+
+      const response = await api.post('api/admin/send_message.php', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to send message.');
       setSubject('');
       setMessage('');
-      setStatus({ type: 'success', message: response.data.message || 'Message sent to the Registrar.' });
+      removeSelectedFile();
+      setStatus({ type: 'success', message: response.data.message || 'Message sent to the Registrar.', action: 'send' });
       await loadReports();
     } catch (requestError) {
-      setStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to send message.' });
+      setStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to send message.', action: 'send' });
     } finally {
       setSending(false);
     }
@@ -70,7 +115,7 @@ const AdminReports = () => {
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to delete message.');
       setReports((current) => current.filter((report) => report.id !== reportId));
     } catch (requestError) {
-      setStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to delete message.' });
+      setStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to delete message.', action: 'delete', reportId });
     }
   };
 
@@ -80,7 +125,7 @@ const AdminReports = () => {
       await api.post('api/admin/mark_report_read.php', { report_id: report.id });
       setReports((current) => current.map((item) => item.id === report.id ? { ...item, is_read: 1 } : item));
     } catch (requestError) {
-      setStatus({ type: 'danger', message: requestError.response?.data?.message || 'Unable to update message status.' });
+      setStatus({ type: 'danger', message: requestError.response?.data?.message || 'Unable to update message status.', action: 'read', reportId: report.id });
     }
   };
 
@@ -97,8 +142,6 @@ const AdminReports = () => {
           <span className="badge bg-primary">{unreadCount} unread</span>
         </div>
 
-        {status.message && <div className={`alert alert-${status.type}`} role="status">{status.message}</div>}
-
         <form className="border rounded p-3 mb-4" onSubmit={sendMessage}>
           <h5 className="mb-3">New message to Registrar</h5>
           <div className="mb-3">
@@ -109,7 +152,32 @@ const AdminReports = () => {
             <label className="form-label fw-semibold" htmlFor="admin-report-message">Message</label>
             <textarea id="admin-report-message" className="form-control" rows="4" value={message} onChange={(event) => setMessage(event.target.value)} maxLength="10000" disabled={sending} placeholder="Write your message" required />
           </div>
+          <div className="mb-3">
+            <label className="form-label fw-semibold" htmlFor="admin-report-file">Attachment (optional)</label>
+            <input
+              ref={fileInputRef}
+              id="admin-report-file"
+              className="form-control"
+              type="file"
+              accept=".pdf,.xls,.xlsx,.doc,.docx"
+              onChange={handleFileChange}
+              disabled={sending}
+            />
+            {selectedFile && (
+              <div className="d-flex align-items-center gap-2 mt-2">
+                <span className="text-muted small">Selected: {selectedFile.name}</span>
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={removeSelectedFile} disabled={sending}>
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
           <button type="submit" className="btn btn-primary" disabled={sending}>{sending ? 'Sending...' : 'Send to Registrar'}</button>
+          {status.action === 'send' && status.message && (
+            <div className={`alert alert-${status.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role="status">
+              {status.message}
+            </div>
+          )}
         </form>
 
         <h5 className="mb-3">Conversation history</h5>
@@ -128,12 +196,17 @@ const AdminReports = () => {
                   <small className="text-muted text-nowrap">{report.created_at}</small>
                 </div>
                 <p className="mb-2 mt-2">{report.message}</p>
-                {report.file_url && (
-                  <a className="btn btn-sm btn-outline-primary me-2" href={report.file_url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                    Open attachment
+                {getAttachmentUrl(report) && (
+                  <a className="btn btn-sm btn-outline-primary me-2" href={getAttachmentUrl(report)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                    Download Attachment
                   </a>
                 )}
                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={(event) => { event.stopPropagation(); deleteReport(report.id); }}>Delete</button>
+                {status.message && status.reportId === report.id && status.action !== 'send' && (
+                  <div className={`alert alert-${status.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role="status">
+                    {status.message}
+                  </div>
+                )}
               </article>
             ))}
           </div>

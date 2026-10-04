@@ -5,7 +5,7 @@ import ManageDepartments from './ManageDepartments';
 import AssignHead from './AssignHead.jsx';
 import api from '../../services/api.js';
 
-jest.mock('../api', () => ({
+jest.mock('../../services/api.js', () => ({
   __esModule: true,
   default: {
     get: jest.fn(),
@@ -19,7 +19,7 @@ describe('ManageDepartments', () => {
     jest.clearAllMocks();
 
     api.get.mockImplementation((url) => {
-      if (url === 'departments_api.php') {
+      if (url === 'api/common/departments_api.php') {
         return Promise.resolve({
           data: {
             departments: [
@@ -38,7 +38,7 @@ describe('ManageDepartments', () => {
         });
       }
 
-      if (url === 'users_api.php') {
+      if (url === 'api/admin/users_api.php') {
         return Promise.resolve({
           data: {
             users: [
@@ -76,7 +76,7 @@ describe('ManageDepartments', () => {
 
   it('does not offer a head already assigned to a different department', async () => {
     api.get.mockImplementation((url) => {
-      if (url === 'departments_api.php') {
+      if (url === 'api/common/departments_api.php') {
         return Promise.resolve({
           data: {
             departments: [
@@ -87,7 +87,7 @@ describe('ManageDepartments', () => {
         });
       }
 
-      if (url === 'users_api.php') {
+      if (url === 'api/admin/users_api.php') {
         return Promise.resolve({
           data: {
             users: [

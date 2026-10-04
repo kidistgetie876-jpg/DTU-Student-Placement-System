@@ -16,7 +16,7 @@ $db = getDbConnection();
 // Return one student for the dashboard when an ID or email is provided.
 $studentId = (int) ($_GET['student_id'] ?? 0);
 $email = trim((string) ($_GET['email'] ?? ''));
-$select = "SELECT student_data.user_id AS id, student_data.user_id, users.first_name, users.last_name, student_data.username, student_data.email, student_data.gpa, student_data.stream, student_data.status, student_data.grade_12_result, student_data.coc_result, student_data.cumulative_avg, student_data.gender, student_data.disability, student_data.minority, student_data.department FROM student_data INNER JOIN users ON users.id = student_data.user_id AND LOWER(users.role) = 'student'";
+$select = "SELECT student_data.user_id AS id, student_data.user_id, users.id_number, users.first_name, users.last_name, student_data.username, student_data.email, student_data.gpa, student_data.stream, student_data.status, student_data.grade_12_result, student_data.coc_result, student_data.cumulative_avg, student_data.gender, student_data.disability, student_data.minority, student_data.department FROM student_data INNER JOIN users ON users.id = student_data.user_id AND LOWER(users.role) = 'student'";
 
 if ($studentId > 0) {
     $statement = $db->prepare($select . ' WHERE user_id = ? LIMIT 1');

@@ -21,7 +21,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $senderId = (int) ($_SESSION['user_id'] ?? 0);
 $senderRole = strtolower((string) ($_SESSION['role'] ?? ''));
 $recipientType = strtolower(trim((string) ($_POST['recipient_type'] ?? '')));
-$studentId = isset($_POST['student_id']) && is_numeric($_POST['student_id']) ? (int) $_POST['student_id'] : 0;
+$recipientId = $_POST['recipient_id'] ?? $_POST['student_id'] ?? null;
+$studentId = is_numeric($recipientId) ? (int) $recipientId : 0;
 $message = trim((string) ($_POST['message'] ?? ''));
 
 if ($senderId <= 0 || !in_array($senderRole, ['head', 'hod', 'coordinator'], true)) headSendResponse(['success' => false, 'message' => 'Only department heads can send messages.'], 403);
@@ -30,6 +31,8 @@ if ($message === '') headSendResponse(['success' => false, 'message' => 'Enter a
 if (strlen($message) > 10000) headSendResponse(['success' => false, 'message' => 'The message is too long.'], 400);
 
 $db = getDbConnection();
+$absoluteFilePath = null;
+$transactionStarted = false;
 try {
     $departmentStatement = $db->prepare("SELECT id FROM departments WHERE head_id = ? AND status = 'active' LIMIT 1");
     if (!$departmentStatement) throw new Exception('Unable to load the assigned department.');
@@ -64,21 +67,49 @@ try {
         $recipientIds[] = null;
     }
 
+    $filePath = null;
+    if (isset($_FILES['report_file']) && $_FILES['report_file']['error'] !== UPLOAD_ERR_NO_FILE) {
+        $file = $_FILES['report_file'];
+        $allowedExtensions = ['pdf', 'xls', 'xlsx', 'doc', 'docx'];
+        $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        if ($file['error'] !== UPLOAD_ERR_OK || !in_array($extension, $allowedExtensions, true)) {
+            headSendResponse(['success' => false, 'message' => 'Only PDF, Excel, or Word files are allowed.'], 400);
+        }
+        if ((int) $file['size'] > 10 * 1024 * 1024) {
+            headSendResponse(['success' => false, 'message' => 'Attachments must be 10 MB or smaller.'], 400);
+        }
+
+        $uploadDirectory = __DIR__ . '/../../uploads/reports';
+        if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0750, true)) {
+            throw new Exception('Unable to prepare report storage.');
+        }
+        $storedName = bin2hex(random_bytes(16)) . '.' . $extension;
+        $absoluteFilePath = $uploadDirectory . '/' . $storedName;
+        if (!move_uploaded_file($file['tmp_name'], $absoluteFilePath)) {
+            $absoluteFilePath = null;
+            throw new Exception('Unable to save the attachment.');
+        }
+        $filePath = 'uploads/reports/' . $storedName;
+    }
+
     $db->begin_transaction();
-    $statement = $db->prepare('INSERT INTO notifications (sender_id, sender_role, recipient_id, recipient_role, department_id, title, message) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $transactionStarted = true;
+    $statement = $db->prepare('INSERT INTO notifications (sender_id, sender_role, recipient_id, recipient_role, department_id, title, message, file_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     if (!$statement) throw new Exception('Unable to prepare the message.');
     $title = 'Message from Department Head';
     foreach ($recipientIds as $recipientId) {
-        $statement->bind_param('isisiss', $senderId, $senderRole, $recipientId, $recipientRole, $departmentId, $title, $message);
+        $statement->bind_param('isisisss', $senderId, $senderRole, $recipientId, $recipientRole, $departmentId, $title, $message, $filePath);
         if (!$statement->execute()) throw new Exception('Unable to save the message.');
     }
     $statement->close();
     $db->commit();
+    $transactionStarted = false;
     $label = $recipientType === 'registrar' ? 'Registrar' : ($recipientType === 'all_students' ? 'all students' : 'student');
     headSendResponse(['success' => true, 'message' => "Message sent to {$label}."]);
 } catch (Throwable $error) {
-    if ($db->errno === 0) { /* no-op */ }
-    if ($db->thread_id) $db->rollback();
+    if ($transactionStarted) $db->rollback();
+    if ($absoluteFilePath !== null && is_file($absoluteFilePath)) unlink($absoluteFilePath);
+    error_log('Head send message failed: ' . $error->getMessage());
     headSendResponse(['success' => false, 'message' => $error->getMessage()], 500);
 } finally {
     $db->close();

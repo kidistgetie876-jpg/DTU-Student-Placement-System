@@ -31,14 +31,21 @@ try {
     }
 
     $statement = $pdo->prepare(
-        'SELECT id, title, message, sender_role, is_read, created_at
+        'SELECT id, title, message, sender_role, is_read, file_path, created_at
          FROM notifications
          WHERE recipient_role = "registrar"
            AND (recipient_id = :registrar_id OR recipient_id IS NULL)
          ORDER BY created_at DESC, id DESC'
     );
     $statement->execute([':registrar_id' => $registrarId]);
-    registrarReportsResponse(['success' => true, 'reports' => $statement->fetchAll()]);
+    $reports = $statement->fetchAll();
+    foreach ($reports as &$report) {
+        if (!empty($report['file_path'])) {
+            $report['file_url'] = 'http://localhost/placment_backend/' . ltrim($report['file_path'], '/');
+        }
+    }
+    unset($report);
+    registrarReportsResponse(['success' => true, 'reports' => $reports]);
 } catch (Throwable $error) {
     error_log('Registrar reports load failed: ' . $error->getMessage());
     registrarReportsResponse(['success' => false, 'message' => 'Unable to load Admin messages.'], 500);

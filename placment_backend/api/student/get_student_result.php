@@ -35,9 +35,12 @@ try {
 
     // Fetch student details from student_data
     $studentStmt = $db->prepare("
-        SELECT user_id, CONCAT_WS(' ', first_name, last_name) AS name, email, status, department 
-        FROM student_data 
-        WHERE user_id = ?
+         SELECT student_data.user_id, users.id_number,
+             CONCAT_WS(' ', student_data.first_name, student_data.last_name) AS name,
+             student_data.email, student_data.status, student_data.department
+         FROM student_data
+         INNER JOIN users ON users.id = student_data.user_id AND users.role = 'student'
+         WHERE student_data.user_id = ?
     ");
 
     if (!$studentStmt) {
@@ -51,7 +54,7 @@ try {
     if ($studentResult->num_rows === 0) {
         $studentStmt->close();
 
-        $userStmt = $db->prepare("SELECT id AS user_id, username AS name, email FROM users WHERE id = ? AND role = 'student'");
+        $userStmt = $db->prepare("SELECT id AS user_id, id_number, username AS name, email FROM users WHERE id = ? AND role = 'student'");
         if (!$userStmt) {
             throw new Exception("Prepare statement failed: " . $db->error);
         }
@@ -77,20 +80,11 @@ try {
         $studentStmt->close();
     }
 
-    // Fetch placement result
+    // Fetch placement result by either the internal ID or official student number.
     $placementStmt = $db->prepare("
-        SELECT 
-            student_id, 
-            dept_id, 
-            dept_name, 
-            stream, 
-            college_name, 
-            final_score, 
-            choice_rank, 
-            status,
-            placed_at
-        FROM placement_results 
-        WHERE student_id = ?
+        SELECT *
+        FROM placement_results
+        WHERE student_id = ? OR id_number = ?
         LIMIT 1
     ");
 
@@ -98,19 +92,23 @@ try {
         throw new Exception("Prepare statement failed: " . $db->error);
     }
 
-    $placementStmt->bind_param("i", $studentId);
+    $studentNumber = (string)($student['id_number'] ?? '');
+    $placementStmt->bind_param("is", $studentId, $studentNumber);
     $placementStmt->execute();
     $placementResult = $placementStmt->get_result();
 
-    $placement = null;
-    $isPlaced = false;
-
-    if ($placementResult->num_rows > 0) {
-        $placement = $placementResult->fetch_assoc();
-        $isPlaced = true;
-    }
-
+    $placement = $placementResult->fetch_assoc() ?: null;
     $placementStmt->close();
+
+    $placementStatus = strtolower(trim((string)($placement['status'] ?? '')));
+    if (!$placement || !in_array($placementStatus, ['approved', 'published'], true)) {
+        echo json_encode([
+            'success' => false,
+            'published' => false,
+            'message' => 'Your placement result is currently under review by the Registrar and has not been officially published yet. Please check back later.'
+        ]);
+        return;
+    }
 
     // Fetch student's top 3 preferences for context
     $preferencesStmt = $db->prepare("
@@ -150,13 +148,16 @@ try {
     // Build response
     $response = [
         'success' => true,
+        'published' => true,
         'student' => [
             'id' => (int)$student['user_id'],
+            'id_number' => $student['id_number'] ?? null,
             'name' => $student['name'],
             'email' => $student['email'],
             'status' => $student['status'] ?? 'Not Placed'
         ],
         'placement' => $placement ? [
+            'id_number' => $placement['id_number'] ?: ($student['id_number'] ?? null),
             'assigned_department' => $placement['dept_name'],
             'college' => $placement['college_name'],
             'stream' => $placement['stream'] ?? 'N/A',
@@ -165,16 +166,12 @@ try {
             'placement_status' => $placement['status'],
             'placement_date' => $placement['placed_at'] ?? null
         ] : null,
-        'is_placed' => $isPlaced,
+        'is_placed' => true,
         'top_preferences' => $preferences
     ];
 
     // Add message based on placement status
-    if ($isPlaced) {
-        $response['message'] = "Congratulations! You have been placed in " . $placement['dept_name'];
-    } else {
-        $response['message'] = "Your placement result is not yet available. Please check back later.";
-    }
+    $response['message'] = "Congratulations! You have been placed in " . $placement['dept_name'];
 
     echo json_encode($response);
 

@@ -30,6 +30,7 @@ if (!file_exists($dbConfig)) {
 
 include $dbConfig;
 require_once __DIR__ . '/../../config/logger.php';
+require_once __DIR__ . '/../../config/id_number.php';
 if (!function_exists('getDbConnection')) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'getDbConnection() not found in db_config.php']);
@@ -73,7 +74,9 @@ try {
             $stmt = $conn->prepare("SELECT users.id,
                 COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
                 COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
-                users.username, users.email, users.phone_number, users.role, users.created_at
+                users.username, users.email, users.phone_number,
+                users.id_number,
+                users.role, users.created_at
                 FROM users
                 LEFT JOIN student_data ON student_data.user_id = users.id
                 WHERE users.id = ? LIMIT 1");
@@ -93,7 +96,9 @@ try {
             $stmt = $conn->prepare("SELECT users.id,
                 COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
                 COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
-                users.username, users.email, users.phone_number, users.role, users.created_at
+                users.username, users.email, users.phone_number,
+                users.id_number,
+                users.role, users.created_at
                 FROM users
                 LEFT JOIN student_data ON student_data.user_id = users.id
                 ORDER BY users.created_at DESC LIMIT ?");
@@ -121,6 +126,10 @@ try {
         $password = isset($data['password']) ? (string)$data['password'] : '';
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : 'student';
         $phone_number = isset($data['phone_number']) ? trim((string)$data['phone_number']) : '';
+        $roleIdNumber = isset($data['id_number']) ? trim((string)$data['id_number']) : '';
+        $gender = trim((string)($data['gender'] ?? 'Not specified')) ?: 'Not specified';
+        $requestedStream = trim((string)($data['stream'] ?? ''));
+        $stream = in_array($requestedStream, ['Natural', 'Social'], true) ? $requestedStream : 'Natural';
 
         // Validate required fields
         if (!$first_name || !$last_name || !$username || !$password) {
@@ -171,35 +180,58 @@ try {
         // Hash password
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-        // Insert user
-        $stmt = $conn->prepare('INSERT INTO users (first_name, last_name, username, email, phone_number, password, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())');
-        if (!$stmt) throw new Exception($conn->error);
-        $stmt->bind_param('sssssss', $first_name, $last_name, $username, $email, $phone_number, $hashed_password, $role);
-        
-        if ($stmt->execute()) {
-            $newId = $conn->insert_id;
-            logActivity(
-                $conn,
-                $auditActor['id'],
-                $auditActor['name'],
-                'user.create',
-                json_encode(['target_user_id' => $newId, 'fields' => ['first_name', 'last_name', 'username', 'email', 'phone_number', 'role']])
-            );
-            jsonResponse([
-                'success' => true,
-                'message' => 'User created successfully',
-                'user' => [
-                    'id' => $newId,
-                    'first_name' => $first_name,
-                    'last_name' => $last_name,
-                    'username' => $username,
-                    'email' => $email,
-                    'phone_number' => $phone_number,
-                    'role' => $role
-                ]
-            ], 201);
+        if ($roleIdNumber === '') {
+            $roleIdNumber = getNextRoleIdNumber($conn, $role);
         }
-        jsonResponse(['success' => false, 'message' => 'Failed to create user.'], 500);
+
+        $conn->begin_transaction();
+        try {
+            $stmt = $conn->prepare('INSERT INTO users (first_name, last_name, username, email, phone_number, password, role, id_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+            if (!$stmt) throw new Exception($conn->error);
+            $stmt->bind_param('ssssssss', $first_name, $last_name, $username, $email, $phone_number, $hashed_password, $role, $roleIdNumber);
+            if (!$stmt->execute()) throw new Exception($stmt->error);
+            $newId = (int)$conn->insert_id;
+            $stmt->close();
+
+            if ($role === 'student') {
+                $studentStmt = $conn->prepare("INSERT INTO student_data (
+                    user_id, id_number, first_name, last_name, username, email, phone,
+                    gender, gpa, status, department, stream
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'Pending', 'Not assigned', ?)
+                ON DUPLICATE KEY UPDATE id_number = VALUES(id_number), user_id = VALUES(user_id)");
+                if (!$studentStmt) throw new Exception($conn->error);
+                $studentStmt->bind_param('issssssss', $newId, $roleIdNumber, $first_name, $last_name, $username, $email, $phone_number, $gender, $stream);
+                if (!$studentStmt->execute()) throw new Exception($studentStmt->error);
+                $studentStmt->close();
+            }
+
+            $conn->commit();
+        } catch (Throwable $error) {
+            $conn->rollback();
+            throw $error;
+        }
+
+        logActivity(
+            $conn,
+            $auditActor['id'],
+            $auditActor['name'],
+            'user.create',
+            json_encode(['target_user_id' => $newId, 'fields' => ['first_name', 'last_name', 'username', 'email', 'phone_number', 'role', 'id_number']])
+        );
+        jsonResponse([
+            'success' => true,
+            'message' => 'User created successfully',
+            'user' => [
+                'id' => $newId,
+                'first_name' => $first_name,
+                'last_name' => $last_name,
+                'username' => $username,
+                'email' => $email,
+                'phone_number' => $phone_number,
+                'role' => $role,
+                'id_number' => $roleIdNumber
+            ]
+        ], 201);
     }
 
     // PUT/PATCH - Update user
@@ -216,6 +248,7 @@ try {
         $email = isset($data['email']) ? strtolower(trim((string)$data['email'])) : null;
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : null;
         $phone_number = isset($data['phone_number']) ? trim((string)$data['phone_number']) : null;
+        $role_id_number = isset($data['id_number']) ? trim((string)$data['id_number']) : null;
         $current_password = isset($data['current_password']) ? (string)$data['current_password'] : '';
         $new_password = isset($data['new_password']) ? (string)$data['new_password'] : '';
 
@@ -319,6 +352,12 @@ try {
             $updates[] = 'phone_number = ?';
             $types .= 's';
             $values[] = $phone_number;
+        }
+
+        if ($role_id_number !== null) {
+            $updates[] = 'id_number = ?';
+            $types .= 's';
+            $values[] = $role_id_number;
         }
 
         if ($new_password) {

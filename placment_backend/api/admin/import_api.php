@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/../../config/logger.php';
+require_once __DIR__ . '/../../config/id_number.php';
 
 function importResponse(array $payload, int $status = 200): void
 {
@@ -41,17 +42,17 @@ $defaultPassword = password_hash('123456', PASSWORD_DEFAULT);
 try {
     $db->begin_transaction();
 
-    $findUser = $db->prepare('SELECT id, role FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
-    $insertUser = $db->prepare('INSERT INTO users (username, email, password, role, phone_number) VALUES (?, ?, ?, \'student\', ?)');
-    $updateUser = $db->prepare('UPDATE users SET username = ?, phone_number = ? WHERE id = ? AND role = \'student\'');
+    $findUser = $db->prepare('SELECT id, role, id_number FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
+    $insertUser = $db->prepare('INSERT INTO users (id_number, username, email, password, role, phone_number) VALUES (?, ?, ?, ?, \'student\', ?)');
+    $updateUser = $db->prepare('UPDATE users SET id_number = ?, username = ?, phone_number = ? WHERE id = ? AND role = \'student\'');
     $findStudent = $db->prepare('SELECT user_id FROM student_data WHERE user_id = ? LIMIT 1');
     $insertStudent = $db->prepare(
         'INSERT INTO student_data
-         (user_id, first_name, last_name, username, email, phone, gpa, stream, grade_12_result, coc_result, gender, disability, minority, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'Pending\')'
+         (user_id, id_number, first_name, last_name, username, email, phone, gpa, stream, grade_12_result, coc_result, gender, disability, minority, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'Pending\')'
     );
     $updateStudent = $db->prepare(
-        'UPDATE student_data SET first_name = ?, last_name = ?, username = ?, email = ?, phone = ?,
+        'UPDATE student_data SET id_number = ?, first_name = ?, last_name = ?, username = ?, email = ?, phone = ?,
          gpa = ?, stream = ?, grade_12_result = ?, coc_result = ?, gender = ?, disability = ?, minority = ?
          WHERE user_id = ?'
     );
@@ -91,12 +92,17 @@ try {
             continue;
         }
 
+        $idNumber = trim((string) ($student['id_number'] ?? ($existingUser['id_number'] ?? '')));
+        if ($idNumber === '') {
+            $idNumber = getNextRoleIdNumber($db, 'student');
+        }
+
         if ($existingUser) {
             $userId = (int) $existingUser['id'];
-            $updateUser->bind_param('ssi', $username, $phone, $userId);
+            $updateUser->bind_param('sssi', $idNumber, $username, $phone, $userId);
             if (!$updateUser->execute()) throw new Exception('Unable to update existing student account.');
         } else {
-            $insertUser->bind_param('ssss', $username, $email, $defaultPassword, $phone);
+            $insertUser->bind_param('sssss', $idNumber, $username, $email, $defaultPassword, $phone);
             if (!$insertUser->execute()) throw new Exception('Unable to create student account.');
             $userId = $db->insert_id;
         }
@@ -106,12 +112,12 @@ try {
         $studentExists = $findStudent->get_result()->fetch_assoc();
 
         if ($studentExists) {
-            $updateTypes = 'sssssd' . 's' . 'dd' . 'sss' . 'i';
-            $updateStudent->bind_param($updateTypes, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $gender, $disability, $minority, $userId);
+            $updateTypes = 'ssssssd' . 's' . 'dd' . 'sss' . 'i';
+            $updateStudent->bind_param($updateTypes, $idNumber, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $gender, $disability, $minority, $userId);
             if (!$updateStudent->execute()) throw new Exception('Unable to update existing student data.');
             $updated++;
         } else {
-            $insertStudent->bind_param('isssssdsddsss', $userId, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $gender, $disability, $minority);
+            $insertStudent->bind_param('issssssdsddsss', $userId, $idNumber, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $gender, $disability, $minority);
             if (!$insertStudent->execute()) throw new Exception('Unable to insert student data.');
             $inserted++;
         }

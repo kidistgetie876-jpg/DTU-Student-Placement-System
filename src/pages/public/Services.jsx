@@ -69,11 +69,11 @@ function Services() {
   }, [query, category]);
 
   return (
-    <div className="services-container py-5">
+    <div className="services-container py-5" style={{ paddingTop: '200px' }}>
       <div className="container">
         {/* Header Section */}
         <div className="text-center mb-5">
-          <h1 className="display-5 fw-bold text-dark mb-3">DTU Placement Services</h1>
+          <h1 className="display-5 fw-bold text-dark mb-3">Student Placement Services</h1>
           <p className="lead text-muted mx-auto" style={{maxWidth: '700px'}}>
             Everything you need for a transparent and fair department placement process at Debre Tabor University.
           </p>

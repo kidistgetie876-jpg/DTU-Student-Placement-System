@@ -48,8 +48,8 @@ try {
 
     $recipient = strtolower(trim((string) ($_POST['recipient'] ?? '')));
     $message = trim((string) ($_POST['message'] ?? ''));
-    $recipientId = isset($_POST['recipient_id']) && is_numeric($_POST['recipient_id']) ? (int) $_POST['recipient_id'] : null;
-    $departmentId = isset($_POST['department_id']) && is_numeric($_POST['department_id']) ? (int) $_POST['department_id'] : null;
+    $targetId = trim((string) ($_POST['target_id'] ?? $_POST['recipient_id'] ?? 'all'));
+    $departmentIdInput = trim((string) ($_POST['dept_id'] ?? $_POST['department_id'] ?? 'all'));
 
     if (!in_array($recipient, ['student', 'head', 'admin'], true)) {
         sendReportResponse(['success' => false, 'message' => 'Choose a valid report recipient.'], 400);
@@ -59,6 +59,44 @@ try {
     }
     if (strlen($message) > 10000) {
         sendReportResponse(['success' => false, 'message' => 'The message is too long.'], 400);
+    }
+
+    if ($targetId !== 'all' && (!ctype_digit($targetId) || (int) $targetId <= 0)) {
+        sendReportResponse(['success' => false, 'message' => 'Choose a valid individual recipient.'], 400);
+    }
+    if ($departmentIdInput !== 'all' && (!ctype_digit($departmentIdInput) || (int) $departmentIdInput <= 0)) {
+        sendReportResponse(['success' => false, 'message' => 'Choose a valid department.'], 400);
+    }
+
+    $recipientId = $targetId === 'all' ? null : (int) $targetId;
+    $departmentId = $departmentIdInput === 'all' ? null : (int) $departmentIdInput;
+
+    if ($recipient === 'student' && $recipientId !== null) {
+        $studentStatement = $db->prepare("SELECT id FROM users WHERE id = ? AND LOWER(role) = 'student' LIMIT 1");
+        if (!$studentStatement) {
+            throw new Exception('Unable to validate the selected student.');
+        }
+        $studentStatement->bind_param('i', $recipientId);
+        $studentStatement->execute();
+        $studentExists = $studentStatement->get_result()->fetch_assoc();
+        $studentStatement->close();
+        if (!$studentExists) {
+            sendReportResponse(['success' => false, 'message' => 'The selected student could not be found.'], 400);
+        }
+    }
+
+    if ($recipient === 'head' && $departmentId !== null) {
+        $headDepartmentStatement = $db->prepare("SELECT id FROM departments WHERE id = ? AND status = 'active' LIMIT 1");
+        if (!$headDepartmentStatement) {
+            throw new Exception('Unable to validate the selected department.');
+        }
+        $headDepartmentStatement->bind_param('i', $departmentId);
+        $headDepartmentStatement->execute();
+        $headDepartmentExists = $headDepartmentStatement->get_result()->fetch_assoc();
+        $headDepartmentStatement->close();
+        if (!$headDepartmentExists) {
+            sendReportResponse(['success' => false, 'message' => 'The selected active department could not be found.'], 400);
+        }
     }
 
     if (in_array($senderRole, ['head', 'hod', 'coordinator'], true)) {

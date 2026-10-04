@@ -123,6 +123,216 @@
   color: #0f3d6e;
 }
 
+.home-college-directory {
+  margin-top: 2.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(10, 45, 109, 0.08);
+  border-radius: 1.5rem;
+  box-shadow: 0 18px 40px rgba(10, 45, 109, 0.08);
+  padding: 2.25rem 1.5rem 1.75rem;
+}
+
+.home-college-directory__header {
+  text-align: center;
+  max-width: 980px;
+  margin: 0 auto 2rem;
+}
+
+.home-college-directory__eyebrow {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(10, 45, 109, 0.08);
+  color: #0a2d6d;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.home-college-directory__title {
+  margin: 0;
+  color: #0a2d6d;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.home-college-directory__subtitle {
+  margin: 1rem auto 0;
+  max-width: 760px;
+  color: #485a6f;
+  font-size: 1.02rem;
+  line-height: 1.8;
+}
+
+.home-college-directory__content {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.home-college-directory__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
+}
+
+.home-college-card {
+  width: 100%;
+  min-height: auto;
+  height: auto;
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #dfeaf3;
+  border-radius: 1rem;
+  padding: 1rem 1rem 0.9rem;
+  box-shadow: 0 10px 22px rgba(10, 45, 109, 0.05);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  overflow: visible;
+  display: block;
+}
+
+.home-college-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(215, 183, 90, 0.9);
+  box-shadow: 0 14px 26px rgba(10, 45, 109, 0.09);
+}
+
+.home-college-card.active {
+  transform: translateY(-2px);
+  border-color: #d7b75a;
+  box-shadow: 0 18px 32px rgba(10, 45, 109, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.home-college-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.home-college-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 0.8rem;
+  background: linear-gradient(135deg, rgba(10, 45, 109, 0.12), rgba(215, 183, 90, 0.2));
+  color: #0a2d6d;
+  font-size: 1.25rem;
+}
+
+.home-college-card__count {
+  color: #0a2d6d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(215, 183, 90, 0.12);
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+}
+
+.home-college-card h3 {
+  margin: 0 0 0.5rem;
+  color: #0a2d6d;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.home-college-card p {
+  margin: 0 0 0.8rem;
+  color: #5f6d7d;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.home-college-card__preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  margin-top: 0.8rem;
+}
+
+.home-college-card__preview span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f7fb;
+  color: #1a3d73;
+  border: 1px solid rgba(10, 45, 109, 0.08);
+  border-radius: 999px;
+  padding: 0.38rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.home-college-directory__details {
+  background: linear-gradient(135deg, #f9fbff 0%, #eef4ff 100%);
+  border: 1px solid rgba(10, 45, 109, 0.1);
+  border-radius: 1.1rem;
+  padding: 1.25rem;
+}
+
+.home-college-directory__details-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.home-college-directory__details-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, #0a2d6d, #1d4ea0);
+  color: #f9d770;
+  font-size: 1.4rem;
+}
+
+.home-college-directory__details-header h3 {
+  margin: 0;
+  color: #0a2d6d;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.home-college-directory__details-header p {
+  margin: 0.2rem 0 0;
+  color: #53657a;
+}
+
+.home-college-directory__departments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.home-college-directory__department-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.55rem 0.8rem;
+  background: #ffffff;
+  border: 1px solid rgba(10, 45, 109, 0.1);
+  border-radius: 999px;
+  color: #123d70;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(10, 45, 109, 0.04);
+}
+
 .home-stat {
   background: #67899e;
   border: 1px solid #e6edf5;
@@ -179,5 +389,13 @@
 
   .home-hero__title {
     font-size: 2.1rem;
+  }
+
+  .home-college-directory {
+    padding: 1.5rem 1rem 1.25rem;
+  }
+
+  .home-college-directory__details-header {
+    align-items: flex-start;
   }
 }

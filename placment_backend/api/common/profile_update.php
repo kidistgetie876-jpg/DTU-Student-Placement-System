@@ -16,7 +16,7 @@ $db = getDbConnection();
 function loadPlacementWeights(mysqli $db): array
 {
     $weights = ['gpa' => 40.0, 'grade12' => 20.0, 'coc' => 30.0, 'gender' => 3.0, 'disability' => 3.0, 'minority' => 4.0];
-    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight FROM placement_settings ORDER BY id DESC LIMIT 1');
+    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight FROM placement_settings WHERE id = 1 LIMIT 1');
     if ($result) {
         $row = $result->fetch_assoc();
         $columns = [
@@ -38,12 +38,12 @@ function loadPlacementWeights(mysqli $db): array
 
 function calculateCumulativeScore(float $gpa, float $grade12, float $coc, string $gender, string $disability, string $minority, array $weights): float
 {
-    $scores = ['gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)), 'grade12' => min(100, max(0, $grade12)), 'coc' => min(100, max(0, ($coc / 30) * 100)), 'gender' => strtolower($gender) === 'female' ? 100 : 0, 'disability' => in_array(strtolower($disability), ['yes', 'true', '1', 'on'], true) ? 100 : 0, 'minority' => in_array(strtolower($minority), ['yes', 'true', '1', 'on'], true) ? 100 : 0];
+    $scores = ['gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)), 'grade12' => min(100, max(0, $grade12)), 'coc' => min(100, max(0, ($coc / 30) * 100)), 'gender' => strtolower($gender) === 'female' ? 100 : 0, 'disability' => in_array(strtolower($disability), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0, 'minority' => in_array(strtolower($minority), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0];
     $totalWeight = array_sum($weights);
     if ($totalWeight <= 0) return 0.0;
     $weightedTotal = 0.0;
     foreach ($scores as $key => $score) $weightedTotal += $score * (float) $weights[$key];
-    return round(min(100, max(0, $weightedTotal / $totalWeight)), 4);
+    return round(min(100, max(0, $weightedTotal / $totalWeight)), 2);
 }
 
 function respond(array $payload, int $status = 200): void
@@ -72,7 +72,10 @@ $username = trim((string) ($data['username'] ?? ''));
 $firstName = trim((string) ($data['first_name'] ?? ''));
 $lastName = trim((string) ($data['last_name'] ?? ''));
 $phone = trim((string) ($data['phone'] ?? ''));
-$gender = trim((string) ($data['gender'] ?? 'Not specified'));
+$genderValue = trim((string) ($data['gender'] ?? 'Not specified'));
+$gender = strtolower($genderValue) === 'female'
+    ? 'Female'
+    : (strtolower($genderValue) === 'male' ? 'Male' : ($genderValue !== '' ? $genderValue : 'Not specified'));
 $stream = trim((string) ($data['stream'] ?? ''));
 $disability = trim((string) ($data['disability'] ?? 'No'));
 $minority = trim((string) ($data['minority'] ?? 'No'));
@@ -168,11 +171,54 @@ if (!$statement->execute()) {
 }
 
 $statement->close();
+
+$studentDataUpdate = $db->prepare(
+    'UPDATE student_data
+     SET gender = ?, gpa = ?, grade_12_result = ?, coc_result = ?, cumulative_avg = ?, disability = ?, minority = ?
+     WHERE user_id = ? OR LOWER(email) = ?'
+);
+if (!$studentDataUpdate) {
+    respond(['success' => false, 'message' => 'Could not prepare student score update: ' . $db->error], 500);
+}
+$studentDataUpdate->bind_param(
+    'sddddssis',
+    $gender,
+    $gpa,
+    $grade12,
+    $coc,
+    $cumulativeAvg,
+    $disability,
+    $minority,
+    $userId,
+    $email
+);
+if (!$studentDataUpdate->execute()) {
+    $message = $studentDataUpdate->error;
+    $studentDataUpdate->close();
+    respond(['success' => false, 'message' => 'Student score update failed: ' . $message], 500);
+}
+$studentDataUpdate->close();
+
+$genderColumn = $db->query("SHOW COLUMNS FROM users LIKE 'gender'");
+if ($genderColumn && $genderColumn->num_rows > 0) {
+    $usersGenderUpdate = $db->prepare('UPDATE users SET gender = ? WHERE id = ? OR LOWER(email) = ?');
+    if (!$usersGenderUpdate) {
+        respond(['success' => false, 'message' => 'Could not prepare user gender update: ' . $db->error], 500);
+    }
+    $usersGenderUpdate->bind_param('sis', $gender, $userId, $email);
+    if (!$usersGenderUpdate->execute()) {
+        $message = $usersGenderUpdate->error;
+        $usersGenderUpdate->close();
+        respond(['success' => false, 'message' => 'User gender update failed: ' . $message], 500);
+    }
+    $usersGenderUpdate->close();
+}
+
 $db->close();
 respond([
     'success' => true,
     'message' => 'Student profile saved successfully.',
     'user_id' => $userId,
-    'cumulative_score' => round($cumulativeAvg, 4),
-    'cumulative_avg' => round($cumulativeAvg, 4),
+    'cumulative_score' => round($cumulativeAvg, 2),
+    'cumulative_avg' => round($cumulativeAvg, 2),
 ]);

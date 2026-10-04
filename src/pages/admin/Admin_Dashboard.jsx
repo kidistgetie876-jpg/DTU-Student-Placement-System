@@ -10,6 +10,7 @@ import AuditLogs from './AuditLogs';
 import AdminAccount from './AdminAccount';
 import AdminReports from './AdminReports';
 import './AdminDashboard.css';
+import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -60,23 +61,30 @@ const AdminDashboard = () => {
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
-      // Fetch overview statistics plus the existing detail data.
-      const [overviewRes, usersRes, deptsRes] = await Promise.all([
+      const [overviewResult, usersResult, departmentsResult] = await Promise.allSettled([
         api.get('api/common/dashboard_overview_api.php'),
         api.get('api/admin/users_api.php'),
         api.get('api/common/departments_api.php')
       ]);
 
-      const users = usersRes.data.users || usersRes.data || [];
-      const overview = overviewRes.data?.success ? overviewRes.data.data : null;
-      const totalStudents = Number(overview?.activeStudents ?? users.filter(u => u && u.role?.toLowerCase() === 'student').length);
-      const activeAdmins = users.filter(u => u && u.role?.toLowerCase() === 'admin').length;
+      const overviewResponse = overviewResult.status === 'fulfilled' ? overviewResult.value.data : null;
+      const overview = overviewResponse?.success ? overviewResponse.data : null;
+      const usersResponse = usersResult.status === 'fulfilled' ? usersResult.value.data : [];
+      const usersData = usersResponse?.users || usersResponse;
+      const users = Array.isArray(usersData) ? usersData : [];
+      const totalStudents = Number(overview?.activeStudents ?? users.filter((user) => user && user.role?.toLowerCase() === 'student').length);
+      const activeAdmins = users.filter((user) => {
+        if (user?.role?.toLowerCase() !== 'admin') return false;
+        const status = String(user.status || '').trim().toLowerCase();
+        return !status || ['active', 'approved', 'verified'].includes(status);
+      }).length;
       const totalHeads = users.filter(u => {
         const role = u?.role?.toLowerCase();
         return role === 'head' || role === 'coordinator';
       }).length;
 
-      const depts = Array.isArray(deptsRes.data) ? deptsRes.data : deptsRes.data?.departments || [];
+      const departmentsResponse = departmentsResult.status === 'fulfilled' ? departmentsResult.value.data : [];
+      const depts = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse?.departments || [];
       const totalDepartments = Number(overview?.departments ?? depts.filter(Boolean).length);
 
       setAllUsers(users); // Store all users for modal
@@ -168,15 +176,15 @@ const AdminDashboard = () => {
     }
   };
 
-  const logout = () => {
-    localStorage.clear();
-    navigate('/login');
-  };
-
   if (!admin) return <div className="text-center mt-5">Loading...</div>;
 
   return (
     <div className="admin-dashboard container-fluid px-0">
+      <OfficialPrintLetterhead
+        office="OFFICE OF UNIVERSITY ADMINISTRATION"
+        title="OFFICIAL ADMINISTRATIVE RECORD"
+        metadata={`Generated on: ${new Date().toLocaleDateString()}`}
+      />
       <div className="row g-0">
         <aside className="col-md-2 sidebar bg-dark text-white d-flex flex-column p-4">
           <div className="sidebar-brand mb-5">
@@ -221,6 +229,12 @@ const AdminDashboard = () => {
               onClick={() => setTab('audit-logs')}
             >
               Audit Logs
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'system-config' ? 'active' : ''}`}
+              onClick={() => setTab('system-config')}
+            >
+              System Settings
             </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'account-settings' ? 'active' : ''}`}

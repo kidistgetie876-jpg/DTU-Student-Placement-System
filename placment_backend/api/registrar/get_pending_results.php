@@ -12,13 +12,14 @@ $db = getDbConnection();
 
 try {
     $result = $db->query(
-        "SELECT pr.student_id,
-                COALESCE(NULLIF(sd.first_name, ''), u.first_name) AS first_name,
+        "SELECT pr.*,
+            COALESCE(NULLIF(pr.id_number, ''), NULLIF(sd.id_number, ''), u.id_number) AS official_id_number,
+            COALESCE(NULLIF(sd.first_name, ''), u.first_name) AS first_name,
                 COALESCE(NULLIF(sd.last_name, ''), u.last_name) AS last_name,
-                pr.dept_name,
-                pr.final_score,
-                pr.choice_rank,
-                pr.status
+            pr.dept_name,
+            pr.final_score,
+            pr.choice_rank,
+            pr.status
          FROM placement_results pr
          LEFT JOIN student_data sd ON sd.user_id = pr.student_id
          LEFT JOIN users u ON u.id = pr.student_id AND LOWER(u.role) = 'student'
@@ -34,6 +35,8 @@ try {
     while ($row = $result->fetch_assoc()) {
         $placements[] = [
             'student_id' => (int) $row['student_id'],
+            'id_number' => $row['id_number'] ?? null,
+            'official_id_number' => $row['official_id_number'] ?? $row['id_number'] ?? null,
             'first_name' => (string) ($row['first_name'] ?? ''),
             'last_name' => (string) ($row['last_name'] ?? ''),
             'dept_name' => $row['dept_name'],

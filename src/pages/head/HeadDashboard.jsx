@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import dtuLogo from '../../assets/images6.jpg';
+import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import api from '../../services/api';
 import './HeadDashboard.css';
 import Reports from './Reports.jsx';
@@ -94,15 +98,18 @@ const HeadDashboard = () => {
   });
   const [departments, setDepartments] = useState(defaultDepartments);
   const [placedStudents, setPlacedStudents] = useState([]);
+  const [pendingApprovalStudents, setPendingApprovalStudents] = useState([]);
   const [approvalSavingId, setApprovalSavingId] = useState(null);
   const [approvalError, setApprovalError] = useState('');
+  const [approvalErrorId, setApprovalErrorId] = useState(null);
   const [capacityDraft, setCapacityDraft] = useState({});
   const [capacitySaveMsg, setCapacitySaveMsg] = useState('');
+  const [capacitySaveMsgType, setCapacitySaveMsgType] = useState('success');
   const [stats, setStats] = useState({
-    totalStudents: 248,
-    placedStudents: 182,
-    approvalRequests: 12,
-    capacityUsed: 74,
+    totalStudents: 0,
+    placedStudents: 0,
+    approvalRequests: 0,
+    capacityUsed: 0,
   });
   const [recentPlacements, setRecentPlacements] = useState([
     { student: 'Amanuel Gebru', program: 'Software Engineering', status: 'Matched' },
@@ -120,6 +127,109 @@ const HeadDashboard = () => {
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'placedStudents', 'approvalRequests', 'capacityUsed'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
+
+  const handleExportPdf = async () => {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.width;
+    const collegeName = department.college_name || 'General';
+    const deptName = department.name || 'Department';
+    const logoData = await new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        canvas.getContext('2d').drawImage(image, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg'));
+      };
+      image.onerror = () => resolve(null);
+      image.src = dtuLogo;
+    });
+
+    if (logoData) doc.addImage(logoData, 'JPEG', 14, 8, 24, 24);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(10, 45, 109);
+    doc.text('DEBRE TABOR UNIVERSITY', 42, 14);
+    doc.setFontSize(11);
+    doc.setTextColor(51, 51, 51);
+    doc.text(`${collegeName.toUpperCase()} — DEPARTMENT OF ${deptName.toUpperCase()}`, 42, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(10, 45, 109);
+    doc.text('OFFICIAL STUDENT DEPARTMENT PLACEMENT ROSTER', 42, 26);
+
+    doc.setFontSize(8);
+    doc.setTextColor(102, 102, 102);
+    let metadataX = 42;
+    const addMetadata = (text, bold = false) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.text(text, metadataX, 32);
+      metadataX += doc.getTextWidth(text) + 1.5;
+    };
+    addMetadata('Issued by:', true);
+    addMetadata(' Office of the Department Head |');
+    addMetadata(' Academic Batch:', true);
+    addMetadata(' 2016 E.C. / 2026 G.C. |');
+    addMetadata(' Date:', true);
+    addMetadata(` ${new Date().toLocaleDateString()}`);
+
+    doc.setDrawColor(244, 201, 93);
+    doc.setLineWidth(1);
+    doc.line(14, 35, pageWidth - 14, 35);
+
+    const headers = ['#', 'Student ID', 'Full Name', 'Gender', 'GPA', 'Final Score', 'Choice Rank', 'Disability', 'Phone', 'Status'];
+    const rows = placedStudents.map((student, index) => {
+      const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
+      const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
+      return [
+        index + 1,
+        student.id_number || student.student_id || '—',
+        fullName,
+        student.gender || '—',
+        Number.isFinite(Number(student.gpa)) ? Number(student.gpa).toFixed(2) : '—',
+        Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—',
+        student.choice_rank ? `Choice #${student.choice_rank}` : '—',
+        hasDisability ? 'Yes' : 'No',
+        student.phone || '-',
+        student.status || 'Pending',
+      ];
+    });
+    autoTable(doc, {
+      head: [headers],
+      body: rows,
+      startY: 40,
+      styles: { fontSize: 7.5, cellPadding: 2.2 },
+      headStyles: { fillColor: [10, 45, 109], textColor: [255, 255, 255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [243, 246, 250] },
+      margin: { left: 14, right: 14 },
+      columnStyles: {
+        1: { halign: 'center' },
+        3: { halign: 'center' },
+        4: { halign: 'center' },
+        5: { halign: 'center' },
+        6: { halign: 'center' },
+      },
+    });
+
+    let signoffY = doc.lastAutoTable.finalY + 14;
+    if (signoffY + 20 > doc.internal.pageSize.height - 10) {
+      doc.addPage();
+      signoffY = 24;
+    }
+    doc.setDrawColor(210, 215, 222);
+    doc.setLineWidth(0.4);
+    doc.line(14, signoffY - 5, pageWidth - 14, signoffY - 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 51, 51);
+    doc.text('Prepared & Verified by: Department Head', 14, signoffY);
+    doc.text('Signature: __________________   Date: __________', 14, signoffY + 7);
+    doc.rect(pageWidth - 78, signoffY - 6, 64, 24);
+    doc.text(doc.splitTextToSize('Official Department Seal / Stamp', 58), pageWidth - 75, signoffY + 3);
+
+    doc.save(`${deptName.replace(/\s+/g, '_')}_Placed_Students.pdf`);
+  };
 
   useEffect(() => {
     const rawUser = localStorage.getItem('user');
@@ -145,7 +255,7 @@ const HeadDashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!leader) return;
+    if (!leader || !['overview', 'students'].includes(tab)) return;
 
     const loadDepartments = async () => {
       try {
@@ -157,17 +267,25 @@ const HeadDashboard = () => {
 
         const primary = normalizeDepartment(responseData.department);
         const nextDepartments = [primary];
+        const students = (Array.isArray(responseData.students) ? responseData.students : []).filter((student) => (
+          ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase())
+        ));
+        const pendingStudents = (Array.isArray(responseData.pendingStudents) ? responseData.pendingStudents : []).filter((student) => (
+          String(student.status || '').trim().toLowerCase() === 'pending'
+        ));
+        const pendingCount = pendingStudents.filter((student) => !student.approved_at).length;
 
         setDepartments(nextDepartments);
         setDepartment(primary);
-        setPlacedStudents(Array.isArray(responseData.students) ? responseData.students : []);
-        setStats(responseData.stats || {
-          totalStudents: primary.assigned,
-          placedStudents: primary.assigned,
-          approvalRequests: 0,
-          capacityUsed: primary.capacity > 0 ? Math.round((primary.assigned / primary.capacity) * 100) : 0,
+        setPlacedStudents(students);
+        setPendingApprovalStudents(pendingStudents);
+        setStats({
+          totalStudents: Number(primary.assigned ?? (students.length + pendingStudents.length)),
+          placedStudents: students.length,
+          approvalRequests: pendingCount,
+          capacityUsed: primary.capacity > 0 ? Math.round((Number(primary.assigned ?? 0) / primary.capacity) * 100) : 0,
         });
-        setRecentPlacements((responseData.students || []).slice(0, 5).map((student) => ({
+        setRecentPlacements(students.slice(0, 5).map((student) => ({
           student: student.username,
           program: student.dept_name,
           status: student.status,
@@ -176,11 +294,13 @@ const HeadDashboard = () => {
         console.error('Department load error:', error);
         setDepartments([]);
         setPlacedStudents([]);
+        setPendingApprovalStudents([]);
+        setStats({ totalStudents: 0, placedStudents: 0, approvalRequests: 0, capacityUsed: 0 });
       }
     };
 
     loadDepartments();
-  }, [leader]);
+  }, [leader, tab]);
 
   useEffect(() => {
     if (!leader) return;
@@ -212,6 +332,7 @@ const HeadDashboard = () => {
   }, [departments]);
 
   const saveCapacityPlan = async () => {
+    setCapacitySaveMsg('');
     try {
       const updatedDepartments = departments.map((dept) => {
         const nextCapacity = Number(capacityDraft[dept.id] ?? dept.capacity ?? 0);
@@ -244,14 +365,17 @@ const HeadDashboard = () => {
       try {
         await api.post('api/common/departments_update.php', payload);
         setCapacitySaveMsg('Capacity plan saved successfully.');
+        setCapacitySaveMsgType('success');
       } catch (error) {
         console.error('departments_update.php save failed:', error);
         localStorage.setItem('headCapacityPlan', JSON.stringify(payload.departments));
         setCapacitySaveMsg('Saved locally. Backend unavailable.');
+        setCapacitySaveMsgType('warning');
       }
     } catch (error) {
       console.error('saveCapacityPlan error:', error);
       setCapacitySaveMsg('Unable to save capacity plan.');
+      setCapacitySaveMsgType('danger');
     }
 
     setTimeout(() => setCapacitySaveMsg(''), 3000);
@@ -260,6 +384,7 @@ const HeadDashboard = () => {
   const approvePlacement = async (placement) => {
     setApprovalSavingId(placement.placement_id);
     setApprovalError('');
+    setApprovalErrorId(null);
     try {
       const response = await api.post('api/head/head_approval.php', {
         placement_id: placement.placement_id,
@@ -268,12 +393,13 @@ const HeadDashboard = () => {
         throw new Error(response.data?.message || 'Unable to approve placement.');
       }
 
-      setPlacedStudents((current) => current.map((student) => student.placement_id === placement.placement_id
-        ? { ...student, status: 'Approved' }
+      setPendingApprovalStudents((current) => current.map((student) => student.placement_id === placement.placement_id
+        ? { ...student, approved_at: new Date().toISOString() }
         : student));
       setStats((current) => ({ ...current, approvalRequests: Math.max(0, current.approvalRequests - 1) }));
     } catch (error) {
       setApprovalError(error.response?.data?.message || error.message || 'Unable to approve placement.');
+      setApprovalErrorId(placement.placement_id);
     } finally {
       setApprovalSavingId(null);
     }
@@ -290,7 +416,7 @@ const HeadDashboard = () => {
 
       if (cardType === 'totalStudents') {
         // Show all students in the department
-        data = placedStudents
+        data = [...placedStudents, ...pendingApprovalStudents]
           .slice(0, 20)
           .map((student, idx) => ({
             id: idx + 1,
@@ -301,9 +427,9 @@ const HeadDashboard = () => {
             status: student.status || 'Pending'
           }));
       } else if (cardType === 'placedStudents') {
-        // Show placed/confirmed students
+        // Show only finalized placements
         data = placedStudents
-          .filter(s => s.status === 'Confirmed' || s.status === 'Approved' || s.status === 'Matched')
+          .filter((student) => ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase()))
           .slice(0, 20)
           .map((student, idx) => ({
             id: idx + 1,
@@ -316,8 +442,8 @@ const HeadDashboard = () => {
           }));
       } else if (cardType === 'approvalRequests') {
         // Show pending approvals
-        data = placedStudents
-          .filter(s => s.status === 'Pending')
+        data = pendingApprovalStudents
+          .filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at)
           .slice(0, 20)
           .map((student, idx) => ({
             id: idx + 1,
@@ -410,7 +536,7 @@ const HeadDashboard = () => {
                             e.stopPropagation();
                             setCardDetailModal('totalStudents');
                             // Show all students without limit
-                            setCardDetailData(placedStudents.map((student, idx) => ({
+                            setCardDetailData([...placedStudents, ...pendingApprovalStudents].map((student, idx) => ({
                               id: idx + 1,
                               username: student.username || 'N/A',
                               email: student.email || 'N/A',
@@ -455,7 +581,7 @@ const HeadDashboard = () => {
                             e.stopPropagation();
                             setCardDetailModal('placedStudents');
                             setCardDetailData(placedStudents
-                              .filter(s => s.status === 'Confirmed' || s.status === 'Approved' || s.status === 'Matched')
+                              .filter((student) => ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase()))
                               .map((student, idx) => ({
                                 id: idx + 1,
                                 username: student.username || 'N/A',
@@ -501,8 +627,8 @@ const HeadDashboard = () => {
                           onClick={(e) => {
                             e.stopPropagation();
                             setCardDetailModal('approvalRequests');
-                            setCardDetailData(placedStudents
-                              .filter(s => s.status === 'Pending')
+                            setCardDetailData(pendingApprovalStudents
+                              .filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at)
                               .map((student, idx) => ({
                                 id: idx + 1,
                                 username: student.username || 'N/A',
@@ -780,25 +906,31 @@ const HeadDashboard = () => {
             <div className="card analytics-card">
               <div className="card-body">
                 <h5 className="card-title mb-4">Approval Queue</h5>
-                {approvalError && <div className="alert alert-danger py-2">{approvalError}</div>}
-                {placedStudents.filter((student) => student.status === 'Pending').length === 0 ? (
+                {pendingApprovalStudents.filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at).length === 0 ? (
                   <p className="text-muted mb-0">No pending placement approvals for {department.name}.</p>
                 ) : (
                   <div className="task-grid">
-                    {placedStudents.filter((student) => student.status === 'Pending').map((student) => (
+                    {pendingApprovalStudents.filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at).map((student) => (
                     <div key={student.placement_id} className="task-card">
                       <div>
                         <p className="task-label mb-1">{student.username}</p>
                         <small className="text-muted">{student.dept_name} · score {Number(student.final_score).toFixed(2)}</small>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-success"
-                        onClick={() => approvePlacement(student)}
-                        disabled={approvalSavingId === student.placement_id}
-                      >
-                        {approvalSavingId === student.placement_id ? 'Approving...' : 'Approve'}
-                      </button>
+                      <div className="d-flex flex-column align-items-end">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-success"
+                          onClick={() => approvePlacement(student)}
+                          disabled={approvalSavingId === student.placement_id}
+                        >
+                          {approvalSavingId === student.placement_id ? 'Approving...' : 'Approve'}
+                        </button>
+                        {approvalErrorId === student.placement_id && approvalError && (
+                          <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">
+                            {approvalError}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     ))}
                   </div>
@@ -884,39 +1016,100 @@ const HeadDashboard = () => {
                     Reset
                   </button>
 
-                  {capacitySaveMsg && <span className="text-success fw-semibold">{capacitySaveMsg}</span>}
+                  {capacitySaveMsg && (
+                    <div className={`alert alert-${capacitySaveMsgType} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={capacitySaveMsgType === 'danger' ? 'alert' : 'status'}>
+                      {capacitySaveMsg}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
           {tab === 'students' && (
-            <div className="card analytics-card">
+            <div className="card analytics-card head-student-roster-print">
               <div className="card-body">
-                <h5 className="card-title mb-1">Placed Students</h5>
-                <p className="text-muted mb-4">Students assigned to {department.name}.</p>
+                <OfficialPrintLetterhead
+                  office={`${(department.college_name || 'General').toUpperCase()} — DEPARTMENT OF ${(department.name || 'DEPARTMENT').toUpperCase()}`}
+                  title="OFFICIAL STUDENT DEPARTMENT PLACEMENT ROSTER"
+                  metadata={`Issued by: Office of the Department Head | Academic Batch: 2016 E.C. / 2026 G.C. | Date: ${new Date().toLocaleDateString()}`}
+                />
+                <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4 head-student-roster-actions">
+                  <div>
+                    <h5 className="card-title mb-1">Placed Students — {department.name}</h5>
+                    <p className="text-muted mb-0">Students assigned to this department.</p>
+                  </div>
+                  <div className="d-flex gap-2 flex-wrap">
+                    <button type="button" onClick={() => window.print()} className="btn btn-outline-dark btn-sm">
+                      🖨️ Print Student Roster
+                    </button>
+                    <button type="button" className="btn btn-danger btn-sm fw-semibold shadow-sm" onClick={handleExportPdf}>
+                      📄 Export PDF
+                    </button>
+                  </div>
+                </div>
                 {placedStudents.length === 0 ? (
                   <div className="text-muted">No placed students found for this department.</div>
                 ) : (
                   <div className="table-responsive">
-                    <table className="table align-middle">
-                      <thead>
-                        <tr><th>Student</th><th>Email</th><th>Score</th><th>Choice Rank</th><th>Status</th></tr>
+                    <table className="table table-hover align-middle head-student-roster-table">
+                      <thead className="table-light">
+                        <tr>
+                          <th>STUDENT ID</th>
+                          <th>FULL NAME</th>
+                          <th>GENDER</th>
+                          <th>GPA</th>
+                          <th>FINAL SCORE</th>
+                          <th>CHOICE RANK</th>
+                          <th>DISABILITY</th>
+                          <th>PHONE</th>
+                          <th>STATUS</th>
+                        </tr>
                       </thead>
                       <tbody>
-                        {placedStudents.map((student) => (
-                          <tr key={`${student.student_id}-${student.email}`}>
-                            <td>{student.username}</td>
-                            <td>{student.email}</td>
-                            <td>{Number(student.final_score).toFixed(2)}</td>
-                            <td>{student.choice_rank}</td>
-                            <td><span className="badge bg-success">{student.status}</span></td>
-                          </tr>
-                        ))}
+                        {placedStudents.map((student) => {
+                          const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
+                          const gender = String(student.gender || '').toLowerCase();
+                          const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
+                          const approved = ['approved', 'published'].includes(String(student.status || '').toLowerCase());
+
+                          return (
+                            <tr key={`${student.student_id}-${student.email}`}>
+                              <td><span className="badge bg-primary-subtle text-primary px-3 py-2">{student.id_number || student.student_id}</span></td>
+                              <td className="fw-semibold">{fullName}</td>
+                              <td>
+                                {gender === 'female' ? (
+                                  <span className="badge px-3 py-1 fw-bold" style={{ backgroundColor: '#ffe4e6', color: '#be123c', border: '1px solid #fecdd3' }}>
+                                    Female
+                                  </span>
+                                ) : gender === 'male' ? (
+                                  <span className="badge px-3 py-1 fw-bold" style={{ backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                                    Male
+                                  </span>
+                                ) : (
+                                  <span className="badge bg-secondary px-3 py-1 fw-bold">{student.gender || '—'}</span>
+                                )}
+                              </td>
+                              <td><span className="badge bg-primary">{Number.isFinite(Number(student.gpa)) ? Number(student.gpa).toFixed(2) : '—'}</span></td>
+                              <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
+                              <td>{student.choice_rank ? `Choice #${student.choice_rank}` : '—'}</td>
+                              <td><span className={`badge ${hasDisability ? 'bg-danger' : 'bg-secondary'}`}>{hasDisability ? 'Yes' : 'No'}</span></td>
+                              <td>{student.phone || '-'}</td>
+                              <td><span className={`badge ${approved ? 'bg-success' : 'bg-warning text-dark'}`}>{student.status || 'Pending'}</span></td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
                 )}
+                <div className="head-roster-signoff">
+                  <div>
+                    <strong>Prepared &amp; Verified by: Department Head</strong>
+                    <div>Signature: ____________________ &nbsp; Date: ______________</div>
+                  </div>
+                  <div className="head-roster-stamp">Official Department Seal / Stamp</div>
+                </div>
               </div>
             </div>
           )}
@@ -946,7 +1139,7 @@ const HeadDashboard = () => {
                 </div>
               </div>
               <div className="col-12">
-                <Reports leader={leader} students={placedStudents} />
+                <Reports leader={leader} department={department} students={placedStudents} />
               </div>
             </div>
           )}

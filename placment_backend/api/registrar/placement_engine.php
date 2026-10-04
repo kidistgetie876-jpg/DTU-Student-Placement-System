@@ -42,7 +42,7 @@ function loadPlacementWeights(mysqli $db, array $inputRules): array
         }
     }
 
-    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight FROM placement_settings ORDER BY id DESC LIMIT 1');
+    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight FROM placement_settings WHERE id = 1 LIMIT 1');
     if ($result) {
         $row = $result->fetch_assoc();
         $columns = [
@@ -100,9 +100,6 @@ function normalizeScorePercent($value, float $maximum): float
     }
 
     $score = (float) $value;
-    if ($maximum === 100.0 && $score <= 1.0) {
-        return $score > 0 ? 100.0 : 0.0;
-    }
     return min(100.0, max(0.0, ($score / $maximum) * 100.0));
 }
 
@@ -110,13 +107,13 @@ function computeMeritScore(array $student, array $rules): float
 {
     $gpa = (float) ($student['cgpa'] ?? $student['gpa'] ?? 0);
     $grade12 = (float) ($student['grade12'] ?? $student['grade_12_result'] ?? $student['grade_12'] ?? 0);
-    $coc = $student['coc'] ?? $student['coc_result'] ?? 0;
+    $coc = (float) ($student['coc'] ?? $student['coc_result'] ?? 0);
     $gender = strtolower(trim((string) ($student['gender'] ?? '')));
     $disability = normalizeYesNo($student['hasDisability'] ?? $student['disability'] ?? false) ? 100.0 : 0.0;
     $minority = normalizeYesNo($student['minority'] ?? $student['is_minority'] ?? false) ? 100.0 : 0.0;
     $normalizedScores = [
         'gpaWeight' => normalizeScorePercent($gpa, $gpa <= 4 ? 4.0 : 100.0),
-        'grade12Weight' => normalizeScorePercent($grade12, $grade12 <= 10 ? 4.0 : 100.0),
+        'grade12Weight' => normalizeScorePercent($grade12, 100.0),
         'cocWeight' => normalizeScorePercent($coc, 30.0),
         'genderWeight' => $gender === 'female' ? 100.0 : 0.0,
         'disabilityWeight' => $disability,
@@ -152,6 +149,20 @@ try {
         $departmentRows[] = $row;
     }
 
+    $selectedCollege = trim((string) ($input['selectedCollege'] ?? ''));
+    $scopedDepartments = array_values(array_filter($departmentRows, function ($department) use ($selectedCollege) {
+        return $selectedCollege === '' || strtolower($selectedCollege) === 'all'
+            || normalizeDepartmentName($department['college_name'] ?? '') === normalizeDepartmentName($selectedCollege);
+    }));
+    if (empty($scopedDepartments)) {
+        throw new Exception('No active departments found for the selected college');
+    }
+    foreach ($scopedDepartments as $department) {
+        if ((int) ($department['capacity'] ?? 0) <= 0) {
+            throw new Exception('Every active department in the selected college must have capacity greater than zero');
+        }
+    }
+
     $departmentMap = [];
     foreach ($departmentRows as $department) {
         $key = normalizeDepartmentName($department['name'] ?? $department['department'] ?? $department['id'] ?? '');
@@ -168,9 +179,10 @@ try {
     $studentEntries = $input['students'] ?? [];
     if (!is_array($studentEntries) || empty($studentEntries)) {
         // STRICT REQUIREMENT: Only students who have submitted choices in student_choices table
-        $studentSql = "SELECT DISTINCT sd.user_id AS id, CONCAT(sd.first_name, ' ', sd.last_name) AS name, sd.email, sd.gender, sd.disability, sd.minority, sd.gpa, sd.grade_12_result AS grade12, sd.coc_result AS coc
+        $studentSql = "SELECT DISTINCT sd.user_id AS id, COALESCE(NULLIF(sd.id_number, ''), u.id_number) AS id_number, CONCAT(sd.first_name, ' ', sd.last_name) AS name, sd.email, sd.gender, sd.disability, sd.minority, sd.gpa, sd.grade_12_result AS grade12, sd.coc_result AS coc, sd.cumulative_avg AS cumulative_score
             FROM student_data sd
             INNER JOIN student_choices sc ON sc.student_id = sd.user_id
+            LEFT JOIN users u ON u.id = sd.user_id AND LOWER(u.role) = 'student'
             WHERE (sd.status != 'Placed' OR sd.status IS NULL)
             ORDER BY sd.user_id ASC";
 
@@ -179,12 +191,14 @@ try {
             while ($row = $studentRes->fetch_assoc()) {
                 $studentEntries[] = [
                     'id' => $row['id'],
+                    'id_number' => $row['id_number'] ?? null,
                     'name' => $row['name'] ?? '',
                     'email' => $row['email'] ?? '',
                     'gender' => $row['gender'] ?? '',
                     'hasDisability' => $row['disability'] ?? false,
                     'minority' => $row['minority'] ?? false,
                     'cgpa' => $row['gpa'] ?? 0,
+                    'cumulative_score' => $row['cumulative_score'] ?? 0,
                     'grade12' => $row['grade12'] ?? 0,
                     'coc' => $row['coc'] ?? 0,
                     'preferences' => [],
@@ -256,18 +270,31 @@ try {
             return ($a['priority'] ?? 99) <=> ($b['priority'] ?? 99);
         });
 
+        $meritScore = computeMeritScore($student, $rules);
+        $cumulativeScore = $meritScore;
+        $gpa = (float) ($student['cgpa'] ?? $student['gpa'] ?? 0);
+        $grade12 = (float) ($student['grade12'] ?? $student['grade_12_result'] ?? 0);
+        $coc = (float) ($student['coc'] ?? $student['coc_result'] ?? 0);
+
         $allStudents[] = [
             'id' => (int) $id,
+            'id_number' => trim((string) ($student['id_number'] ?? $student['official_id_number'] ?? '')),
             'name' => (string) ($student['name'] ?? $student['fullname'] ?? 'Student'),
             'email' => (string) ($student['email'] ?? ''),
             'gender' => (string) ($student['gender'] ?? ''),
+            'disability' => $student['disability'] ?? $student['hasDisability'] ?? false,
+            'minority' => $student['minority'] ?? $student['is_minority'] ?? false,
+            'cumulative_score' => $cumulativeScore,
+            'cgpa' => $gpa,
+            'gpa' => $gpa,
+            'grade12' => $grade12,
+            'grade_12_result' => $grade12,
+            'coc' => $coc,
+            'coc_result' => $coc,
             'hasDisability' => normalizeYesNo($student['hasDisability'] ?? $student['disability'] ?? false),
-            'minority' => normalizeYesNo($student['minority'] ?? $student['is_minority'] ?? false),
-            'cgpa' => (float) ($student['cgpa'] ?? $student['gpa'] ?? 0),
-            'grade12' => (float) ($student['grade12'] ?? $student['grade_12_result'] ?? 0),
-            'coc' => $student['coc'] ?? $student['coc_result'] ?? 0,
+            'is_minority' => normalizeYesNo($student['minority'] ?? $student['is_minority'] ?? false),
             'preferences' => $normalizedPreferences,
-            'final_merit_score' => computeMeritScore($student, $rules),
+            'final_merit_score' => $meritScore,
         ];
     }
 
@@ -276,7 +303,45 @@ try {
     }
 
     usort($allStudents, function ($a, $b) {
-        return [$b['final_merit_score'], $a['id']] <=> [$a['final_merit_score'], $b['id']];
+        $scoreA = (float) ($a['cumulative_score'] ?? $a['score'] ?? 0);
+        $scoreB = (float) ($b['cumulative_score'] ?? $b['score'] ?? 0);
+        if (abs($scoreB - $scoreA) > 0.0001) {
+            return $scoreB <=> $scoreA;
+        }
+
+        $gpaA = (float) ($a['cgpa'] ?? $a['gpa'] ?? 0);
+        $gpaB = (float) ($b['cgpa'] ?? $b['gpa'] ?? 0);
+        if (abs($gpaB - $gpaA) > 0.0001) {
+            return $gpaB <=> $gpaA;
+        }
+
+        $g12A = (float) ($a['grade12'] ?? $a['grade_12_result'] ?? 0);
+        $g12B = (float) ($b['grade12'] ?? $b['grade_12_result'] ?? 0);
+        if (abs($g12B - $g12A) > 0.0001) {
+            return $g12B <=> $g12A;
+        }
+
+        $cocA = (float) ($a['coc'] ?? $a['coc_result'] ?? 0);
+        $cocB = (float) ($b['coc'] ?? $b['coc_result'] ?? 0);
+        if (abs($cocB - $cocA) > 0.0001) {
+            return $cocB <=> $cocA;
+        }
+
+        $isFemaleA = strtolower(trim((string) ($a['gender'] ?? ''))) === 'female' ? 1 : 0;
+        $isFemaleB = strtolower(trim((string) ($b['gender'] ?? ''))) === 'female' ? 1 : 0;
+        if ($isFemaleB !== $isFemaleA) {
+            return $isFemaleB <=> $isFemaleA;
+        }
+
+        $supportA = normalizeYesNo($a['hasDisability'] ?? $a['disability'] ?? false)
+            || normalizeYesNo($a['is_minority'] ?? $a['minority'] ?? false) ? 1 : 0;
+        $supportB = normalizeYesNo($b['hasDisability'] ?? $b['disability'] ?? false)
+            || normalizeYesNo($b['is_minority'] ?? $b['minority'] ?? false) ? 1 : 0;
+        if ($supportB !== $supportA) {
+            return $supportB <=> $supportA;
+        }
+
+        return 0;
     });
 
     $capacityMap = [];
@@ -315,13 +380,12 @@ try {
     // Keep the field for backwards compatibility, but never narrow a college-wide run to one department.
     $placementScope = strtolower(trim((string) ($input['placementScope'] ?? 'college-wide')));
     $selectedDepartment = $placementScope === 'college-wide' ? '' : trim((string) ($input['selectedDepartment'] ?? ''));
-    $selectedCollege = trim((string) ($input['selectedCollege'] ?? ''));
 
     foreach ($allStudents as $student) {
         // A student may have only one placement result. Check while the transaction is active
         // so rerunning the engine cannot consume capacity or create another result row.
         $existingPlacement = null;
-        $existingSql = $db->prepare('SELECT dept_id, dept_name, stream, college_name, final_score, choice_rank FROM placement_results WHERE student_id = ? LIMIT 1 FOR UPDATE');
+        $existingSql = $db->prepare('SELECT id_number, dept_id, dept_name, stream, college_name, final_score, choice_rank FROM placement_results WHERE student_id = ? LIMIT 1 FOR UPDATE');
         if (!$existingSql) {
             throw new Exception('Unable to check existing placement result');
         }
@@ -338,6 +402,7 @@ try {
             $alreadyPlacedCount++;
             $placements[] = [
                 'studentId' => (int) $student['id'],
+                'id_number' => $existingPlacement['id_number'] ?: $student['id_number'],
                 'studentName' => $student['name'],
                 'department' => $existingPlacement['dept_name'],
                 'college' => $existingPlacement['college_name'],
@@ -382,6 +447,7 @@ try {
 
             $placements[] = [
                 'studentId' => (int) $student['id'],
+                'id_number' => $student['id_number'],
                 'studentName' => $student['name'],
                 'department' => $department['name'],
                 'college' => $department['college_name'],
@@ -392,7 +458,7 @@ try {
             ];
 
             if ($db) {
-                $insertSql = $db->prepare('INSERT INTO placement_results (student_id, dept_id, dept_name, stream, college_name, final_score, choice_rank, status) SELECT ?, ?, ?, ?, ?, ?, ?, "Pending" WHERE NOT EXISTS (SELECT 1 FROM placement_results WHERE student_id = ?)');
+                $insertSql = $db->prepare('INSERT INTO placement_results (student_id, id_number, dept_id, dept_name, stream, college_name, final_score, choice_rank, status, placed_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, "Pending", NOW() WHERE NOT EXISTS (SELECT 1 FROM placement_results WHERE student_id = ?)');
                 if (!$insertSql) {
                     throw new Exception('Unable to prepare placement result insert');
                 }
@@ -400,7 +466,7 @@ try {
                 $deptId = (int) $department['id'];
                 $finalScore = (float) $student['final_merit_score'];
                 $choiceRank = (int) ($preference['priority'] ?? ($priorityIndex + 1));
-                $insertSql->bind_param('iisssdii', $student['id'], $deptId, $department['name'], $department['stream'], $department['college_name'], $finalScore, $choiceRank, $student['id']);
+                $insertSql->bind_param('isisssdii', $student['id'], $student['id_number'], $deptId, $department['name'], $department['stream'], $department['college_name'], $finalScore, $choiceRank, $student['id']);
                 if (!$insertSql->execute()) {
                     $insertSql->close();
                     throw new Exception('Unable to save placement result');
@@ -432,6 +498,7 @@ try {
             $unassignedCount++;
             $placements[] = [
                 'studentId' => (int) $student['id'],
+                'id_number' => $student['id_number'],
                 'studentName' => $student['name'],
                 'department' => null,
                 'college' => null,

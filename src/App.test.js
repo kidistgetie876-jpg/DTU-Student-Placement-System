@@ -176,9 +176,9 @@ describe('Login', () => {
 
     await waitFor(() => {
       expect(localStorage.getItem('user')).toBeNull();
-      expect(localStorage.getItem('darkMode')).toBe('true');
-      expect(screen.getByRole('link', { name: /login/i })).toBeInTheDocument();
     });
+    expect(localStorage.getItem('darkMode')).toBe('true');
+    expect(screen.getByRole('link', { name: /login/i })).toBeInTheDocument();
   });
 
   test('treats Yes and No strings as booleans instead of truthy strings', () => {
@@ -205,7 +205,7 @@ describe('Login', () => {
     );
 
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith('departments_api.php');
+      expect(api.get).toHaveBeenCalledWith('api/common/departments_api.php');
     });
 
     expect(screen.getByRole('combobox', { name: /department/i })).toHaveValue('');

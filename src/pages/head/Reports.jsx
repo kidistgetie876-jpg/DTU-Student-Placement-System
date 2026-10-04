@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FaTrash } from 'react-icons/fa';
+import { FaPaperclip } from 'react-icons/fa';
 import api from '../../services/api';
 
-const Reports = ({ leader, students = [] }) => {
+const Reports = ({ leader, department, students = [] }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -10,9 +11,11 @@ const Reports = ({ leader, students = [] }) => {
   const [studentId, setStudentId] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [message, setMessage] = useState('');
+  const [reportFile, setReportFile] = useState(null);
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [sendStatus, setSendStatus] = useState({ type: '', message: '' });
+  const fileInputRef = useRef(null);
 
   const loadReports = async () => {
     setLoading(true);
@@ -50,19 +53,33 @@ const Reports = ({ leader, students = [] }) => {
       setSendStatus({ type: 'danger', message: 'Search for and select a student.' });
       return;
     }
+    if (reportFile && reportFile.size > 10 * 1024 * 1024) {
+      setSendStatus({ type: 'danger', message: 'Attachments must be 10 MB or smaller.' });
+      return;
+    }
 
     setSending(true);
     try {
       const formData = new FormData();
+      formData.append('sender_id', String(leader?.id ?? leader?.user_id ?? ''));
+      formData.append('sender_role', 'head');
       formData.append('recipient_type', recipientType);
+      formData.append('recipient_role', recipientType === 'registrar' ? 'registrar' : 'student');
+      formData.append('dept_id', String(department?.id ?? leader?.department_id ?? ''));
       formData.append('message', message.trim());
-      if (recipientType === 'student') formData.append('student_id', String(Number(studentId)));
-      const response = await api.post('api/head/send_head_message.php', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (recipientType === 'student') {
+        formData.append('recipient_id', String(Number(studentId)));
+        formData.append('student_id', String(Number(studentId)));
+      }
+      if (reportFile) formData.append('report_file', reportFile);
+      const response = await api.post('api/head/send_head_message.php', formData);
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to send message.');
       setMessage('');
       setStudentId('');
       setStudentSearch('');
-      setSendStatus({ type: 'success', message: response.data.message || 'Message sent successfully.' });
+      setReportFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setSendStatus({ type: 'success', message: '✓ Report/message sent successfully!' });
       await loadReports();
     } catch (requestError) {
       setSendStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to send message.' });
@@ -110,7 +127,6 @@ const Reports = ({ leader, students = [] }) => {
 
         <form className="border rounded p-3 mb-4" onSubmit={sendMessage}>
           <h6 className="mb-3">Send Message</h6>
-          {sendStatus.message && <div className={`alert alert-${sendStatus.type} py-2`} role="status">{sendStatus.message}</div>}
           <div className="row g-3 align-items-end">
             <div className="col-md-4">
               <label className="form-label small fw-semibold" htmlFor="head-message-recipient">Send to</label>
@@ -137,8 +153,57 @@ const Reports = ({ leader, students = [] }) => {
               <label className="form-label small fw-semibold" htmlFor="head-message-text">Message</label>
               <textarea id="head-message-text" className="form-control" rows="3" value={message} onChange={(event) => setMessage(event.target.value)} maxLength="10000" placeholder="Write a message" disabled={sending} />
             </div>
+            <div className="col-12">
+              <label className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2 mb-0">
+                <FaPaperclip aria-hidden="true" />
+                Bulk Upload Report / Attach File
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="visually-hidden"
+                  accept=".pdf,.xls,.xlsx,.doc,.docx"
+                  disabled={sending}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    if (file && !/\.(pdf|xls|xlsx|doc|docx)$/i.test(file.name)) {
+                      event.target.value = '';
+                      setReportFile(null);
+                      setSendStatus({ type: 'danger', message: 'Choose a PDF, Excel, or Word document.' });
+                      return;
+                    }
+                    if (file && file.size > 10 * 1024 * 1024) {
+                      event.target.value = '';
+                      setReportFile(null);
+                      setSendStatus({ type: 'danger', message: 'Attachments must be 10 MB or smaller.' });
+                      return;
+                    }
+                    setReportFile(file);
+                    setSendStatus({ type: '', message: '' });
+                  }}
+                />
+              </label>
+              {reportFile && (
+                <div className="d-flex align-items-center gap-2 mt-2 small">
+                  <span className="text-muted">Selected: {reportFile.name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm p-0"
+                    onClick={() => {
+                      setReportFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    disabled={sending}
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="col-12 d-flex justify-content-end">
-              <button type="submit" className="btn btn-primary" disabled={sending || (recipientType === 'student' && students.length === 0)}>{sending ? 'Sending...' : 'Send Message'}</button>
+              <div className="d-flex flex-column align-items-end">
+                <button type="submit" className="btn btn-primary" disabled={sending || (recipientType === 'student' && students.length === 0)}>{sending ? 'Sending...' : 'Send Message'}</button>
+                {sendStatus.message && <div className={`alert alert-${sendStatus.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={sendStatus.type === 'danger' ? 'alert' : 'status'}>{sendStatus.message}</div>}
+              </div>
             </div>
           </div>
           {recipientType === 'student' && students.length === 0 && <small className="text-muted d-block mt-2">No students are currently assigned to this department.</small>}

@@ -31,7 +31,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
   const [form, setForm] = useState(initialForm);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [fetchingDepartments, setFetchingDepartments] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -44,8 +43,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
       } catch (err) {
         console.error('Failed to load departments:', err);
         setDepartments([]);
-      } finally {
-        setFetchingDepartments(false);
       }
     };
 
@@ -166,9 +163,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                 <button className="btn btn-outline-secondary" onClick={() => onBack ? onBack() : navigate('/registrar-dashboard')}>Back</button>
               </div>
 
-              {error && <div className="alert alert-danger">{error}</div>}
-              {success && <div className="alert alert-success">{success}</div>}
-
               <form onSubmit={handleSubmit}>
                 <div className="row g-3">
                   <div className="col-md-6">
@@ -242,6 +236,8 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                     {loading ? 'Processing...' : 'Register Student'}
                   </button>
                 </div>
+                {error && <div className="alert alert-danger mt-3 mb-0" role="alert" aria-live="polite">{error}</div>}
+                {success && <div className="alert alert-success mt-3 mb-0" role="status" aria-live="polite">{success}</div>}
               </form>
             </div>
           </div>

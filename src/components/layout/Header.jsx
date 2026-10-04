@@ -2,6 +2,15 @@ import React, { useEffect, useState } from "react";
 import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import './Header.css';
 import dtuLogo from '../../assets/image.png'; // ሎጎህ እዚህ መሆኑን አረጋግጥ
+import api from '../../services/api.js';
+
+const defaultPublicLinks = [
+  { id: 'home', label: 'Home', path: '/', enabled: true },
+  { id: 'services', label: 'Services', path: '/services', enabled: true },
+  { id: 'placement-info', label: 'Placement Info', path: '/placement-info', enabled: true },
+  { id: 'announcements', label: 'Announcements', path: '/announcements', enabled: true },
+  { id: 'contact', label: 'Contact', path: '/contact', enabled: true },
+];
 
 function Header() {
   const getStoredUser = () => {
@@ -26,6 +35,11 @@ function Header() {
 
   const [user, setUser] = useState(() => getStoredUser());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [siteBranding, setSiteBranding] = useState({
+    universityTitle: 'DEBRE TABOR UNIVERSITY',
+    systemSubtitle: 'Student Department Placement System',
+  });
+  const [publicLinks, setPublicLinks] = useState(defaultPublicLinks);
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin') || 
@@ -37,6 +51,31 @@ function Header() {
     setUser(getStoredUser());
     setIsMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSiteSettings = async () => {
+      try {
+        const response = await api.get('api/common/system_settings_api.php');
+        if (!isMounted) return;
+        const settings = response.data?.settings || {};
+        setSiteBranding({
+          universityTitle: settings.site?.universityTitle || 'DEBRE TABOR UNIVERSITY',
+          systemSubtitle: settings.site?.systemSubtitle || 'Student Department Placement System',
+        });
+        setPublicLinks(Array.isArray(settings.navigation) ? settings.navigation : defaultPublicLinks);
+      } catch (error) {
+        // Keep the default public navigation available when settings are unreachable.
+      }
+    };
+
+    loadSiteSettings();
+    window.addEventListener('system-settings-updated', loadSiteSettings);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('system-settings-updated', loadSiteSettings);
+    };
+  }, []);
 
   useEffect(() => {
     const syncUser = (event) => {
@@ -65,8 +104,8 @@ function Header() {
           <Link to="/" className="d-flex align-items-center text-decoration-none">
             <img src={dtuLogo} alt="DTU Logo" className="university-logo" />
             <div className="brand-text-wrapper ms-3">
-              <h1 className="university-name">DEBRE TABOR UNIVERSITY</h1>
-              <p className="system-subtitle">Student Department Placement System</p>
+              <h1 className="university-name">{siteBranding.universityTitle}</h1>
+              <p className="system-subtitle">{siteBranding.systemSubtitle}</p>
             </div>
           </Link>
         </div>
@@ -92,15 +131,13 @@ function Header() {
             {/* Center Links (Home, Services, Contact) */}
             {!isAdminRoute && (
               <ul className="navbar-nav mx-auto mb-2 mb-lg-0">
-                <li className="nav-item">
-                  <NavLink to="/" end className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Home</NavLink>
-                </li>
-                <li className="nav-item">
-                  <NavLink to="/services" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Services</NavLink>
-                </li>
-                <li className="nav-item">
-                  <NavLink to="/contact" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>Contact</NavLink>
-                </li>
+                {publicLinks.filter((link) => link.enabled === true).map((link) => (
+                  <li className="nav-item" key={link.id}>
+                    <NavLink to={link.path} end={link.path === '/'} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+                      {link.label}
+                    </NavLink>
+                  </li>
+                ))}
               </ul>
             )}
 

@@ -73,7 +73,7 @@ try {
     if ($method === 'GET') {
         $id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int) $_GET['id'] : null;
         if ($id !== null) {
-            $stmt = $db->prepare('SELECT d.id, d.name, d.stream, d.college_name, d.capacity, d.status, d.description, d.head_id, d.created_at, u.username AS head_name FROM departments d LEFT JOIN users u ON d.head_id = u.id WHERE d.id = ? LIMIT 1');
+            $stmt = $db->prepare('SELECT d.id, d.name, d.stream, d.college_name, d.capacity, COALESCE(d.capacity_approved, 1) AS capacity_approved, d.status, d.description, d.head_id, d.created_at, u.username AS head_name FROM departments d LEFT JOIN users u ON d.head_id = u.id WHERE d.id = ? LIMIT 1');
             $stmt->bind_param('i', $id);
             $stmt->execute();
             $result = $stmt->get_result();
@@ -111,11 +111,11 @@ try {
             $values[] = $sanitized['value'];
         }
 
-        $sql = 'SELECT d.id, d.name, d.stream, d.college_name, d.capacity, d.status, d.description, d.head_id, d.created_at, u.username AS head_name FROM departments d LEFT JOIN users u ON d.head_id = u.id';
+        $sql = 'SELECT d.id, d.name, d.stream, d.college_name, d.capacity, COALESCE(d.capacity_approved, 1) AS capacity_approved, d.status, d.description, d.head_id, d.created_at, u.username AS head_name FROM departments d LEFT JOIN users u ON d.head_id = u.id';
         if (!empty($filters)) {
             $sql .= ' WHERE ' . implode(' AND ', $filters);
         }
-        $sql .= ' ORDER BY d.name ASC';
+        $sql .= ' ORDER BY d.college_name ASC, d.name ASC';
 
         $stmt = $db->prepare($sql);
         if ($stmt && !empty($values)) {
