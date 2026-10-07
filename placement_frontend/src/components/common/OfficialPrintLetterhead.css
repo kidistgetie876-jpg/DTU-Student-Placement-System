@@ -1,0 +1,49 @@
+.dtu-print-letterhead {
+  display: none;
+}
+
+@media print {
+  .dtu-print-letterhead {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 10mm;
+    padding: 0 0 3mm;
+    border-bottom: 1px solid #f4c95d;
+    color: #333;
+  }
+
+  .dtu-print-letterhead img {
+    flex: 0 0 24mm;
+    width: 24mm;
+    height: 24mm;
+    object-fit: contain;
+  }
+
+  .dtu-print-letterhead-copy {
+    min-width: 0;
+  }
+
+  .dtu-print-letterhead-university {
+    color: #0a2d6d;
+    font-size: 15pt;
+    font-weight: 700;
+  }
+
+  .dtu-print-letterhead-office {
+    color: #333;
+    font-size: 10pt;
+    font-weight: 700;
+  }
+
+  .dtu-print-letterhead-title {
+    color: #0a2d6d;
+    font-size: 9pt;
+    font-weight: 700;
+  }
+
+  .dtu-print-letterhead-metadata {
+    color: #666;
+    font-size: 7.5pt;
+  }
+}
