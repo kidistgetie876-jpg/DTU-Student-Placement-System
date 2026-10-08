@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import {
+  getUniversityDate,
+  getSubmissionWindowMessage,
+  isSubmissionWindowOpen as isSubmissionWindowOpenForDate,
+} from '../../services/placementSchedule.js';
 import StudentAppeal from './StudentAppeal';
 import { FaTrash } from 'react-icons/fa';
 import '../admin/AdminDashboard.css';
@@ -63,14 +68,6 @@ const formatScoreValue = (value) => {
   return Number.isNaN(numericValue) ? String(value) : numericValue.toFixed(2);
 };
 
-const hasSubmissionDeadlinePassed = (submissionDeadline, currentTime = new Date()) => {
-  if (!submissionDeadline) return false;
-  const deadline = new Date(submissionDeadline);
-  if (Number.isNaN(deadline.getTime())) return false;
-  deadline.setHours(23, 59, 59, 999);
-  return currentTime > deadline;
-};
-
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
@@ -86,7 +83,9 @@ const StudentDashboard = () => {
   const [placementResult, setPlacementResult] = useState(null);
   const [placementResultLoading, setPlacementResultLoading] = useState(false);
   const [preferencesSubmitted, setPreferencesSubmitted] = useState(false);
+  const [submissionStart, setSubmissionStart] = useState('');
   const [submissionDeadline, setSubmissionDeadline] = useState('');
+  const [submissionScheduleError, setSubmissionScheduleError] = useState('');
   const [deadlineClock, setDeadlineClock] = useState(Date.now());
   const [prefError, setPrefError] = useState('');
   const [prefSuccess, setPrefSuccess] = useState('');
@@ -162,12 +161,19 @@ const StudentDashboard = () => {
     const loadSubmissionDeadline = async () => {
       try {
         const response = await api.get('api/common/system_settings_api.php');
+        if (response.data?.success === false) {
+          throw new Error(response.data.message || 'Unable to load the placement schedule.');
+        }
         if (isMounted) {
+          setSubmissionStart(response.data?.settings?.placement?.submissionStart || '');
           setSubmissionDeadline(response.data?.settings?.placement?.submissionDeadline || '');
+          setSubmissionScheduleError('');
           setDeadlineClock(Date.now());
         }
       } catch (error) {
-        // Keep the last known deadline if settings cannot be refreshed.
+        if (isMounted) {
+          setSubmissionScheduleError(error.response?.data?.message || error.message || 'Unable to load the placement schedule.');
+        }
       }
     };
 
@@ -184,9 +190,11 @@ const StudentDashboard = () => {
     };
   }, []);
 
-  const isDeadlinePassed = useMemo(() => (
-    hasSubmissionDeadlinePassed(submissionDeadline, new Date(deadlineClock))
-  ), [submissionDeadline, deadlineClock]);
+  const isSubmissionOpen = useMemo(() => (
+    !submissionScheduleError
+    && isSubmissionWindowOpenForDate(submissionStart, submissionDeadline, getUniversityDate(new Date(deadlineClock)))
+  ), [submissionStart, submissionDeadline, submissionScheduleError, deadlineClock]);
+  const isSubmissionClosed = Boolean(submissionScheduleError) || (Boolean(submissionDeadline) && !isSubmissionOpen);
   const studentGpa = Number(profile?.gpa || profile?.cgpa || 0);
   const studentStatus = String(profile?.status || '').toUpperCase();
   const minimumGpa = Number(placementRules.minGpa || 1.75);
@@ -334,9 +342,13 @@ const StudentDashboard = () => {
       return;
     }
 
-    if (isDeadlinePassed || hasSubmissionDeadlinePassed(submissionDeadline)) {
+    if (isSubmissionClosed || (submissionDeadline && !isSubmissionWindowOpenForDate(
+      submissionStart,
+      submissionDeadline,
+      getUniversityDate()
+    ))) {
       setDeadlineClock(Date.now());
-      setPrefError(`The preference submission deadline closed on ${submissionDeadline}. The submission window is now officially closed.`);
+      setPrefError(submissionScheduleError || getSubmissionWindowMessage(submissionStart, submissionDeadline));
       return;
     }
 
@@ -495,7 +507,7 @@ const StudentDashboard = () => {
                   <div className="alert alert-success mb-4" role="alert">
                     <h5 className="alert-heading fw-bold">&#10003; Preferences submitted</h5>
                     <p className="mb-0">You have already submitted your department preferences. Re-submitting or changing preferences is not permitted.</p>
-                    {isDeadlinePassed && <span className="badge bg-secondary mt-3">Submission Closed (Recorded)</span>}
+                    {isSubmissionClosed && <span className="badge bg-secondary mt-3">Submission Closed (Recorded)</span>}
                   </div>
 
                   <div className="row g-3 mb-4">
@@ -546,9 +558,12 @@ const StudentDashboard = () => {
                 <>
                   <h5 className="fw-bold text-primary mb-4 text-center">Rank Your Department Preferences</h5>
 
-                  {isDeadlinePassed && (
+                  {isSubmissionClosed && (
                     <div className="alert alert-warning border-warning border-start border-4 shadow-sm" role="alert">
-                      <strong>&#9888;&#65039; The preference submission deadline closed on {submissionDeadline}. New submissions are no longer accepted.</strong>
+                      <strong>
+                        &#9888;&#65039; {submissionScheduleError || getSubmissionWindowMessage(submissionStart, submissionDeadline, getUniversityDate(new Date(deadlineClock)))}
+                        {!submissionScheduleError && ' New submissions are not accepted outside the submission period.'}
+                      </strong>
                     </div>
                   )}
 
@@ -568,7 +583,7 @@ const StudentDashboard = () => {
                       <div className="col-md-6">
                         <label className="form-label fw-bold small text-muted">2. SELECT COLLEGE</label>
                         <select className="form-select" value={preferences.college}
-                          disabled={isDeadlinePassed}
+                          disabled={isSubmissionClosed}
                           onChange={(e) => {
                             setPreferences({ ...preferences, college: e.target.value, depts: [] });
                             setPrefError('');
@@ -587,7 +602,7 @@ const StudentDashboard = () => {
                         <div className="p-3 border rounded-3 bg-white">
                           <label className="small fw-bold text-primary mb-2 d-block">Preference Rank #{idx + 1}</label>
                           <select className="form-select border-0 bg-light shadow-none" value={choice}
-                            disabled={isDeadlinePassed}
+                            disabled={isSubmissionClosed}
                             onChange={(e) => handleChoiceChange(idx, e.target.value)}>
                             <option value="">-- Select Department --</option>
                             {departmentOptions.map(dName => (
@@ -602,7 +617,7 @@ const StudentDashboard = () => {
                   </div>
 
                   <div className="text-end mt-4">
-                    {!isDeadlinePassed && (
+                    {!isSubmissionClosed && (
                       <button className="btn px-4 py-2 fw-bold shadow-sm rounded-pill dtu-submit-button" onClick={handleSave}>
                         submit
                       </button>

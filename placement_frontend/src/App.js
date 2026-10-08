@@ -10,6 +10,7 @@ import PlacementInfo from "./pages/public/PlacementInfo.jsx";
 import Announcements from "./pages/public/Announcements.jsx";
 import Contact from "./pages/public/Contact.jsx";
 import Login from "./pages/public/Login.jsx";
+import ResetPassword from "./pages/public/ResetPassword.jsx";
 import AdminDashboard from "./pages/admin/Admin_Dashboard.jsx";
 import RegistrarDashboard from "./pages/registrar/RegistrarDashboard.jsx";
 import EditUser from "./pages/admin/EditUser.jsx";
@@ -86,8 +87,8 @@ function AppRoutes() {
   }
 
   const isAdminUser = String(user?.role || '').trim().toLowerCase() === 'admin';
-  const isLoginRoute = location.pathname === '/login';
-  if (maintenance.enabled && !isAdminUser && !isLoginRoute) {
+  const isPublicAuthRoute = location.pathname === '/login' || location.pathname === '/reset-password';
+  if (maintenance.enabled && !isAdminUser && !isPublicAuthRoute) {
     return <Maintenance settings={maintenance} />;
   }
 
@@ -105,6 +106,7 @@ function AppRoutes() {
           <Route path="/announcements" element={<Announcements />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
           <Route path="/student-registration" element={<StudentRegistration />} />

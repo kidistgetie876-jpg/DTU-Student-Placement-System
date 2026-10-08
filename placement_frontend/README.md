@@ -34,6 +34,21 @@ the backend API base is:
 
 - `http://localhost/student-placement/placement_backend`
 
+### Password reset email configuration
+
+Run `placement_backend/database/migrations/20261008_add_password_reset_tokens.sql`
+against the placement database before enabling password recovery. The backend sends
+reset messages through PHP's `mail()` function, so configure an SMTP relay in the
+PHP runtime (for XAMPP, configure the `[mail function]` settings in `php.ini`).
+Set these environment variables for the PHP/Apache process:
+
+- `DTU_MAIL_FROM` — verified sender email address, for example `noreply@example.edu`
+- `DTU_FRONTEND_URL` — public frontend origin, for example `https://placement.example.edu`
+
+For local development only, the frontend URL defaults to the request's localhost
+origin. Production deployments must set `DTU_FRONTEND_URL` so reset links point to
+the deployed frontend.
+
 ## Available Scripts
 
 In the project directory, you can run:

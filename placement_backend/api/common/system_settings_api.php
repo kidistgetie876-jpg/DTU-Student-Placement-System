@@ -1,5 +1,6 @@
 <?php
-header('Access-Control-Allow-Origin: http://localhost:3000');
+require_once __DIR__ . '/../../config/db_config.php';
+setCorsHeaders();
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Access-Control-Allow-Credentials: true');
@@ -75,11 +76,11 @@ function defaultSystemSettings(): array
         'placement' => [
             'submissionStart' => '2026-10-01',
             'submissionDeadline' => '2026-10-11',
-            'processingStart' => '2026-08-16',
-            'processingEnd' => '2026-08-24',
-            'resultsDate' => '2026-08-27',
-            'appealStart' => '2026-08-27',
-            'appealEnd' => '2026-08-30',
+            'processingStart' => '2026-10-12',
+            'processingEnd' => '2026-10-20',
+            'resultsDate' => '2026-10-21',
+            'appealStart' => '2026-10-22',
+            'appealEnd' => '2026-10-25',
             'gpa_weight' => 40,
             'grade_12_weight' => 20,
             'coc_weight' => 30,
@@ -221,6 +222,65 @@ try {
     }
 
     $incoming = isset($input['settings']) && is_array($input['settings']) ? $input['settings'] : $input;
+
+    if (isset($incoming['placement']) && is_array($incoming['placement'])) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        $userId = (int) ($_SESSION['user_id'] ?? 0);
+        if ($userId <= 0) {
+            settingsResponse(['success' => false, 'message' => 'Please sign in before updating the placement schedule.'], 401);
+        }
+        $roleStatement = $db->prepare('SELECT role FROM users WHERE id = ? LIMIT 1');
+        if (!$roleStatement) {
+            throw new Exception('Unable to validate placement schedule access.');
+        }
+        $roleStatement->bind_param('i', $userId);
+        if (!$roleStatement->execute()) {
+            $roleStatement->close();
+            throw new Exception('Unable to validate placement schedule access.');
+        }
+        $userRole = strtolower(trim((string) ($roleStatement->get_result()->fetch_assoc()['role'] ?? '')));
+        $roleStatement->close();
+        if (!in_array($userRole, ['admin', 'registrar'], true)) {
+            settingsResponse(['success' => false, 'message' => 'Only an administrator or registrar can update the placement schedule.'], 403);
+        }
+
+        $dateKeys = [
+            'submissionStart' => 'Preference Submission Start Date',
+            'submissionDeadline' => 'Preference Submission Deadline',
+            'processingStart' => 'Placement Processing Start Date',
+            'processingEnd' => 'Placement Processing End Date',
+            'resultsDate' => 'Results Announcement Date',
+            'appealStart' => 'Appeal Window Start Date',
+            'appealEnd' => 'Appeal Window End Date',
+        ];
+        $dates = [];
+        foreach ($dateKeys as $key => $label) {
+            $value = $incoming['placement'][$key] ?? null;
+            if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                settingsResponse(['success' => false, 'message' => $label . ' must be a valid date.'], 400);
+            }
+            $date = DateTime::createFromFormat('!Y-m-d', $value);
+            $dateErrors = DateTime::getLastErrors();
+            if (!$date || ($dateErrors && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0)) || $date->format('Y-m-d') !== $value) {
+                settingsResponse(['success' => false, 'message' => $label . ' must be a valid date.'], 400);
+            }
+            $dates[$key] = $value;
+        }
+
+        $orderedDates = array_keys($dateKeys);
+        for ($index = 1; $index < count($orderedDates); $index++) {
+            $previousKey = $orderedDates[$index - 1];
+            $key = $orderedDates[$index];
+            if ($dates[$key] < $dates[$previousKey]) {
+                settingsResponse([
+                    'success' => false,
+                    'message' => $dateKeys[$key] . ' must be on or after ' . $dateKeys[$previousKey] . '.',
+                ], 400);
+            }
+        }
+    }
 
     if (array_key_exists('maintenance', $incoming)) {
         if (session_status() !== PHP_SESSION_ACTIVE) {

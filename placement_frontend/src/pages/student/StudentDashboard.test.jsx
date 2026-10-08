@@ -292,6 +292,38 @@ describe('StudentDashboard', () => {
     expect(screen.queryByRole('button', { name: /^submit$/i })).not.toBeInTheDocument();
   });
 
+  it('keeps preferences closed until the configured submission start date', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('system_settings_api.php')) {
+        return Promise.resolve({
+          data: {
+            settings: {
+              placement: {
+                submissionStart: '2099-01-01',
+                submissionDeadline: '2099-01-10',
+              },
+            },
+          },
+        });
+      }
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } },
+        });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Preference submission opens on 2099-01-01.');
+    expect(screen.getAllByRole('combobox')[1]).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /^submit$/i })).not.toBeInTheDocument();
+  });
+
   it('marks previously submitted choices as recorded after the deadline', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('system_settings_api.php')) {

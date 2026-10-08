@@ -1,5 +1,6 @@
 <?php
-header('Access-Control-Allow-Origin: http://localhost:3000');
+require_once __DIR__ . '/../../config/db_config.php';
+setCorsHeaders();
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 

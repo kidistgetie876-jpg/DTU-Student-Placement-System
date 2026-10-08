@@ -14,10 +14,10 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Reset Password State
   const [showModal, setShowModal] = useState(false);
-  const [resetData, setResetData] = useState({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [resetEmail, setResetEmail] = useState('');
   const [resetError, setResetError] = useState('');
+  const [resetNotice, setResetNotice] = useState('');
 
   useEffect(() => {
     setIdentifier('');
@@ -80,27 +80,33 @@ const Login = () => {
     }
   };
 
-  const handleResetSubmit = async (e) => {
+  const handleResetRequest = async (e) => {
     e.preventDefault();
-    if (resetData.newPassword !== resetData.confirmPassword) {
-      setResetError("New passwords do not match!");
-      return;
-    }
     setLoading(true);
+    setResetError('');
+    setResetNotice('');
     try {
-      const response = await api.post('auth/reset_password.php', resetData);
-      if (response.data.status === 'success' || response.data.success === true) {
-        alert("Success! Password changed.");
-        setShowModal(false);
-        setResetData({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
-      } else {
-        setResetError(response.data.message);
-      }
-    } catch (err) { 
-      setResetError("Server error."); 
+      const response = await api.post('auth/forgot_password.php', { email: resetEmail.trim() });
+      setResetNotice(response.data.message || 'If an account exists for that email, a password reset link has been sent.');
+    } catch (err) {
+      setResetError(err.response?.data?.message || 'Unable to send the reset link. Please try again later.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const closeResetModal = () => {
+    setShowModal(false);
+    setResetEmail('');
+    setResetError('');
+    setResetNotice('');
+  };
+
+  const openResetModal = () => {
+    setResetEmail('');
+    setResetError('');
+    setResetNotice('');
+    setShowModal(true);
   };
 
   return (
@@ -240,7 +246,7 @@ const Login = () => {
                   <div className="text-center mt-3 pt-1">
                     <button 
                       type="button" 
-                      onClick={() => setShowModal(true)} 
+                      onClick={openResetModal}
                       className="btn btn-link btn-sm text-decoration-none fw-semibold"
                       style={{ color: '#0a2d6d' }}
                     >
@@ -262,33 +268,22 @@ const Login = () => {
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '20px', overflow: 'hidden' }}>
               <div className="modal-header text-white px-4 py-3" style={{ backgroundColor: '#0a2d6d' }}>
                 <h5 className="modal-title fw-bold">Reset Your Password</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
+                <button type="button" className="btn-close btn-close-white" onClick={closeResetModal} aria-label="Close"></button>
               </div>
-              <form onSubmit={handleResetSubmit}>
+              <form onSubmit={handleResetRequest}>
                 <div className="modal-body p-4">
                   {resetError && <div className="alert alert-danger small rounded-3">{resetError}</div>}
+                  {resetNotice && <div className="alert alert-success small rounded-3" role="status">{resetNotice}</div>}
+                  <p className="small text-muted">Enter your registered email address and we’ll send you a secure link to choose a new password.</p>
                   <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Email Address</label>
-                    <input type="email" className="form-control py-2 rounded-3" placeholder="Enter your registered email" onChange={(e) => setResetData({...resetData, email: e.target.value})} required />
-                  </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Current (Old) Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter current password" onChange={(e) => setResetData({...resetData, oldPassword: e.target.value})} required />
-                  </div>
-                  <hr className="my-3 text-muted" />
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter new password" onChange={(e) => setResetData({...resetData, newPassword: e.target.value})} required />
-                  </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Confirm New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Confirm new password" onChange={(e) => setResetData({...resetData, confirmPassword: e.target.value})} required />
+                    <label htmlFor="reset-email" className="small fw-bold text-secondary">Email Address</label>
+                    <input id="reset-email" type="email" className="form-control py-2 rounded-3" placeholder="Enter your registered email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} autoComplete="email" required />
                   </div>
                 </div>
                 <div className="modal-footer border-0 px-4 pb-4 pt-0">
-                  <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={() => setShowModal(false)}>Cancel</button>
+                  <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={closeResetModal}>Cancel</button>
                   <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={loading}>
-                    {loading ? 'Processing...' : 'Change Password'}
+                    {loading ? 'Sending...' : 'Send Reset Link'}
                   </button>
                 </div>
               </form>

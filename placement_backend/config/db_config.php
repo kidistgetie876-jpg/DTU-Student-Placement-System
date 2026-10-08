@@ -8,28 +8,36 @@ if (session_status() === PHP_SESSION_NONE) {
     session_name('DTUPLACEMENTSESSID');
 }
 
-// 1. የ CORS ፈቃድ አያያዝ (ለ 3000 እና 3001 ፖርቶች)
-if (isset($_SERVER['HTTP_ORIGIN'])) {
-    $origin = $_SERVER['HTTP_ORIGIN'];
-    $allowed_origins = [
+function setCorsHeaders(): void
+{
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $allowedOrigins = [
         'http://localhost:3000',
         'http://localhost:3001',
         'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001'
+        'http://127.0.0.1:3001',
+        'https://dtu-student-placement-system.onrender.com',
+        'https://dtu-student-placement-system-1.onrender.com',
+        'https://dtu-student-placement-system-2.onrender.com',
     ];
-    
-    if (in_array($origin, $allowed_origins, true)) {
+
+    if ($origin !== '' && (
+        in_array($origin, $allowedOrigins, true) ||
+        preg_match('#^https?://[a-z0-9-]+\\.onrender\\.com$#i', $origin) === 1
+    )) {
         header('Vary: Origin');
         header("Access-Control-Allow-Origin: $origin");
-        header("Access-Control-Allow-Credentials: true");
+        header('Access-Control-Allow-Credentials: true');
     }
+
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 }
 
-// 2. የሚፈቀዱ የጥሪ አይነቶች (Methods) እና Header-ዎች
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+// 1. የ CORS ፈቃድ አያያዝ (ለ 3000 እና 3001 ፖርቶች)
+setCorsHeaders();
 
-// 3. ለ OPTIONS (Preflight) ጥያቄ ምላሽ መስጠት - ለሪአክት ግንኙነት በጣም አስፈላጊ ነው
+// 2. ለ OPTIONS (Preflight) ጥያቄ ምላሽ መስጠት - ለሪአክት ግንኙነት በጣም አስፈላጊ ነው
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;

@@ -10,6 +10,7 @@ import {
   FiX,
 } from 'react-icons/fi';
 import api from '../../services/api.js';
+import { placementDateFields, validatePlacementSchedule } from '../../services/placementSchedule.js';
 
 const defaultSettings = {
   site: {
@@ -30,13 +31,13 @@ const defaultSettings = {
     expectedReturn: 'Soon',
   },
   placement: {
-    submissionStart: '2026-08-01',
-    submissionDeadline: '2026-08-15',
-    processingStart: '2026-08-16',
-    processingEnd: '2026-08-24',
-    resultsDate: '2026-08-27',
-    appealStart: '2026-08-27',
-    appealEnd: '2026-08-30',
+    submissionStart: '2026-10-01',
+    submissionDeadline: '2026-10-11',
+    processingStart: '2026-10-12',
+    processingEnd: '2026-10-20',
+    resultsDate: '2026-10-21',
+    appealStart: '2026-10-22',
+    appealEnd: '2026-10-25',
     gpa_weight: 40,
     grade_12_weight: 20,
     coc_weight: 30,
@@ -344,11 +345,19 @@ const SystemConfig = () => {
   };
 
   const saveSettings = async () => {
+    setSaveSuccess('');
+    setSaveError('');
+    if (activeEditor === 'placement') {
+      const scheduleError = validatePlacementSchedule(settings.placement);
+      if (scheduleError) {
+        setSaveError(scheduleError);
+        return;
+      }
+    }
+
     setSaving(true);
     setError('');
     setMessage('');
-    setSaveSuccess('');
-    setSaveError('');
     try {
       const placementFormState = settings.placement;
       const payload = activeEditor === 'placement'
@@ -633,18 +642,25 @@ const SystemConfig = () => {
               {activeEditor === 'placement' && (
                 <form onSubmit={(event) => { event.preventDefault(); saveSettings(); }}>
                   <div className="row g-3">
-                    {[
-                      ['submissionStart', 'Submission Start'],
-                      ['submissionDeadline', 'Submission Deadline'],
-                      ['processingStart', 'Processing Start'],
-                      ['processingEnd', 'Processing End'],
-                      ['resultsDate', 'Results Announcement Date'],
-                      ['appealStart', 'Appeal Window Start'],
-                      ['appealEnd', 'Appeal Window End'],
-                    ].map(([key, label]) => (
+                    {validatePlacementSchedule(settings.placement) && (
+                      <div className="col-12">
+                        <div className="alert alert-warning mb-0" role="alert">{validatePlacementSchedule(settings.placement)}</div>
+                      </div>
+                    )}
+                    {placementDateFields.map(([key, label]) => (
                       <div className="col-md-6 col-lg-4" key={key}>
                         <label className="form-label" htmlFor={`placement-${key}`}>{label}</label>
-                        <input id={`placement-${key}`} type="date" className="form-control" value={settings.placement[key]} onChange={(event) => updateSetting('placement', key, event.target.value)} />
+                        <input
+                          id={`placement-${key}`}
+                          type="date"
+                          className="form-control"
+                          value={settings.placement[key]}
+                          onChange={(event) => {
+                            updateSetting('placement', key, event.target.value);
+                            setSaveError('');
+                            setSaveSuccess('');
+                          }}
+                        />
                       </div>
                     ))}
                     <div className="col-12 mt-4">

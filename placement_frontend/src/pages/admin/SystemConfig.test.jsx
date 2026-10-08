@@ -65,3 +65,27 @@ describe('SystemConfig maintenance settings', () => {
     expect(await screen.findByRole('button', { name: '🔴 ON' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+describe('SystemConfig placement schedule', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    api.get.mockResolvedValue({ data: { success: true, settings: {} } });
+    api.post.mockResolvedValue({ data: { success: true, settings: {} } });
+  });
+
+  it('blocks saving dates that are out of chronological order', async () => {
+    render(<SystemConfig />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Placement Dates & Deadlines' }));
+
+    fireEvent.change(await screen.findByLabelText('Placement Processing Start Date'), {
+      target: { value: '2026-10-10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Placement Timeline' }));
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.some((alert) => alert.textContent.includes(
+      'Placement Processing Start Date must be on or after Preference Submission Deadline.'
+    ))).toBe(true);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+});

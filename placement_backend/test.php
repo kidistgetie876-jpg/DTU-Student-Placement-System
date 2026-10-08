@@ -1,6 +1,7 @@
 <?php
 // CORS ለመፍቀድ (ከ React ጋር ለመገናኘት በጣም አስፈላጊ ነው)
-header("Access-Control-Allow-Origin: http://localhost:3000");
+require_once __DIR__ . '/../../config/db_config.php';
+setCorsHeaders();
 header("Content-Type: application/json; charset=UTF-8");
 
 // የሙከራ ዳታ

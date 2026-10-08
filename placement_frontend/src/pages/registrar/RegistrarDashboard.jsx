@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import { placementDateFields, validatePlacementSchedule } from '../../services/placementSchedule.js';
 import StudentRegistration from './StudentRegistration';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
@@ -79,21 +80,12 @@ const emptyAnnouncementDraft = {
 const defaultPlacementDates = {
   submissionStart: '2026-10-01',
   submissionDeadline: '2026-10-11',
-  processingStart: '2026-08-16',
-  processingEnd: '2026-08-24',
-  resultsDate: '2026-08-27',
-  appealStart: '2026-08-27',
-  appealEnd: '2026-08-30',
+  processingStart: '2026-10-12',
+  processingEnd: '2026-10-20',
+  resultsDate: '2026-10-21',
+  appealStart: '2026-10-22',
+  appealEnd: '2026-10-25',
 };
-const placementDateFields = [
-  ['submissionStart', 'Preference Submission Start Date'],
-  ['submissionDeadline', 'Preference Submission Deadline'],
-  ['processingStart', 'Placement Processing Start Date'],
-  ['processingEnd', 'Placement Processing End Date'],
-  ['resultsDate', 'Results Announcement Date'],
-  ['appealStart', 'Appeal Window Start Date'],
-  ['appealEnd', 'Appeal Window End Date'],
-];
 
 const downloadCsv = (filename, headers, rows) => {
   const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
@@ -557,7 +549,9 @@ const RegistrarDashboard = () => {
   const selectedCollegeGroup = departmentStatusGroups.find((group) => group.collegeName === selectedCollegeStatus);
   const selectedCollegeDepartments = selectedCollegeGroup?.departments || emptyDepartments;
   const selectedDepartment = selectedCollegeDepartments.find((department) => String(department.id) === selectedDepartmentStatus);
-
+  const areAllSelectedCollegeDepartmentsActive = selectedCollegeDepartments.length > 0 && selectedCollegeDepartments.every((department) => (
+    String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
+  ));
   useEffect(() => {
     if (selectedCollegeDepartments.length === 0) {
       setSelectedDepartmentStatus('');
@@ -571,17 +565,17 @@ const RegistrarDashboard = () => {
     ));
   }, [selectedCollegeDepartments]);
 
-  const collegeHasActiveDepartment = (collegeName) => {
+  const collegeHasAllDepartmentsActive = (collegeName) => {
     const collegeDepartments = departments.filter((department) => (
       String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
     ));
-    return collegeDepartments.some((department) => (
+    return collegeDepartments.length > 0 && collegeDepartments.every((department) => (
       String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
     ));
   };
 
   const toggleEntireCollege = (collegeName) => {
-    const nextStatus = collegeHasActiveDepartment(collegeName) ? 'inactive' : 'active';
+    const nextStatus = collegeHasAllDepartmentsActive(collegeName) ? 'inactive' : 'active';
     setDepartmentStatusDrafts((current) => ({
       ...current,
       ...Object.fromEntries(departments
@@ -606,14 +600,19 @@ const RegistrarDashboard = () => {
   };
 
   const saveDepartmentStatuses = async () => {
-    const updates = departments.map((department) => ({
-      id: department.id,
-      capacity: Number(department.capacity ?? 0),
-      status: departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active',
-    }));
+    const updates = selectedCollegeDepartments
+      .filter((department) => (
+        String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase()
+        !== String(department.status ?? 'active').toLowerCase()
+      ))
+      .map((department) => ({
+        id: department.id,
+        capacity: Number(department.capacity ?? 0),
+        status: departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active',
+      }));
     if (!updates.length) {
-      setDepartmentStatusError('No department statuses are available to save.');
-      setDepartmentStatusMessage('');
+      setDepartmentStatusError('');
+      setDepartmentStatusMessage('There are no department status changes to save for this college.');
       return;
     }
 
@@ -630,8 +629,11 @@ const RegistrarDashboard = () => {
         ...department,
         status: statusesById.get(String(department.id)) ?? department.status,
       })));
-      setDepartmentStatusDrafts(Object.fromEntries(updates.map((department) => [String(department.id), department.status])));
-      setDepartmentStatusMessage('✓ Department placement statuses updated successfully!');
+      setDepartmentStatusDrafts((current) => ({
+        ...current,
+        ...Object.fromEntries(updates.map((department) => [String(department.id), department.status])),
+      }));
+      setDepartmentStatusMessage(`✓ ${updates.length} department status${updates.length === 1 ? '' : 'es'} updated for ${selectedCollegeStatus}.`);
     } catch (error) {
       setDepartmentStatusError(error.response?.data?.message || error.message || 'Unable to save department statuses.');
     } finally {
@@ -895,6 +897,13 @@ const RegistrarDashboard = () => {
 
   const savePlacementDates = async (event) => {
     event.preventDefault();
+    const scheduleError = validatePlacementSchedule(placementDates);
+    if (scheduleError) {
+      setDeadlineError(scheduleError);
+      setDeadlineSuccess('');
+      return;
+    }
+
     setDeadlineSaving(true);
     setDeadlineError('');
     setDeadlineSuccess('');
@@ -2512,7 +2521,7 @@ const RegistrarDashboard = () => {
                     Department &amp; College Placement Status
                   </h4>
                   <p className="text-muted mb-0">
-                    Control which colleges and departments are open (Active) for Year 1 placement, or closed (Inactive) for Year 2.
+                    Use the college button to activate or deactivate every department in the selected college, or choose one department to change it individually.
                   </p>
                 </div>
 
@@ -2524,7 +2533,7 @@ const RegistrarDashboard = () => {
                       <div className="row g-3 align-items-end">
                         <div className="col-12">
                           <label className="form-label fw-semibold" htmlFor="status-college-select">Select College</label>
-                          <div className="d-flex gap-2 flex-wrap">
+                          <div className="d-grid gap-2">
                             <select
                               id="status-college-select"
                               className="form-select flex-grow-1"
@@ -2538,11 +2547,11 @@ const RegistrarDashboard = () => {
                             </select>
                             <button
                               type="button"
-                              className={`btn fw-semibold ${collegeHasActiveDepartment(selectedCollegeStatus) ? 'btn-outline-danger' : 'btn-success'}`}
+                              className={`btn fw-semibold ${areAllSelectedCollegeDepartmentsActive ? 'btn-outline-danger' : 'btn-success'}`}
                               onClick={() => toggleEntireCollege(selectedCollegeStatus)}
-                              disabled={departmentStatusSaving || !selectedCollegeStatus}
+                              disabled={departmentStatusSaving || selectedCollegeDepartments.length === 0}
                             >
-                              {collegeHasActiveDepartment(selectedCollegeStatus)
+                              {areAllSelectedCollegeDepartmentsActive
                                 ? '✕ Deactivate Entire College'
                                 : '✓ Activate Entire College'}
                             </button>
@@ -2636,9 +2645,9 @@ const RegistrarDashboard = () => {
                     type="button"
                     className="btn btn-primary"
                     onClick={saveDepartmentStatuses}
-                    disabled={departmentStatusSaving || departments.length === 0}
+                    disabled={departmentStatusSaving || selectedCollegeDepartments.length === 0}
                   >
-                    {departmentStatusSaving ? 'Saving statuses...' : 'Save Status Changes'}
+                    {departmentStatusSaving ? 'Saving statuses...' : `Save Status Changes for ${selectedCollegeStatus || 'Selected College'}`}
                   </button>
                   {departmentStatusMessage && (
                     <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">
@@ -2673,6 +2682,11 @@ const RegistrarDashboard = () => {
 
                 {deadlineLoading && <div className="small text-muted mb-3" role="status">Loading saved schedule...</div>}
                 <form onSubmit={savePlacementDates}>
+                  {validatePlacementSchedule(placementDates) && (
+                    <div className="alert alert-warning py-2 small" role="alert">
+                      {validatePlacementSchedule(placementDates)}
+                    </div>
+                  )}
                   <div className="row g-3">
                     {placementDateFields.map(([key, label]) => (
                       <div className="col-md-6" key={key}>
@@ -2684,6 +2698,7 @@ const RegistrarDashboard = () => {
                           value={placementDates[key] || ''}
                           onChange={(event) => {
                             setPlacementDates((current) => ({ ...current, [key]: event.target.value }));
+                            setDeadlineError('');
                             setDeadlineSuccess('');
                           }}
                           required

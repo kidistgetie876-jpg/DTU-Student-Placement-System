@@ -4,7 +4,8 @@
  * Updates a student record in student_data and recalculates the cumulative score.
  */
 
-header('Access-Control-Allow-Origin: http://localhost:3000');
+require_once __DIR__ . '/../../config/db_config.php';
+setCorsHeaders();
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Access-Control-Allow-Credentials: true');

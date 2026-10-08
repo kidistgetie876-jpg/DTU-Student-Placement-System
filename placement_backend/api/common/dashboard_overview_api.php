@@ -11,7 +11,8 @@
  */
 
  header('Content-Type: application/json; charset=UTF-8');
-header('Access-Control-Allow-Origin: http://localhost:3000');
+require_once __DIR__ . '/../../config/db_config.php';
+setCorsHeaders();
 header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
