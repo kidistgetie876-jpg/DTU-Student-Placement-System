@@ -4,13 +4,10 @@ import { FaTwitter, FaFacebookF, FaLinkedinIn, FaEnvelope } from 'react-icons/fa
 import api from '../../services/api.js';
 import './Footer.css';
 
-const defaultFooterCopyrightText = 'DTU Placement. All rights reserved.';
-
 function Footer() {
-  const [email, setEmail] = useState('');
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [subscribed, setSubscribed] = useState(false);
   const [newsStatus, setNewsStatus] = useState('');
-  const [universityTitle, setUniversityTitle] = useState('DTU Placement');
-  const [footerCopyrightText, setFooterCopyrightText] = useState(defaultFooterCopyrightText);
   const [footerText, setFooterText] = useState('Connecting students, departments, and employers through a transparent and efficient placement experience.');
 
   useEffect(() => {
@@ -28,13 +25,6 @@ function Footer() {
           }
         }
 
-        if (isMounted && typeof settings.site?.universityTitle === 'string' && settings.site.universityTitle.trim()) {
-          setUniversityTitle(settings.site.universityTitle.trim());
-        }
-        const savedCopyrightText = homepage?.footerCopyrightText;
-        if (isMounted && typeof savedCopyrightText === 'string') {
-          setFooterCopyrightText(savedCopyrightText.trim());
-        }
         const savedFooterText = homepage?.footerText;
         if (isMounted && typeof savedFooterText === 'string' && savedFooterText.trim()) {
           setFooterText(savedFooterText.trim());
@@ -51,17 +41,44 @@ function Footer() {
     };
   }, []);
 
+  let storedUser = null;
+  try {
+    storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    storedUser = null;
+  }
+  const dashboardRoutes = {
+    admin: '/admin-dashboard',
+    registrar: '/registrar-dashboard',
+    head: '/head-dashboard',
+    student: '/student-dashboard',
+  };
+  const dashboardPath = storedUser && typeof storedUser === 'object'
+    ? dashboardRoutes[String(storedUser.role || '').trim().toLowerCase()]
+    : null;
+
   const subscribe = (e) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
+    const normalizedEmail = newsletterEmail.trim();
+    if (!e.currentTarget.checkValidity()) {
+      e.currentTarget.reportValidity();
+      return;
+    }
+    if (!normalizedEmail) {
       setNewsStatus('Please enter a valid email.');
       return;
     }
-    const list = JSON.parse(localStorage.getItem('newsletter_signups') || '[]');
-    list.push({ email, date: new Date().toISOString() });
-    localStorage.setItem('newsletter_signups', JSON.stringify(list));
-    setEmail('');
-    setNewsStatus('Thank you — you are subscribed.');
+    try {
+      const list = JSON.parse(localStorage.getItem('newsletter_signups') || '[]');
+      list.push({ email: normalizedEmail, date: new Date().toISOString() });
+      localStorage.setItem('newsletter_signups', JSON.stringify(list));
+      setNewsletterEmail('');
+      setSubscribed(true);
+      setNewsStatus('');
+    } catch {
+      setSubscribed(false);
+      setNewsStatus('Unable to save your subscription. Please try again.');
+    }
   };
 
   return (
@@ -76,10 +93,10 @@ function Footer() {
             <p className="brand-desc">{footerText || 'Connecting students, departments, and employers through a transparent and efficient placement experience.'}</p>
 
             <div className="social-row" aria-label="Social media links">
-              <a href="mailto:placement@dtu.edu" aria-label="Email" className="social-btn"><FaEnvelope/></a>
-              <button type="button" aria-label="Twitter" className="social-btn" onClick={(e) => e.preventDefault()}><FaTwitter/></button>
-              <button type="button" aria-label="Facebook" className="social-btn" onClick={(e) => e.preventDefault()}><FaFacebookF/></button>
-              <button type="button" aria-label="LinkedIn" className="social-btn" onClick={(e) => e.preventDefault()}><FaLinkedinIn/></button>
+              <a href="mailto:tsegayaaderajew021@gmail.com" target="_blank" rel="noopener noreferrer" aria-label="Email" className="social-btn"><FaEnvelope /></a>
+              <a href="https://twitter.com/DebreTaborUniv" target="_blank" rel="noopener noreferrer" aria-label="Twitter" className="social-btn"><FaTwitter /></a>
+              <a href="https://www.facebook.com/DebreTaborUniversityOfficial" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="social-btn"><FaFacebookF /></a>
+              <a href="https://www.linkedin.com/school/debre-tabor-university" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="social-btn"><FaLinkedinIn /></a>
             </div>
           </div>
 
@@ -96,9 +113,9 @@ function Footer() {
           <div className="footer-col">
             <h6 className="col-title">Support</h6>
             <ul className="col-list">
-              <li><Link to="/contact">Help Center</Link></li>
+              <li><Link to="/placement-info">Help Center</Link></li>
               <li><Link to="/contact">Request Info</Link></li>
-              <li><Link to="/login">Sign in</Link></li>
+              <li><Link to={dashboardPath || '/login'}>{dashboardPath ? 'My Dashboard' : 'Sign in'}</Link></li>
             </ul>
           </div>
 
@@ -107,18 +124,25 @@ function Footer() {
             <p className="small muted">Get placement news, workshops, and recruitment updates.</p>
             <form className="newsletter-form" onSubmit={subscribe}>
               <label htmlFor="newsletter-email" className="visually-hidden">Email address</label>
-              <input id="newsletter-email" type="email" placeholder="you@university.edu" value={email} onChange={e => setEmail(e.target.value)} />
+              <input id="newsletter-email" type="email" required placeholder="you@university.edu" value={newsletterEmail} onChange={e => { setNewsletterEmail(e.target.value); setSubscribed(false); setNewsStatus(''); }} />
               <button className="subscribe-btn" type="submit">Subscribe</button>
             </form>
-            {newsStatus && <div className="news-status small" role="status">{newsStatus}</div>}
+            {subscribed && <div className="news-status news-status-success small" role="status">✓ Subscribed to placement updates!</div>}
+            {!subscribed && newsStatus && <div className="news-status small" role="alert">{newsStatus}</div>}
           </div>
         </div>
 
-        <div className="footer-bottom">
-          <div className="copyright">© {new Date().getFullYear()} {footerCopyrightText && footerCopyrightText !== defaultFooterCopyrightText ? footerCopyrightText : `${universityTitle || 'DTU Placement'}. All rights reserved.`}</div>
-          <div className="legal-links">
-            <Link to="/privacy">Privacy</Link>
-            <Link to="/terms">Terms</Link>
+        <div className="footer-bottom d-flex justify-content-between align-items-center flex-wrap gap-2 py-3 border-top border-secondary border-opacity-25">
+          <div className="text-white-50 small">
+            <span>© {new Date().getFullYear()} DEBRE TABOR UNIVERSITY. All rights reserved.</span>
+          </div>
+          <div className="d-flex align-items-center gap-3 text-white-50 small">
+            <span className="fw-bold" style={{ color: '#f4c95d', letterSpacing: '0.03em' }}>
+              Developed by MAU 4th Year CS Students
+            </span>
+            <span className="opacity-50">|</span>
+            <span style={{ cursor: 'pointer' }}>Privacy</span>
+            <span style={{ cursor: 'pointer' }}>Terms</span>
           </div>
         </div>
       </div>

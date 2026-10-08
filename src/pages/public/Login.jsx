@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api.js';
 import { useNavigate } from 'react-router-dom';
-import { FiEye, FiEyeOff, FiLock, FiUser } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiLock, FiMail, FiUser } from 'react-icons/fi';
 import dtuLogo from '../../assets/image.png';
 
 const Login = () => {
@@ -16,8 +16,16 @@ const Login = () => {
 
   // Reset Password State
   const [showModal, setShowModal] = useState(false);
-  const [resetData, setResetData] = useState({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [resetStep, setResetStep] = useState(1);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     setIdentifier('');
@@ -80,26 +88,131 @@ const Login = () => {
     }
   };
 
-  const handleResetSubmit = async (e) => {
+  const closeResetModal = () => {
+    setShowModal(false);
+    setResetStep(1);
+    setResetEmail('');
+    setResetCode('');
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setShowResetPassword(false);
+    setShowResetConfirmPassword(false);
+    setResetError('');
+    setResetSuccess('');
+  };
+
+  const handleSendVerificationCode = async (e) => {
     e.preventDefault();
-    if (resetData.newPassword !== resetData.confirmPassword) {
-      setResetError("New passwords do not match!");
+    const email = resetEmail.trim();
+
+    if (!isValidEmail(email)) {
+      setResetError('Please enter a valid email address.');
+      setResetSuccess('');
       return;
     }
-    setLoading(true);
+
+    setResetLoading(true);
+    setResetError('');
+    setResetSuccess('');
+
     try {
-      const response = await api.post('auth/reset_password.php', resetData);
-      if (response.data.status === 'success' || response.data.success === true) {
-        alert("Success! Password changed.");
-        setShowModal(false);
-        setResetData({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
-      } else {
-        setResetError(response.data.message);
+      const response = await api.post('auth/request_reset_code.php', { email });
+      if (response.data?.status !== 'success' && response.data?.success !== true) {
+        throw new Error(response.data?.message || 'Unable to send verification code.');
       }
-    } catch (err) { 
-      setResetError("Server error."); 
+
+      setResetCode('');
+      setResetStep(2);
+      setResetSuccess('✓ Verification code sent to your email');
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to send verification code.';
+      setResetError(errorMessage);
+      setResetSuccess('');
     } finally {
-      setLoading(false);
+      setResetLoading(false);
+    }
+  };
+
+  const handleVerifyResetCode = async (e) => {
+    e.preventDefault();
+    const email = resetEmail.trim();
+    const code = resetCode.trim();
+
+    if (code.length !== 6) {
+      setResetError('Please enter the 6-digit verification code from your email.');
+      setResetSuccess('');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError('');
+    setResetSuccess('');
+
+    try {
+      const response = await api.post('auth/verify_and_reset_password.php', {
+        action: 'verify_only',
+        email,
+        code,
+      });
+
+      if (response.data?.status !== 'success' && response.data?.success !== true) {
+        setResetError('Invalid code. Try again.');
+        return;
+      }
+
+      setResetStep(3);
+      setResetSuccess('');
+    } catch {
+      setResetError('Invalid code. Try again.');
+      setResetSuccess('');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    const email = resetEmail.trim();
+    const code = resetCode.trim();
+
+    if (resetNewPassword.length < 6) {
+      setResetError('New password must be at least 6 characters long.');
+      setResetSuccess('');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError('New passwords do not match.');
+      setResetSuccess('');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError('');
+    setResetSuccess('');
+
+    try {
+      const response = await api.post('auth/verify_and_reset_password.php', {
+        action: 'reset',
+        email,
+        code,
+        newPassword: resetNewPassword,
+        confirmPassword: resetConfirmPassword,
+      });
+
+      if (response.data?.status !== 'success' && response.data?.success !== true) {
+        throw new Error(response.data?.message || 'Unable to change the password.');
+      }
+
+      setResetSuccess('✓ Password changed successfully!');
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setTimeout(() => closeResetModal(), 1500);
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to change the password.';
+      setResetError(errorMessage);
+      setResetSuccess('');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -240,7 +353,18 @@ const Login = () => {
                   <div className="text-center mt-3 pt-1">
                     <button 
                       type="button" 
-                      onClick={() => setShowModal(true)} 
+                      onClick={() => {
+                        setResetStep(1);
+                        setResetEmail('');
+                        setResetCode('');
+                        setResetNewPassword('');
+                        setResetConfirmPassword('');
+                        setShowResetPassword(false);
+                        setShowResetConfirmPassword(false);
+                        setResetError('');
+                        setResetSuccess('');
+                        setShowModal(true);
+                      }}
                       className="btn btn-link btn-sm text-decoration-none fw-semibold"
                       style={{ color: '#0a2d6d' }}
                     >
@@ -261,37 +385,145 @@ const Login = () => {
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '20px', overflow: 'hidden' }}>
               <div className="modal-header text-white px-4 py-3" style={{ backgroundColor: '#0a2d6d' }}>
-                <h5 className="modal-title fw-bold">Reset Your Password</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
+                <h5 className="modal-title fw-bold">
+                  {resetStep === 1 ? 'Forgot Password' : resetStep === 2 ? 'Verify Security Code' : 'Set New Password'}
+                </h5>
+                <button type="button" className="btn-close btn-close-white" onClick={closeResetModal}></button>
               </div>
-              <form onSubmit={handleResetSubmit}>
-                <div className="modal-body p-4">
-                  {resetError && <div className="alert alert-danger small rounded-3">{resetError}</div>}
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Email Address</label>
-                    <input type="email" className="form-control py-2 rounded-3" placeholder="Enter your registered email" onChange={(e) => setResetData({...resetData, email: e.target.value})} required />
+
+              {resetStep === 1 ? (
+                <form onSubmit={handleSendVerificationCode}>
+                  <div className="modal-body p-4">
+                    <div className="mb-4">
+                      <label htmlFor="reset-email" className="small fw-bold text-secondary mb-2 d-block">Enter Registered Email</label>
+                      <div className="input-group">
+                        <span className="input-group-text bg-light border-end-0 text-muted" style={{ borderRadius: '12px 0 0 12px' }}>
+                          <FiMail />
+                        </span>
+                        <input
+                          id="reset-email"
+                          type="email"
+                          className="form-control border-start-0 py-2"
+                          style={{ borderRadius: '0 12px 12px 0' }}
+                          placeholder="Enter your registered email address"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          autoComplete="email"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Current (Old) Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter current password" onChange={(e) => setResetData({...resetData, oldPassword: e.target.value})} required />
+
+                  <div className="modal-footer border-0 px-4 pb-4 pt-0 d-flex flex-column align-items-stretch">
+                    <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={resetLoading}>
+                      {resetLoading ? 'Sending...' : 'Send Verification Code'}
+                    </button>
+                    {resetError && <div className="alert alert-danger small rounded-3 mb-0 mt-2" role="alert">{resetError}</div>}
+                    {resetSuccess && <div className="alert alert-success small rounded-3 mb-0 mt-2" role="status">{resetSuccess}</div>}
+                    <button type="button" className="btn btn-light px-3 py-2 rounded-3 mt-2" onClick={closeResetModal}>Cancel</button>
                   </div>
-                  <hr className="my-3 text-muted" />
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter new password" onChange={(e) => setResetData({...resetData, newPassword: e.target.value})} required />
-                  </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Confirm New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Confirm new password" onChange={(e) => setResetData({...resetData, confirmPassword: e.target.value})} required />
-                  </div>
-                </div>
-                <div className="modal-footer border-0 px-4 pb-4 pt-0">
-                  <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={() => setShowModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={loading}>
-                    {loading ? 'Processing...' : 'Change Password'}
-                  </button>
-                </div>
-              </form>
+                </form>
+              ) : (
+                resetStep === 2 ? (
+                  <form onSubmit={handleVerifyResetCode}>
+                    <div className="modal-body p-4">
+                      <p className="small text-secondary mb-3">Enter the 6-digit code sent to your email</p>
+                      <div className="mb-3">
+                        <label htmlFor="reset-code" className="small fw-bold text-secondary mb-2 d-block">6-Digit Verification Code</label>
+                        <input
+                          id="reset-code"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={6}
+                          className="form-control py-2 rounded-3"
+                          placeholder="Enter 6-digit code"
+                          value={resetCode}
+                          onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="modal-footer border-0 px-4 pb-4 pt-0 d-flex flex-column align-items-stretch">
+                      <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={resetLoading}>
+                        {resetLoading ? 'Verifying...' : 'Verify Code'}
+                      </button>
+                      {resetError && <div className="alert alert-danger small rounded-3 mb-0 mt-2" role="alert">{resetError}</div>}
+                      {resetSuccess && <div className="alert alert-success small rounded-3 mb-0 mt-2" role="status">{resetSuccess}</div>}
+                      <button type="button" className="btn btn-light px-3 py-2 rounded-3 mt-2" onClick={closeResetModal}>Cancel</button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleChangePassword}>
+                    <div className="modal-body p-4">
+                      <div className="mb-3">
+                        <label htmlFor="reset-new-password" className="small fw-bold text-secondary mb-2 d-block">New Password</label>
+                        <div className="input-group">
+                          <input
+                            id="reset-new-password"
+                            type={showResetPassword ? 'text' : 'password'}
+                            className="form-control py-2"
+                            style={{ borderRadius: '12px 0 0 12px' }}
+                            placeholder="Minimum 6 characters"
+                            minLength={6}
+                            autoComplete="new-password"
+                            value={resetNewPassword}
+                            onChange={(e) => setResetNewPassword(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-light border text-muted"
+                            style={{ borderRadius: '0 12px 12px 0' }}
+                            aria-label={showResetPassword ? 'Hide new password' : 'Show new password'}
+                            onClick={() => setShowResetPassword((current) => !current)}
+                          >
+                            {showResetPassword ? <FiEyeOff /> : <FiEye />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mb-1">
+                        <label htmlFor="reset-confirm-password" className="small fw-bold text-secondary mb-2 d-block">Confirm New Password</label>
+                        <div className="input-group">
+                          <input
+                            id="reset-confirm-password"
+                            type={showResetConfirmPassword ? 'text' : 'password'}
+                            className="form-control py-2"
+                            style={{ borderRadius: '12px 0 0 12px' }}
+                            placeholder="Confirm your new password"
+                            minLength={6}
+                            autoComplete="new-password"
+                            value={resetConfirmPassword}
+                            onChange={(e) => setResetConfirmPassword(e.target.value)}
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-light border text-muted"
+                            style={{ borderRadius: '0 12px 12px 0' }}
+                            aria-label={showResetConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                            onClick={() => setShowResetConfirmPassword((current) => !current)}
+                          >
+                            {showResetConfirmPassword ? <FiEyeOff /> : <FiEye />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="modal-footer border-0 px-4 pb-4 pt-0 d-flex flex-column align-items-stretch">
+                      <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={resetLoading}>
+                        {resetLoading ? 'Saving...' : 'Save New Password'}
+                      </button>
+                      {resetError && <div className="alert alert-danger small rounded-3 mb-0 mt-2" role="alert">{resetError}</div>}
+                      {resetSuccess && <div className="alert alert-success small rounded-3 mb-0 mt-2" role="status">{resetSuccess}</div>}
+                      <button type="button" className="btn btn-light px-3 py-2 rounded-3 mt-2" onClick={closeResetModal}>Cancel</button>
+                    </div>
+                  </form>
+                )
+              )}
             </div>
           </div>
         </div>

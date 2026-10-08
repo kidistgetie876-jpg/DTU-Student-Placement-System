@@ -34,20 +34,31 @@ try {
     $department = $departmentStatement->get_result()->fetch_assoc();
     $departmentStatement->close();
 
-    if (!$department) {
-        throw new Exception('No active department is assigned to this head.');
+    $departmentId = (int) ($department['id'] ?? 0);
+    if ($departmentId <= 0) {
+        $assignedDepartmentStatement = $db->prepare(
+            "SELECT assigned_dept_id
+             FROM users
+             WHERE id = ? AND LOWER(role) IN ('head', 'hod', 'coordinator')
+             LIMIT 1"
+        );
+        if (!$assignedDepartmentStatement) {
+            throw new Exception('Unable to load the assigned department.');
+        }
+        $assignedDepartmentStatement->bind_param('i', $headId);
+        $assignedDepartmentStatement->execute();
+        $assignedDepartment = $assignedDepartmentStatement->get_result()->fetch_assoc();
+        $assignedDepartmentStatement->close();
+        $departmentId = (int) ($assignedDepartment['assigned_dept_id'] ?? 0);
     }
 
-    $departmentId = (int) $department['id'];
-
-    // 3. SQL Query (ሁሉንም ኮለምኖች በጥንቃቄ መጥራት)
     $query = "SELECT id, title, message, sender_role, recipient_role, file_path, is_read, created_at,
                      CASE WHEN sender_id = ? AND sender_role IN ('head', 'hod', 'coordinator') THEN 'sent' ELSE 'received' END AS direction
               FROM notifications 
               WHERE (recipient_role = 'head'
                      AND (recipient_id = ? OR department_id = ? OR department_id IS NULL))
                  OR (sender_id = ? AND sender_role IN ('head', 'hod', 'coordinator'))
-              ORDER BY created_at DESC";
+              ORDER BY created_at DESC, id DESC";
               
     $stmt = $db->prepare($query);
     if (!$stmt) {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import { notifySystemSettingsUpdated } from '../../services/systemSettingsEvents.js';
 import StudentRegistration from './StudentRegistration';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import MissingScoresForm from './MissingScoresForm.jsx';
@@ -79,12 +80,12 @@ const emptyAnnouncementDraft = {
 };
 const defaultPlacementDates = {
   submissionStart: '2026-10-01',
-  submissionDeadline: '2026-10-11',
-  processingStart: '2026-08-16',
-  processingEnd: '2026-08-24',
-  resultsDate: '2026-08-27',
-  appealStart: '2026-08-27',
-  appealEnd: '2026-08-30',
+  submissionDeadline: '2026-10-04',
+  processingStart: '2026-10-12',
+  processingEnd: '2026-10-14',
+  resultsDate: '2026-10-15',
+  appealStart: '2026-10-16',
+  appealEnd: '2026-10-17',
 };
 const placementDateFields = [
   ['submissionStart', 'Preference Submission Start Date'],
@@ -312,6 +313,13 @@ const getDepartmentStream = (department) => {
   return 'Natural Science';
 };
 
+const getPlacementStreamGroup = (value) => {
+  const stream = String(value || '').toLowerCase();
+  if (stream.includes('natural')) return 'natural';
+  if (/social|human|business|economics|law|education/.test(stream)) return 'social';
+  return stream;
+};
+
 const normalizeDepartmentPayload = (payload) => {
   const list = Array.isArray(payload)
     ? payload
@@ -325,6 +333,8 @@ const normalizeDepartmentPayload = (payload) => {
     id: dept.id || dept.department_id || dept.department || dept.name?.toLowerCase().replace(/\s+/g, '-'),
     name: dept.name || dept.department || '',
     capacity: Number(dept.capacity ?? dept.seats ?? dept.quota ?? 0),
+    assigned: Number(dept.assigned ?? dept.assigned_count ?? dept.placed_count ?? 0),
+    availableSeats: dept.availableSeats ?? dept.available_seats ?? null,
     college: dept.college || dept.college_name || dept.collegeName || dept.program_college || '',
     status: dept.status || 'active',
     stream: dept.stream || dept.academic_stream || dept.category || getDepartmentStream({
@@ -370,7 +380,7 @@ const RegistrarDashboard = () => {
     }
   });
   const [rulesSaved, setRulesSaved] = useState(false);
-  const [placementDates, setPlacementDates] = useState(defaultPlacementDates);
+  const [deadlineForm, setDeadlineForm] = useState(defaultPlacementDates);
   const [deadlineLoading, setDeadlineLoading] = useState(false);
   const [deadlineSaving, setDeadlineSaving] = useState(false);
   const [deadlineError, setDeadlineError] = useState('');
@@ -438,6 +448,10 @@ const RegistrarDashboard = () => {
   const [selectedStream, setSelectedStream] = useState('all');
   const [placementCollege, setPlacementCollege] = useState('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [manualPlacementStudentId, setManualPlacementStudentId] = useState(null);
+  const [manualPlacementDepartmentId, setManualPlacementDepartmentId] = useState('');
+  const [manualPlacementSaving, setManualPlacementSaving] = useState(false);
+  const [manualPlacementError, setManualPlacementError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [missingScoresStudent, setMissingScoresStudent] = useState(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
@@ -874,10 +888,10 @@ const RegistrarDashboard = () => {
       setDeadlineLoading(true);
       setDeadlineError('');
       try {
-        const response = await api.get('api/common/system_settings_api.php');
+        const res = await api.get('api/common/system_settings_api.php');
         if (!isCurrent) return;
-        const savedDates = response.data?.settings?.placement || response.data?.placement || {};
-        setPlacementDates((current) => ({ ...current, ...savedDates }));
+        const dates = res.data?.settings?.placement || res.data?.placement || {};
+        setDeadlineForm((current) => ({ ...current, ...dates }));
       } catch (error) {
         if (isCurrent) {
           setDeadlineError(error.response?.data?.message || 'Unable to load the placement schedule.');
@@ -902,13 +916,13 @@ const RegistrarDashboard = () => {
       const payload = {
         settings: {
           placement: {
-            submissionStart: placementDates.submissionStart,
-            submissionDeadline: placementDates.submissionDeadline,
-            processingStart: placementDates.processingStart,
-            processingEnd: placementDates.processingEnd,
-            resultsDate: placementDates.resultsDate,
-            appealStart: placementDates.appealStart,
-            appealEnd: placementDates.appealEnd,
+            submissionStart: deadlineForm.submissionStart,
+            submissionDeadline: deadlineForm.submissionDeadline,
+            processingStart: deadlineForm.processingStart,
+            processingEnd: deadlineForm.processingEnd,
+            resultsDate: deadlineForm.resultsDate,
+            appealStart: deadlineForm.appealStart,
+            appealEnd: deadlineForm.appealEnd,
           },
         },
       };
@@ -917,10 +931,11 @@ const RegistrarDashboard = () => {
         throw new Error(response.data?.message || 'Unable to save the placement schedule.');
       }
 
-      const savedDates = response.data?.settings?.placement || placementDates;
-      setPlacementDates((current) => ({ ...current, ...savedDates }));
+      const savedDates = response.data?.settings?.placement || deadlineForm;
+      setDeadlineForm((current) => ({ ...current, ...savedDates }));
       setDeadlineSuccess('✓ Placement schedule and deadlines updated successfully!');
-      window.dispatchEvent(new Event('system-settings-updated'));
+      notifySystemSettingsUpdated();
+      window.setTimeout(() => setTab('overview'), 1500);
     } catch (error) {
       setDeadlineError(error.response?.data?.message || error.message || 'Unable to save the placement schedule.');
     } finally {
@@ -1457,6 +1472,77 @@ const RegistrarDashboard = () => {
 
     return true;
   });
+
+  const getAvailableDepartmentSeats = (department) => {
+    const reportedAvailable = department.availableSeats;
+    if (reportedAvailable !== null && reportedAvailable !== undefined && Number.isFinite(Number(reportedAvailable))) {
+      return Math.max(0, Number(reportedAvailable));
+    }
+
+    const departmentName = String(department.name || '').trim().toLowerCase();
+    const placedStudentIds = new Set([
+      ...studentRecords
+        .filter((student) => hasPlacementResult(student) && String(student.department || '').trim().toLowerCase() === departmentName)
+        .map((student) => String(student.id)),
+      ...(latestPlacementRun?.placements || [])
+        .filter((placement) => String(placement.status || '').toLowerCase() === 'placed'
+          && String(placement.department || '').trim().toLowerCase() === departmentName)
+        .map((placement) => String(placement.studentId)),
+    ]);
+    const assignedCount = Math.max(Number(department.assigned) || 0, placedStudentIds.size);
+    return Math.max(0, Number(department.capacity || 0) - assignedCount);
+  };
+
+  const handleManualPlacement = async (placement) => {
+    const department = departments.find((item) => String(item.id) === String(manualPlacementDepartmentId));
+    if (!department) {
+      setManualPlacementError('Select an available department before confirming.');
+      return;
+    }
+
+    setManualPlacementSaving(true);
+    setManualPlacementError('');
+    try {
+      const response = await api.post('api/registrar/manual_placement.php', {
+        student_id: placement.studentId,
+        dept_id: department.id,
+        reason: 'Manual Registrar Placement',
+      });
+      if (response.data?.success === false) {
+        throw new Error(response.data?.message || 'Unable to complete manual placement.');
+      }
+
+      const assignedPlacement = {
+        ...placement,
+        department: department.name,
+        college: department.college,
+        stream: department.stream || getDepartmentStream(department),
+        status: 'placed',
+        reason: 'Manual Registrar Placement',
+      };
+      setPendingResults((current) => current.map((run) => run.id === latestPlacementRun?.id
+        ? { ...run, placements: run.placements.map((item) => String(item.studentId) === String(placement.studentId) ? assignedPlacement : item) }
+        : run));
+      setStudentRecords((current) => current.map((student) => String(student.id) === String(placement.studentId)
+        ? { ...student, department: department.name, status: 'Placed', placementResult: department.name }
+        : student));
+      setDepartments((current) => current.map((item) => String(item.id) === String(department.id)
+        ? {
+          ...item,
+          assigned: (Number(item.assigned) || 0) + 1,
+          availableSeats: item.availableSeats === null || item.availableSeats === undefined
+            ? item.availableSeats
+            : Math.max(0, Number(item.availableSeats) - 1),
+        }
+        : item));
+      setManualPlacementStudentId(null);
+      setManualPlacementDepartmentId('');
+    } catch (error) {
+      setManualPlacementError(error.response?.data?.message || error.message || 'Unable to complete manual placement.');
+    } finally {
+      setManualPlacementSaving(false);
+    }
+  };
 
   const savePlacementRules = async (event) => {
     event.preventDefault();
@@ -2702,14 +2788,14 @@ const RegistrarDashboard = () => {
                           id={`registrar-${key}`}
                           type="date"
                           className="form-control"
-                          value={placementDates[key] || ''}
+                          value={deadlineForm[key] || ''}
                           onChange={(event) => {
-                            setPlacementDates((current) => ({ ...current, [key]: event.target.value }));
+                            setDeadlineForm((current) => ({ ...current, [key]: event.target.value }));
                             setDeadlineSuccess('');
                           }}
                           required
                         />
-                        <span className="d-none d-print-inline">{placementDates[key] || ''}</span>
+                        <span className="d-none d-print-inline">{deadlineForm[key] || ''}</span>
                       </div>
                     ))}
                   </div>
@@ -3106,6 +3192,11 @@ const RegistrarDashboard = () => {
                     {placementError && <div className="alert alert-warning py-2">{placementError}</div>}
                     <div>Assigned: <strong>{runResult.assigned}</strong></div>
                     <div>Unassigned: <strong>{runResult.unassigned}</strong></div>
+                    {runResult.unassigned > 0 && (
+                      <div className="alert alert-warning py-2 px-3 mt-2 rounded-3 border-warning shadow-sm d-inline-block">
+                        ⚠️ <strong>Capacity Notice:</strong> {runResult.unassigned} student{runResult.unassigned === 1 ? '' : 's'} could not be assigned because the requested department capacity was reached (100% full).
+                      </div>
+                    )}
                     {runResult.alreadyPlaced > 0 && (
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
                     )}
@@ -3146,33 +3237,106 @@ const RegistrarDashboard = () => {
                           <table className="table table-hover align-middle mb-0">
                             <thead className="table-light">
                               <tr>
-                                <th>Student ID</th>
-                                <th>Student Name</th>
-                                <th>Merit Score</th>
-                                <th>Department</th>
-                                <th>College</th>
-                                <th>Stream</th>
-                                <th>Choice Rank</th>
-                                <th>Status</th>
+                                <th>STUDENT ID</th>
+                                <th>STUDENT NAME</th>
+                                <th>MERIT SCORE</th>
+                                <th>DEPARTMENT</th>
+                                <th>COLLEGE</th>
+                                <th>STREAM</th>
+                                <th>CHOICE RANK</th>
+                                <th>STATUS</th>
                               </tr>
                             </thead>
                             <tbody>
                               {latestPlacementRun.placements.map((placement) => {
-                                const assigned = placement.status === 'placed';
+                                const assigned = String(placement.status || '').toLowerCase() === 'placed';
+                                const requestedDepartment = placement.requestedDepartment || placement.requested_department || placement.department;
+                                const studentRecord = studentRecords.find((student) => String(student.id) === String(placement.studentId));
+                                const targetStream = placement.stream || studentRecord?.stream || '';
+                                const manualDepartmentOptions = departments.filter((item) => {
+                                  if (String(item.status || '').toLowerCase() !== 'active' || getAvailableDepartmentSeats(item) <= 0) return false;
+                                  const departmentStream = item.stream || getDepartmentStream(item);
+                                  return !targetStream
+                                    || getPlacementStreamGroup(departmentStream) === getPlacementStreamGroup(targetStream);
+                                });
+                                const isManualAssignmentOpen = manualPlacementStudentId === String(placement.studentId);
 
                                 return (
                                   <tr key={`${placement.studentId}-${placement.department || 'unassigned'}`}>
                                     <td className="fw-semibold text-primary">{placement.id_number || placement.studentId}</td>
                                     <td>{placement.studentName || '—'}</td>
                                     <td>{placement.score !== null && placement.score !== undefined ? Number(placement.score).toFixed(2) : '—'}</td>
-                                    <td>{placement.department || '—'}</td>
+                                    <td>
+                                      {assigned
+                                        ? placement.department || '—'
+                                        : <span className="text-muted">{requestedDepartment ? `${requestedDepartment} (Full)` : '—'}</span>}
+                                    </td>
                                     <td>{placement.college || '—'}</td>
                                     <td>{placement.stream || '—'}</td>
                                     <td className="text-center">{placement.choiceRank || '—'}</td>
                                     <td>
-                                      <span className={`badge ${assigned ? 'bg-success' : 'bg-secondary'}`}>
-                                        {assigned ? 'Assigned' : 'Unassigned'}
-                                      </span>
+                                      <div className="d-flex flex-column align-items-start gap-1">
+                                        <span className={`badge ${assigned ? 'bg-success' : 'bg-secondary'}`}>
+                                          {assigned ? 'Assigned' : 'Unassigned'}
+                                        </span>
+                                        {!assigned && (isManualAssignmentOpen ? (
+                                        <div className="d-flex flex-column gap-2">
+                                          <select
+                                            className="form-select form-select-sm"
+                                            value={manualPlacementDepartmentId}
+                                            onChange={(event) => setManualPlacementDepartmentId(event.target.value)}
+                                            disabled={manualPlacementSaving}
+                                            style={{ maxWidth: 180 }}
+                                            aria-label={`Manual placement department for ${placement.studentName || placement.studentId}`}
+                                          >
+                                            <option value="">Select available department</option>
+                                            {manualDepartmentOptions.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.name} ({getAvailableDepartmentSeats(item)} seats)
+                                              </option>
+                                            ))}
+                                          </select>
+                                          {manualDepartmentOptions.length === 0 && (
+                                            <small className="text-muted">No active same-stream departments have available seats.</small>
+                                          )}
+                                          <div className="d-flex gap-1">
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-primary"
+                                              onClick={() => handleManualPlacement(placement)}
+                                              disabled={manualPlacementSaving || !manualPlacementDepartmentId}
+                                            >
+                                              {manualPlacementSaving ? 'Assigning...' : 'Confirm Assign'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-outline-secondary"
+                                              onClick={() => {
+                                                setManualPlacementStudentId(null);
+                                                setManualPlacementDepartmentId('');
+                                                setManualPlacementError('');
+                                              }}
+                                              disabled={manualPlacementSaving}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                          {manualPlacementError && <small className="text-danger" role="alert">{manualPlacementError}</small>}
+                                        </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="btn btn-link btn-sm p-0"
+                                            onClick={() => {
+                                              setManualPlacementStudentId(String(placement.studentId));
+                                              setManualPlacementDepartmentId('');
+                                              setManualPlacementError('');
+                                            }}
+                                          >
+                                            Manual Assign
+                                          </button>
+                                        ))}
+                                      </div>
                                     </td>
                                   </tr>
                                 );

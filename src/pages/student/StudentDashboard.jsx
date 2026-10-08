@@ -71,6 +71,14 @@ const hasSubmissionDeadlinePassed = (submissionDeadline, currentTime = new Date(
   return currentTime > deadline;
 };
 
+const isNotificationUnread = (notification) => (
+  notification.is_read === null
+  || notification.is_read === undefined
+  || Number(notification.is_read) === 0
+  || notification.read === false
+  || String(notification.status || '').toLowerCase() === 'unread'
+);
+
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
@@ -94,6 +102,8 @@ const StudentDashboard = () => {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState('');
   const [deletingNotificationId, setDeletingNotificationId] = useState(null);
+  const [markingNotificationId, setMarkingNotificationId] = useState(null);
+  const [markingAllNotificationsRead, setMarkingAllNotificationsRead] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -197,6 +207,7 @@ const StudentDashboard = () => {
   const hasPublishedPlacement = Boolean(placementResult?.placement) &&
     placementResult.published !== false &&
     ['approved', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
+  const isNotificationsTab = tab === 'notifications';
 
   useEffect(() => {
     if (!['overview', 'result'].includes(tab) || !student?.id) return;
@@ -217,7 +228,7 @@ const StudentDashboard = () => {
   }, [student, tab]);
 
   useEffect(() => {
-    if (tab !== 'notifications' || !student?.id) return;
+    if (!student?.id) return;
 
     const loadNotifications = async () => {
       setNotificationsLoading(true);
@@ -240,14 +251,70 @@ const StudentDashboard = () => {
     };
 
     loadNotifications();
-  }, [student, tab]);
+  }, [student, isNotificationsTab]);
 
-  const unreadNotifications = notifications.filter((notification) => (
-    notification.is_read === false ||
-    notification.is_read === 0 ||
-    notification.read === false ||
-    notification.status === 'unread'
-  )).length;
+  const unreadNotifications = notifications.filter(isNotificationUnread).length;
+
+  const markAsRead = async (notification) => {
+    if (!isNotificationUnread(notification)) return;
+
+    setMarkingNotificationId(notification.id);
+    setNotificationsError('');
+    try {
+      const response = await api.post('api/student/mark_notification_read.php', {
+        notification_id: notification.id,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to mark notification as read.');
+      }
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, is_read: 1, read: true, status: 'read' } : item
+      )));
+      setNotificationsError('');
+    } catch (error) {
+      setNotificationsError(error.response?.data?.message || error.message || 'Unable to mark notification as read.');
+    } finally {
+      setMarkingNotificationId(null);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unread = notifications.filter(isNotificationUnread);
+    if (unread.length === 0) return;
+
+    setMarkingAllNotificationsRead(true);
+    setNotificationsError('');
+    try {
+      const results = await Promise.allSettled(unread.map(async (notification) => {
+        const response = await api.post('api/student/mark_notification_read.php', {
+          notification_id: notification.id,
+        });
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'Unable to mark notification as read.');
+        }
+        return notification.id;
+      }));
+      const markedIds = new Set(
+        results
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value)
+      );
+      setNotifications((current) => current.map((notification) => (
+        markedIds.has(notification.id)
+          ? { ...notification, is_read: 1, read: true, status: 'read' }
+          : notification
+      )));
+
+      const failedCount = results.length - markedIds.size;
+      setNotificationsError(
+        failedCount > 0
+          ? `${failedCount} notification${failedCount === 1 ? '' : 's'} could not be marked as read. Please try again.`
+          : ''
+      );
+    } finally {
+      setMarkingAllNotificationsRead(false);
+    }
+  };
 
   const deleteNotification = async (notification) => {
     if (!window.confirm('Delete this notification?')) return;
@@ -705,9 +772,21 @@ const StudentDashboard = () => {
               <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h4 className="fw-bold text-primary mb-0">Notifications</h4>
-                  {unreadNotifications > 0 && (
-                    <span className="badge bg-primary">{unreadNotifications} unread</span>
-                  )}
+                  <div className="d-flex align-items-center gap-2">
+                    {unreadNotifications > 0 && (
+                      <span className="badge bg-primary">{unreadNotifications} unread</span>
+                    )}
+                    {unreadNotifications > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={markAllAsRead}
+                        disabled={markingAllNotificationsRead}
+                      >
+                        {markingAllNotificationsRead ? 'Marking...' : '✓ Mark all as read'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {notificationsLoading && (
@@ -725,18 +804,35 @@ const StudentDashboard = () => {
                 {!notificationsLoading && !notificationsError && notifications.length > 0 && (
                   <div className="list-group">
                     {notifications.map((notification, index) => {
-                      const isUnread = notification.is_read === false ||
-                        notification.is_read === 0 ||
-                        notification.read === false ||
-                        notification.status === 'unread';
+                      const isUnread = isNotificationUnread(notification);
 
                       return (
-                        <div className={`list-group-item ${isUnread ? 'fw-semibold' : ''}`} key={notification.id || index}>
+                        <div
+                          className={`list-group-item ${isUnread ? 'border-start border-primary border-4 fw-bold' : 'fw-normal'}`}
+                          key={notification.id || index}
+                          style={{ backgroundColor: isUnread ? '#f0f7ff' : '#ffffff' }}
+                        >
                           <div className="d-flex justify-content-between align-items-start gap-3">
-                            <span>{notification.message || notification.title || 'New notification'}</span>
+                            <div className="flex-grow-1">
+                              {isUnread && <span className="badge bg-success me-2">New</span>}
+                              <span>{notification.message || notification.title || 'New notification'}</span>
+                              {notification.title && notification.message && (
+                                <div className="text-muted small mt-1">{notification.title}</div>
+                              )}
+                            </div>
                             <div className="d-flex align-items-center gap-2">
                               {notification.created_at && (
                                 <small className="text-muted text-nowrap">{notification.created_at}</small>
+                              )}
+                              {isUnread && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary text-nowrap"
+                                  onClick={() => markAsRead(notification)}
+                                  disabled={markingNotificationId === notification.id || markingAllNotificationsRead}
+                                >
+                                  Mark as read
+                                </button>
                               )}
                               <button
                                 type="button"
@@ -750,9 +846,6 @@ const StudentDashboard = () => {
                               </button>
                             </div>
                           </div>
-                          {notification.title && notification.message && (
-                            <div className="text-muted small mt-1">{notification.title}</div>
-                          )}
                           {notification.file_url && (
                             <a
                               className="btn btn-sm btn-outline-primary mt-2"

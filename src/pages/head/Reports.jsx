@@ -3,30 +3,31 @@ import { FaTrash } from 'react-icons/fa';
 import { FaPaperclip } from 'react-icons/fa';
 import api from '../../services/api';
 
-const Reports = ({ leader, department, students = [] }) => {
+const Reports = ({ leader, department, students }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [recipientType, setRecipientType] = useState('student');
-  const [studentId, setStudentId] = useState('');
-  const [studentSearch, setStudentSearch] = useState('');
   const [message, setMessage] = useState('');
-  const [reportFile, setReportFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [sendTo, setSendTo] = useState('individual');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [reportsError, setReportsError] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [deletingId, setDeletingId] = useState(null);
-  const [sendStatus, setSendStatus] = useState({ type: '', message: '' });
   const fileInputRef = useRef(null);
 
   const loadReports = async () => {
     setLoading(true);
-    setError('');
+    setReportsError('');
     try {
       const response = await api.get('api/head/get_head_reports.php');
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to load reports.');
       setReports(Array.isArray(response.data.reports) ? response.data.reports : []);
     } catch (requestError) {
       setReports([]);
-      setError(requestError.response?.data?.message || requestError.message || 'Unable to load reports.');
+      setReportsError(requestError.response?.data?.message || requestError.message || 'Unable to load reports.');
     } finally {
       setLoading(false);
     }
@@ -36,53 +37,89 @@ const Reports = ({ leader, department, students = [] }) => {
     if (leader) loadReports();
   }, [leader]);
 
+  const studentList = useMemo(() => (Array.isArray(students) ? students : []), [students]);
   const filteredStudents = useMemo(() => {
-    const search = studentSearch.trim().toLowerCase();
-    if (!search) return students;
-    return students.filter((student) => [student.id, student.student_id, student.username, student.name, student.full_name, student.email].some((value) => String(value || '').toLowerCase().includes(search)));
-  }, [students, studentSearch]);
+    const query = studentSearch.toLowerCase().trim();
+    return studentList.filter((student) => {
+      if (!query) return true;
+      const idStr = String(student.id_number || student.student_id || student.id || student.user_id || '').toLowerCase();
+      const nameStr = String(
+        student.full_name
+        || student.username
+        || [student.first_name, student.last_name].filter(Boolean).join(' ')
+        || student.name
+        || ''
+      ).toLowerCase();
+      return idStr.includes(query) || nameStr.includes(query);
+    });
+  }, [studentList, studentSearch]);
 
-  const sendMessage = async (event) => {
+  const isIndividualRecipient = sendTo === 'individual';
+
+  useEffect(() => {
+    if (!isIndividualRecipient || selectedStudentId || filteredStudents.length === 0) return;
+    const firstStudent = filteredStudents[0];
+    const firstStudentId = firstStudent.id || firstStudent.student_id || firstStudent.user_id;
+    if (firstStudentId !== null && firstStudentId !== undefined && firstStudentId !== '') {
+      setSelectedStudentId(String(firstStudentId));
+    }
+  }, [isIndividualRecipient, selectedStudentId, filteredStudents]);
+
+  const handleSendMessage = async (event) => {
     event.preventDefault();
-    setSendStatus({ type: '', message: '' });
-    if (!message.trim()) {
-      setSendStatus({ type: 'danger', message: 'Enter a message before sending.' });
+    setError('');
+    setSuccess('');
+    const trimmedMessage = (message || '').trim();
+    if (!trimmedMessage && !selectedFile) {
+      setError('Please enter a message or attach a report file.');
       return;
     }
-    if (recipientType === 'student' && !studentId) {
-      setSendStatus({ type: 'danger', message: 'Search for and select a student.' });
+    if (selectedFile && selectedFile.size > 10 * 1024 * 1024) {
+      setError('Attachments must be 10 MB or smaller.');
       return;
     }
-    if (reportFile && reportFile.size > 10 * 1024 * 1024) {
-      setSendStatus({ type: 'danger', message: 'Attachments must be 10 MB or smaller.' });
+
+    const firstStudent = filteredStudents[0];
+    const recipientId = selectedStudentId || firstStudent?.id || firstStudent?.student_id || firstStudent?.user_id;
+
+    if (isIndividualRecipient && (!recipientId || !Number.isFinite(Number(recipientId)) || Number(recipientId) <= 0)) {
+      setError('Please select a valid student from the dropdown.');
       return;
+    }
+
+    const formData = new FormData();
+    formData.append('sender_id', String(leader?.id ?? leader?.user_id ?? ''));
+    formData.append('sender_role', 'head');
+    formData.append('dept_id', String(leader?.department_id ?? department?.id ?? ''));
+    formData.append('message', (message || '').trim());
+    if (selectedFile) formData.append('report_file', selectedFile);
+
+    if (sendTo === 'registrar') {
+      formData.append('recipient_type', 'registrar');
+      formData.append('recipient_role', 'registrar');
+    } else if (isIndividualRecipient) {
+      formData.append('recipient_type', 'student');
+      formData.append('recipient_role', 'student');
+      formData.append('recipient_id', String(Number(recipientId)));
+    } else {
+      formData.append('recipient_type', 'all_students');
+      formData.append('recipient_role', 'student');
+      formData.append('target_all', '1');
     }
 
     setSending(true);
     try {
-      const formData = new FormData();
-      formData.append('sender_id', String(leader?.id ?? leader?.user_id ?? ''));
-      formData.append('sender_role', 'head');
-      formData.append('recipient_type', recipientType);
-      formData.append('recipient_role', recipientType === 'registrar' ? 'registrar' : 'student');
-      formData.append('dept_id', String(department?.id ?? leader?.department_id ?? ''));
-      formData.append('message', message.trim());
-      if (recipientType === 'student') {
-        formData.append('recipient_id', String(Number(studentId)));
-        formData.append('student_id', String(Number(studentId)));
-      }
-      if (reportFile) formData.append('report_file', reportFile);
       const response = await api.post('api/head/send_head_message.php', formData);
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to send message.');
       setMessage('');
-      setStudentId('');
+      setSelectedStudentId('');
       setStudentSearch('');
-      setReportFile(null);
+      setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      setSendStatus({ type: 'success', message: '✓ Report/message sent successfully!' });
+      setSuccess('✓ Report/message sent successfully!');
       await loadReports();
     } catch (requestError) {
-      setSendStatus({ type: 'danger', message: requestError.response?.data?.message || requestError.message || 'Unable to send message.' });
+      setError(requestError.response?.data?.message || requestError.message || 'Unable to send message.');
     } finally {
       setSending(false);
     }
@@ -94,7 +131,7 @@ const Reports = ({ leader, department, students = [] }) => {
       await api.post('api/head/mark_report_read.php', { notification_id: report.id });
       setReports((current) => current.map((item) => item.id === report.id ? { ...item, is_read: true } : item));
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Unable to mark report as read.');
+      setReportsError(requestError.response?.data?.message || 'Unable to mark report as read.');
     }
   };
 
@@ -106,7 +143,7 @@ const Reports = ({ leader, department, students = [] }) => {
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to delete message.');
       setReports((current) => current.filter((item) => item.id !== report.id));
     } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message || 'Unable to delete message.');
+      setReportsError(requestError.response?.data?.message || requestError.message || 'Unable to delete message.');
     } finally {
       setDeletingId(null);
     }
@@ -125,31 +162,55 @@ const Reports = ({ leader, department, students = [] }) => {
           {unreadCount > 0 && <span className="badge bg-primary">{unreadCount} unread</span>}
         </div>
 
-        <form className="border rounded p-3 mb-4" onSubmit={sendMessage}>
+        <form className="border rounded p-3 mb-4" onSubmit={handleSendMessage}>
           <h6 className="mb-3">Send Message</h6>
           <div className="row g-3 align-items-end">
             <div className="col-md-4">
               <label className="form-label small fw-semibold" htmlFor="head-message-recipient">Send to</label>
-              <select id="head-message-recipient" className="form-select" value={recipientType} onChange={(event) => { setRecipientType(event.target.value); setStudentId(''); setStudentSearch(''); }} disabled={sending}>
-                <option value="student">Individual Student</option>
-                <option value="all_students">All Students in Department</option>
+              <select id="head-message-recipient" className="form-select" value={sendTo} onChange={(event) => { setSendTo(event.target.value); setSelectedStudentId(''); setStudentSearch(''); setError(''); setSuccess(''); }} disabled={sending}>
+                <option value="individual">Individual Student</option>
+                <option value="all">All Students in Department</option>
                 <option value="registrar">Registrar</option>
               </select>
             </div>
-            {recipientType === 'student' && (
+            {isIndividualRecipient && (
               <div className="col-md-4">
                 <label className="form-label small fw-semibold" htmlFor="head-student-search">Search by ID or name</label>
                 <input id="head-student-search" className="form-control mb-2" value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} disabled={sending} placeholder="Student ID, username, or name" />
-                <select className="form-select" value={studentId} onChange={(event) => setStudentId(event.target.value)} disabled={sending}>
-                  <option value="">Select a student</option>
+                <select
+                  className="form-select"
+                  value={selectedStudentId || String(filteredStudents[0]?.id || filteredStudents[0]?.student_id || filteredStudents[0]?.user_id || '')}
+                  onChange={(event) => setSelectedStudentId(event.target.value)}
+                  disabled={sending}
+                >
+                  <option value="">-- Select a student --</option>
                   {filteredStudents.map((student) => {
-                    const id = student.student_id || student.id;
-                    return <option key={id} value={id}>{student.username || student.name || student.full_name || student.email || `Student ${id}`} (ID: {id})</option>;
+                    const studentUid = student.id || student.student_id || student.user_id;
+                    const studentDisplayId = student.id_number || student.student_id || studentUid;
+                    const studentFullName = student.full_name
+                      || `${student.first_name || ''} ${student.last_name || ''}`.trim()
+                      || student.username
+                      || student.name
+                      || `Student #${studentUid}`;
+
+                    return (
+                      <option key={studentUid} value={studentUid}>
+                        {studentFullName} ({studentDisplayId})
+                      </option>
+                    );
                   })}
                 </select>
+                {studentList.length === 0 && (
+                  <div className="alert alert-info mt-2 mb-0">
+                    No students are officially placed in your department yet. Once the Registrar approves students into your department, they will appear in this dropdown.
+                  </div>
+                )}
+                {studentList.length > 0 && filteredStudents.length === 0 && (
+                  <small className="text-muted d-block mt-2">No students match that search.</small>
+                )}
               </div>
             )}
-            <div className={recipientType === 'student' ? 'col-md-4' : 'col-md-8'}>
+            <div className={isIndividualRecipient ? 'col-md-4' : 'col-md-8'}>
               <label className="form-label small fw-semibold" htmlFor="head-message-text">Message</label>
               <textarea id="head-message-text" className="form-control" rows="3" value={message} onChange={(event) => setMessage(event.target.value)} maxLength="10000" placeholder="Write a message" disabled={sending} />
             </div>
@@ -167,29 +228,32 @@ const Reports = ({ leader, department, students = [] }) => {
                     const file = event.target.files?.[0] || null;
                     if (file && !/\.(pdf|xls|xlsx|doc|docx)$/i.test(file.name)) {
                       event.target.value = '';
-                      setReportFile(null);
-                      setSendStatus({ type: 'danger', message: 'Choose a PDF, Excel, or Word document.' });
+                      setSelectedFile(null);
+                      setError('Choose a PDF, Excel, or Word document.');
+                      setSuccess('');
                       return;
                     }
                     if (file && file.size > 10 * 1024 * 1024) {
                       event.target.value = '';
-                      setReportFile(null);
-                      setSendStatus({ type: 'danger', message: 'Attachments must be 10 MB or smaller.' });
+                      setSelectedFile(null);
+                      setError('Attachments must be 10 MB or smaller.');
+                      setSuccess('');
                       return;
                     }
-                    setReportFile(file);
-                    setSendStatus({ type: '', message: '' });
+                    setSelectedFile(file);
+                    setError('');
+                    setSuccess('');
                   }}
                 />
               </label>
-              {reportFile && (
+              {selectedFile && (
                 <div className="d-flex align-items-center gap-2 mt-2 small">
-                  <span className="text-muted">Selected: {reportFile.name}</span>
+                  <span className="text-muted">Selected: {selectedFile.name}</span>
                   <button
                     type="button"
                     className="btn btn-link btn-sm p-0"
                     onClick={() => {
-                      setReportFile(null);
+                      setSelectedFile(null);
                       if (fileInputRef.current) fileInputRef.current.value = '';
                     }}
                     disabled={sending}
@@ -201,18 +265,18 @@ const Reports = ({ leader, department, students = [] }) => {
             </div>
             <div className="col-12 d-flex justify-content-end">
               <div className="d-flex flex-column align-items-end">
-                <button type="submit" className="btn btn-primary" disabled={sending || (recipientType === 'student' && students.length === 0)}>{sending ? 'Sending...' : 'Send Message'}</button>
-                {sendStatus.message && <div className={`alert alert-${sendStatus.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={sendStatus.type === 'danger' ? 'alert' : 'status'}>{sendStatus.message}</div>}
+                <button type="submit" className="btn btn-primary" disabled={sending || (isIndividualRecipient && studentList.length === 0)}>{sending ? 'Sending...' : 'Send Message'}</button>
+                {error && <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">{error}</div>}
+                {success && <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">{success}</div>}
               </div>
             </div>
           </div>
-          {recipientType === 'student' && students.length === 0 && <small className="text-muted d-block mt-2">No students are currently assigned to this department.</small>}
         </form>
 
         {loading && <div className="alert alert-info mb-0">Loading reports...</div>}
-        {!loading && error && <div className="alert alert-danger mb-0">{error}</div>}
-        {!loading && !error && reports.length === 0 && <div className="alert alert-light border mb-0">No reports have been sent or received.</div>}
-        {!loading && !error && reports.length > 0 && (
+        {!loading && reportsError && <div className="alert alert-danger mb-0">{reportsError}</div>}
+        {!loading && !reportsError && reports.length === 0 && <div className="alert alert-light border mb-0">No reports have been sent or received.</div>}
+        {!loading && !reportsError && reports.length > 0 && (
           <div className="list-group">
             {reports.map((report) => (
               <div className={`list-group-item ${report.direction !== 'sent' && !Number(report.is_read) ? 'fw-semibold' : ''}`} key={report.id} onClick={() => markAsRead(report)}>

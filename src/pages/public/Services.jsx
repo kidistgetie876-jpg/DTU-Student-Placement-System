@@ -69,7 +69,7 @@ function Services() {
   }, [query, category]);
 
   return (
-    <div className="services-container py-5" style={{ paddingTop: '200px' }}>
+    <div className="services-container" style={{ paddingTop: '160px', paddingBottom: '60px', minHeight: '100vh' }}>
       <div className="container">
         {/* Header Section */}
         <div className="text-center mb-5">

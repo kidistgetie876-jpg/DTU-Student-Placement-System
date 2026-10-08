@@ -1,9 +1,7 @@
 .head-dashboard{min-height:100vh;background:var(--dtu-bg);padding-top:160px}
 .head-dashboard .sidebar{
-  position:fixed;
-  left:0;
+  position:sticky;
   top:160px;
-  width:16.666667%;
   height:calc(100vh - 160px);
   min-height:calc(100vh - 160px);
   overflow-y:auto;
@@ -20,9 +18,8 @@
 .head-dashboard .nav-button:hover{background:rgba(255,255,255,0.14);transform:translateX(2px)}
 .head-dashboard .nav-button.active{background:#ffffff;color:#1b2b56;box-shadow:0 16px 30px rgba(15,23,42,0.08)}
 .head-dashboard .main-section{
-  margin-left:16.666667%;
-  width:calc(100% - 16.666667%);
   min-height:calc(100vh - 160px);
+  overflow-y:visible;
   background:#f8fbff;
 }
 .head-dashboard .dashboard-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem}

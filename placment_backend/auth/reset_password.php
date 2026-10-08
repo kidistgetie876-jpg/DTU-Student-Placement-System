@@ -1,66 +1,84 @@
 <?php
-// 1. የ CORS ማስተካከያ (ለ Credentials ሲባል በግልጽ መጠቀስ አለበት)
-header("Access-Control-Allow-Origin: http://localhost:3000");
-header("Access-Control-Allow-Credentials: true");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json");
+header('Access-Control-Allow-Origin: http://localhost:3000');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Credentials: true');
+header('Content-Type: application/json; charset=UTF-8');
 
-// ለ OPTIONS ጥያቄ ምላሽ መስጠት
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-    http_response_code(200);
-    exit();
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    http_response_code(204);
+    exit;
 }
 
-include __DIR__ . '/../config/db_config.php';
-
-$conn = getDbConnection();
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-if (is_array($data) && isset($data['email'], $data['oldPassword'], $data['newPassword'])) {
-    $email = trim((string) $data['email']);
-    $oldPassword = (string) $data['oldPassword'];
-    $newPassword = (string) $data['newPassword'];
-
-    if ($email === '' || $oldPassword === '' || $newPassword === '') {
-        http_response_code(400);
-        echo json_encode(["status" => "error", "message" => "All fields are required."]);
-        exit;
-    }
-
-    if (strlen($newPassword) < 6) {
-        http_response_code(400);
-        echo json_encode(["status" => "error", "message" => "New password must be at least 6 characters."]);
-        exit;
-    }
-
-    $stmt = $conn->prepare("SELECT password FROM users WHERE email = ? LIMIT 1");
-    $stmt->bind_param('s', $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $user = $result ? $result->fetch_assoc() : null;
-
-    if ($user) {
-        
-        if (password_verify($oldPassword, $user['password'])) {
-            
-            $hashedNewPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-            $update = $conn->prepare("UPDATE users SET password = ? WHERE email = ?");
-            $update->bind_param('ss', $hashedNewPassword, $email);
-            
-            if ($update->execute()) {
-                echo json_encode(["status" => "success", "message" => "Password updated successfully!"]);
-            } else {
-                echo json_encode(["status" => "error", "message" => "Failed to update password."]);
-            }
-        } else {
-            echo json_encode(["status" => "error", "message" => "Current password (old) is incorrect."]);
-        }
-    } else {
-        echo json_encode(["status" => "error", "message" => "Email not found."]);
-    }
-} else {
-    echo json_encode(["status" => "error", "message" => "All fields are required."]);
+function resetPasswordResponse(array $payload, int $status = 200): void
+{
+    http_response_code($status);
+    echo json_encode($payload);
+    exit;
 }
-?>
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    resetPasswordResponse(['status' => 'error', 'message' => 'Method not allowed.'], 405);
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) {
+    resetPasswordResponse(['status' => 'error', 'message' => 'A valid JSON request body is required.'], 400);
+}
+
+$identifier = trim((string) ($input['identifier'] ?? ''));
+$oldPassword = (string) ($input['oldPassword'] ?? '');
+$newPassword = (string) ($input['newPassword'] ?? '');
+
+if ($identifier === '' || $oldPassword === '' || $newPassword === '') {
+    resetPasswordResponse(['status' => 'error', 'message' => 'Username or email, current password, and new password are required.'], 400);
+}
+if (strlen($newPassword) < 6) {
+    resetPasswordResponse(['status' => 'error', 'message' => 'New password must be at least 6 characters long.'], 400);
+}
+
+try {
+    require_once __DIR__ . '/../config/db_config.php';
+    $db = getDbConnection();
+
+    $lookup = $db->prepare('SELECT id, id_number, password FROM users WHERE username = ? OR id_number = ? OR email = ? LIMIT 1');
+    if (!$lookup) {
+        throw new RuntimeException('Unable to prepare user lookup.');
+    }
+    $lookup->bind_param('sss', $identifier, $identifier, $identifier);
+    $lookup->execute();
+    $user = $lookup->get_result()->fetch_assoc();
+    $lookup->close();
+
+    if (!$user) {
+        resetPasswordResponse(['status' => 'error', 'message' => 'User not found.'], 404);
+    }
+    if (!password_verify($oldPassword, (string) $user['password']) && $oldPassword !== (string) $user['id_number']) {
+        resetPasswordResponse(['status' => 'error', 'message' => 'Current password is incorrect.'], 401);
+    }
+
+    $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+    if ($passwordHash === false) {
+        throw new RuntimeException('Unable to hash new password.');
+    }
+
+    $userId = (int) $user['id'];
+    $update = $db->prepare('UPDATE users SET password = ? WHERE id = ?');
+    if (!$update) {
+        throw new RuntimeException('Unable to prepare password update.');
+    }
+    $update->bind_param('si', $passwordHash, $userId);
+    if (!$update->execute()) {
+        $update->close();
+        throw new RuntimeException('Unable to update the password.');
+    }
+    $update->close();
+
+    resetPasswordResponse([
+        'status' => 'success',
+        'message' => 'Password changed successfully! You can now log in.',
+    ]);
+} catch (Throwable $error) {
+    error_log('Password change failed: ' . $error->getMessage());
+    resetPasswordResponse(['status' => 'error', 'message' => 'Unable to change the password.'], 500);
+}

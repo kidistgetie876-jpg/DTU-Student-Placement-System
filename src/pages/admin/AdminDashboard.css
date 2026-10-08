@@ -5,10 +5,8 @@
 }
 
 .admin-dashboard .sidebar {
-  position: fixed;
-  left: 0;
+  position: sticky;
   top: 160px;
-  width: 16.666667%;
   height: calc(100vh - 160px);
   min-height: calc(100vh - 160px);
   overflow-y: auto;
@@ -18,8 +16,7 @@
 }
 
 .admin-dashboard .main-content {
-  margin-left: 16.666667%;
-  width: calc(100% - 16.666667%);
+  overflow-y: visible;
 }
 
 .admin-dashboard .sidebar-brand h4 {

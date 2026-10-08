@@ -56,5 +56,6 @@ describe('App maintenance lockdown', () => {
 
     expect(await screen.findByText('Admin dashboard available')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Scheduled maintenance' })).not.toBeInTheDocument();
+    expect(screen.getByText('Site footer')).toBeInTheDocument();
   });
 });

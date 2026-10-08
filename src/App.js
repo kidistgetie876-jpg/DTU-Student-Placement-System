@@ -91,12 +91,22 @@ function AppRoutes() {
     return <Maintenance settings={maintenance} />;
   }
 
-  const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department') || location.pathname.startsWith('/admin/assign-head');
+  const isDashboardRoute = [
+    '/admin-dashboard',
+    '/registrar-dashboard',
+    '/head-dashboard',
+    '/student-dashboard',
+    '/student-score-form',
+    '/student-registration',
+    '/edit-user',
+    '/edit-department',
+    '/admin/assign-head',
+  ].some((path) => location.pathname.startsWith(path));
 
   return (
     <>
       <Header />
-      <main className={`app-main ${isAdmin ? 'dashboard-main' : 'container pt-0'}`}>
+      <main className={`app-main ${isDashboardRoute ? 'dashboard-main' : 'container pt-0'}`}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/services" element={<Services />} />

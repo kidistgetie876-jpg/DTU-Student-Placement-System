@@ -1,14 +1,11 @@
 import React, { useEffect, useState } from "react";
 import api from '../../services/api.js';
+import {
+  SYSTEM_SETTINGS_UPDATED_EVENT,
+  SYSTEM_SETTINGS_UPDATED_STORAGE_KEY,
+} from '../../services/systemSettingsEvents.js';
 
 const defaultPlacementSettings = {
-  submissionStart: '2026-10-01',
-  submissionDeadline: '2026-10-11',
-  processingStart: '2026-08-16',
-  processingEnd: '2026-08-24',
-  resultsDate: '2026-08-27',
-  appealStart: '2026-08-27',
-  appealEnd: '2026-08-30',
   gpa_weight: 40,
   grade_12_weight: 20,
   coc_weight: 30,
@@ -249,6 +246,15 @@ function PlacementInfo() {
   const [activeTab, setActiveTab] = useState("rules");
   const [placementSettings, setPlacementSettings] = useState(defaultPlacementSettings);
   const [rulesSettings, setRulesSettings] = useState(defaultPlacementSettings);
+  const [placementDates, setPlacementDates] = useState({
+    submissionStart: '',
+    submissionDeadline: '',
+    processingStart: '',
+    processingEnd: '',
+    resultsDate: '',
+    appealStart: '',
+    appealEnd: '',
+  });
   const activeContent = placementGuidance[activeTab];
 
   useEffect(() => {
@@ -260,28 +266,40 @@ function PlacementInfo() {
       ]);
       if (!isMounted) return;
 
-      const dates = portalResult.status === 'fulfilled'
-        ? portalResult.value.data?.settings?.placement || {}
-        : {};
+      const res = portalResult.status === 'fulfilled' ? portalResult.value : { data: {} };
+      const dates = res.data?.settings?.placement || res.data?.placement || {};
       const registrarRules = rulesResult.status === 'fulfilled'
         ? rulesResult.value.data?.settings || rulesResult.value.data?.data || rulesResult.value.data || {}
         : {};
       const weightKeys = ['gpa_weight', 'grade_12_weight', 'coc_weight', 'gender_weight', 'disability_weight', 'minority_weight'];
+      const dateKeys = ['submissionStart', 'submissionDeadline', 'processingStart', 'processingEnd', 'resultsDate', 'appealStart', 'appealEnd'];
 
       setPlacementSettings((current) => ({ ...current, ...dates }));
+      if (portalResult.status === 'fulfilled') {
+        setPlacementDates(dateKeys.reduce((currentDates, key) => ({
+          ...currentDates,
+          [key]: dates[key] || '',
+        }), {}));
+      }
       setRulesSettings((current) => weightKeys.reduce((next, key) => {
         const value = dates[key] ?? registrarRules[key] ?? current[key];
         return { ...next, [key]: Number.isFinite(Number(value)) ? Number(value) : current[key] };
       }, current));
     };
 
+    const handleStorage = (event) => {
+      if (event.key === SYSTEM_SETTINGS_UPDATED_STORAGE_KEY) loadPlacementSettings();
+    };
+
     loadPlacementSettings();
-    window.addEventListener('system-settings-updated', loadPlacementSettings);
+    window.addEventListener(SYSTEM_SETTINGS_UPDATED_EVENT, loadPlacementSettings);
+    window.addEventListener('storage', handleStorage);
     const refreshInterval = window.setInterval(loadPlacementSettings, 15000);
 
     return () => {
       isMounted = false;
-      window.removeEventListener('system-settings-updated', loadPlacementSettings);
+      window.removeEventListener(SYSTEM_SETTINGS_UPDATED_EVENT, loadPlacementSettings);
+      window.removeEventListener('storage', handleStorage);
       window.clearInterval(refreshInterval);
     };
   }, []);
@@ -318,7 +336,9 @@ function PlacementInfo() {
             <p className="text-muted mb-0">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
           </div>
 
-          {typeof activeContent.body === 'function' ? activeContent.body({ ...placementSettings, ...rulesSettings }) : activeContent.body}
+          {typeof activeContent.body === 'function'
+            ? activeContent.body(activeTab === 'schedule' ? placementDates : { ...placementSettings, ...rulesSettings })
+            : activeContent.body}
         </div>
       </div>
     </div>

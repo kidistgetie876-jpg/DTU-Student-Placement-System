@@ -1,101 +1,96 @@
 .site-footer {
-  position: relative;
-  padding: 56px 0 20px;
-  background: linear-gradient(180deg, #66d8d4 0%, #edf5ff 100%);
-  color: #123667;
-  border-top: 1px solid rgba(18, 54, 103, 0.08);
+  width: 100%;
+  padding: 35px 0 20px;
+  background: linear-gradient(180deg, #0a2d6d 0%, #061838 100%);
+  color: #cbd5e1;
+  margin-bottom: 0 !important;
 }
 
 .site-footer .footer-inner {
-  position: relative;
   max-width: 1180px;
   margin: 0 auto;
-  z-index: 1;
 }
 
 .site-footer .footer-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
-  gap: 1.2rem;
+  grid-template-columns: 1.35fr 0.75fr 0.75fr 1.35fr;
+  gap: 2rem;
   align-items: start;
 }
 
 .footer-col {
   min-width: 0;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(18, 54, 103, 0.05);
-  border-radius: 14px;
-  padding: 0.9rem 0.95rem 1rem;
 }
 
 .brand-header {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  margin-bottom: 0.8rem;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
 }
 
 .brand-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #1b4f93, #6c9fe4);
-  color: #f3f9ff;
-  font-size: 0.74rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #f4c95d;
+  color: #061838;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
 
 .footer-brand .brand-link {
-  font-size: 1.12rem;
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #123667;
+  color: #ffffff;
   text-decoration: none;
 }
 
 .brand-desc {
   max-width: 360px;
-  margin: 0 0 1rem;
-  color: rgba(18, 54, 103, 0.75);
-  line-height: 1.7;
+  margin: 0 0 0.8rem;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .social-row {
   display: flex;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
+  gap: 0.5rem;
 }
 
 .social-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: rgba(18, 54, 103, 0.05);
-  color: #123667;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
   text-decoration: none;
-  border: 1px solid rgba(18, 54, 103, 0.04);
-  transition: transform 0.2s ease, background 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .social-btn:hover,
-.social-btn:focus {
-  transform: translateY(-2px);
-  background: rgba(74, 120, 198, 0.08);
+.social-btn:focus-visible {
+  background: #f4c95d;
+  border-color: #f4c95d;
+  color: #061838;
 }
 
 .col-title {
-  margin: 0 0 1rem;
-  color: #123667;
-  font-size: 0.82rem;
+  margin: 0 0 0.8rem;
+  color: #ffffff;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -106,7 +101,7 @@
 }
 
 .col-list li {
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.5rem;
 }
 
 .col-list li:last-child {
@@ -114,70 +109,77 @@
 }
 
 .col-list a {
-  color: rgba(18, 54, 103, 0.8);
+  color: #cbd5e1;
+  font-size: 13px;
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .col-list a:hover,
-.col-list a:focus {
-  color: #0f2f58;
-  text-decoration: underline;
+.col-list a:focus-visible {
+  color: #f4c95d;
 }
 
 .footer-newsletter .muted {
   margin: 0;
-  color: rgba(18, 54, 103, 0.75);
-  line-height: 1.7;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .newsletter-form {
   display: flex;
-  gap: 0.65rem;
-  margin-top: 0.9rem;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
 }
 
 .newsletter-form input {
   flex: 1;
   min-width: 0;
-  padding: 0.7rem 0.8rem;
-  border-radius: 10px;
-  border: 1px solid rgba(18, 54, 103, 0.1);
-  background: rgba(255, 255, 255, 0.35);
-  color: #123667;
+  padding: 0.55rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 13px;
 }
 
 .newsletter-form input::placeholder {
-  color: rgba(18, 54, 103, 0.55);
+  color: #94a3b8;
 }
 
 .newsletter-form input:focus {
   outline: none;
-  border-color: rgba(37, 94, 177, 0.35);
-  box-shadow: 0 0 0 3px rgba(92, 140, 219, 0.08);
+  border-color: #f4c95d;
+  box-shadow: 0 0 0 2px rgba(244, 201, 93, 0.2);
 }
 
 .subscribe-btn {
   border: none;
-  border-radius: 10px;
-  padding: 0.7rem 0.9rem;
-  background: linear-gradient(135deg, #1d4f96, #4d8de5);
-  color: #ffffff;
-  font-weight: 800;
+  border-radius: 4px;
+  padding: 0.55rem 0.8rem;
+  background: #f4c95d;
+  color: #061838;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .subscribe-btn:hover,
-.subscribe-btn:focus {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 16px rgba(26, 85, 170, 0.14);
+.subscribe-btn:focus-visible {
+  background: #ffda79;
+  color: #061838;
 }
 
 .news-status {
-  margin-top: 0.75rem;
-  color: #174b8a;
-  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  color: #ffda79;
+  font-size: 12px;
+}
+
+.news-status-success {
+  color: #a7e6c1;
 }
 
 .footer-bottom {
@@ -185,14 +187,14 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  margin-top: 1.8rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(18, 54, 103, 0.08);
+  margin-top: 1.35rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .footer-bottom .copyright {
-  color: rgba(18, 54, 103, 0.8);
-  font-size: 0.92rem;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .footer-bottom .legal-links {
@@ -202,14 +204,15 @@
 }
 
 .footer-bottom .legal-links a {
-  color: rgba(18, 54, 103, 0.8);
+  color: #94a3b8;
+  font-size: 12px;
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 .footer-bottom .legal-links a:hover,
-.footer-bottom .legal-links a:focus {
-  color: #0f2f58;
-  text-decoration: underline;
+.footer-bottom .legal-links a:focus-visible {
+  color: #f4c95d;
 }
 
 @media (max-width: 991.98px) {
@@ -223,12 +226,9 @@
 }
 
 @media (max-width: 575.98px) {
-  .site-footer {
-    padding-top: 56px;
-  }
-
   .site-footer .footer-grid {
     grid-template-columns: 1fr;
+    gap: 1.4rem;
   }
 
   .footer-bottom {
@@ -236,7 +236,4 @@
     align-items: flex-start;
   }
 
-  .newsletter-form {
-    flex-direction: column;
-  }
 }

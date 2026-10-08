@@ -27,12 +27,12 @@ if ($adminId <= 0 || $reportId <= 0) markAdminReportResponse(['success' => false
 try {
     $pdo = getAuditPdo();
     $statement = $pdo->prepare(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP
+        'UPDATE notifications SET is_read = 1, read_at = NOW()
          WHERE id = :report_id AND recipient_role = "admin" AND (recipient_id = :admin_id OR recipient_id IS NULL)'
     );
     $statement->execute([':report_id' => $reportId, ':admin_id' => $adminId]);
     if ($statement->rowCount() === 0) markAdminReportResponse(['success' => false, 'message' => 'Message not found.'], 404);
-    markAdminReportResponse(['success' => true]);
+    markAdminReportResponse(['success' => true, 'message' => 'Notification marked as read.']);
 } catch (Throwable $error) {
     error_log('Admin report read update failed: ' . $error->getMessage());
     markAdminReportResponse(['success' => false, 'message' => 'Unable to update message status.'], 500);

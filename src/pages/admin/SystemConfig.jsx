@@ -10,6 +10,7 @@ import {
   FiX,
 } from 'react-icons/fi';
 import api from '../../services/api.js';
+import { notifySystemSettingsUpdated } from '../../services/systemSettingsEvents.js';
 
 const defaultSettings = {
   site: {
@@ -30,13 +31,13 @@ const defaultSettings = {
     expectedReturn: 'Soon',
   },
   placement: {
-    submissionStart: '2026-08-01',
-    submissionDeadline: '2026-08-15',
-    processingStart: '2026-08-16',
-    processingEnd: '2026-08-24',
-    resultsDate: '2026-08-27',
-    appealStart: '2026-08-27',
-    appealEnd: '2026-08-30',
+    submissionStart: '2026-10-01',
+    submissionDeadline: '2026-10-04',
+    processingStart: '2026-10-12',
+    processingEnd: '2026-10-14',
+    resultsDate: '2026-10-15',
+    appealStart: '2026-10-16',
+    appealEnd: '2026-10-17',
     gpa_weight: 40,
     grade_12_weight: 20,
     coc_weight: 30,
@@ -374,7 +375,7 @@ const SystemConfig = () => {
       }
       setSettings(mergeSettings(response.data?.settings || settings));
       setSaveSuccess(activeEditor === 'placement' ? '✓ Placement timeline and weights successfully saved!' : 'Settings saved successfully.');
-      window.dispatchEvent(new Event('system-settings-updated'));
+      notifySystemSettingsUpdated();
       if (editorCloseTimeout.current) window.clearTimeout(editorCloseTimeout.current);
       editorCloseTimeout.current = window.setTimeout(() => {
         closeEditor();
@@ -412,7 +413,7 @@ const SystemConfig = () => {
         maintenance: savedMaintenance,
       }));
       setSaveSuccess('✓ Maintenance status successfully saved!');
-      window.dispatchEvent(new Event('system-settings-updated'));
+      notifySystemSettingsUpdated();
       if (editorCloseTimeout.current) window.clearTimeout(editorCloseTimeout.current);
       editorCloseTimeout.current = window.setTimeout(() => {
         closeEditor();
@@ -444,7 +445,7 @@ const SystemConfig = () => {
         homepage: normalizeHomepageSettings(response.data?.data || formState),
       }));
       setSaveSuccess('Settings saved successfully.');
-      window.dispatchEvent(new Event('system-settings-updated'));
+      notifySystemSettingsUpdated();
       if (editorCloseTimeout.current) window.clearTimeout(editorCloseTimeout.current);
       editorCloseTimeout.current = window.setTimeout(() => {
         closeEditor();

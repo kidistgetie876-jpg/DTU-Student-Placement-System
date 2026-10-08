@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { FiEye, FiEyeOff } from 'react-icons/fi';
 import api from '../../services/api.js';
 import './ManageUsers.css';
 
@@ -120,6 +121,7 @@ const ManageUsers = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('student');
   const [newRoleId, setNewRoleId] = useState('DTU16R1001');
+  const [showPassword, setShowPassword] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -129,6 +131,7 @@ const ManageUsers = () => {
   const [editPhoneNumber, setEditPhoneNumber] = useState('');
   const [newPhoneNumber, setNewPhoneNumber] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [resettingUserId, setResettingUserId] = useState(null);
   const pageSize = 5;
   const apiPath = 'api/admin/users_api.php';
 
@@ -137,6 +140,7 @@ const ManageUsers = () => {
     setNewLastName('');
     setNewUsername('');
     setNewPassword('');
+    setShowPassword(false);
     setNewEmail('');
     setNewRole('student');
     setNewRoleId(getNextRoleId(users, 'student'));
@@ -240,6 +244,27 @@ const ManageUsers = () => {
     } catch (err) {
       console.error('Failed to delete user:', err);
       setError('Unable to delete the user. Please try again.');
+    }
+  };
+
+  const handleResetUserPassword = async (user) => {
+    const username = user?.username || user?.name || 'this user';
+    const idNumber = String(user?.id_number || '').trim();
+    if (!window.confirm(`Reset password for ${username} back to default ID (${idNumber})?`)) return;
+
+    setResettingUserId(user.id);
+    setError('');
+    try {
+      const response = await api.post('api/admin/reset_user_password.php', { id: user.id });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to reset the password.');
+      }
+      window.alert('Password reset to default ID number successfully.');
+    } catch (err) {
+      console.error('Failed to reset user password:', err);
+      setError(err.response?.data?.message || err.message || 'Unable to reset the user password. Please try again.');
+    } finally {
+      setResettingUserId(null);
     }
   };
 
@@ -356,8 +381,8 @@ const ManageUsers = () => {
         first_name: firstName,
         last_name: lastName,
         username,
+         email,
         password,
-        email,
         role,
         phone_number: phoneNumber,
         id_number: roleId,
@@ -480,20 +505,6 @@ const ManageUsers = () => {
                   />
                 </div>
                 <div className="col-md-2">
-                  <label className="form-label" htmlFor="new-password">Password</label>
-                  <input
-                    id="new-password"
-                    type="password"
-                    className="form-control"
-                    placeholder="Password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    disabled={saving}
-                    required
-                  />
-                  <div className="form-text">At least 6 characters.</div>
-                </div>
-                <div className="col-md-2">
                   <label className="form-label" htmlFor="new-email">Email (Optional)</label>
                   <input
                     id="new-email"
@@ -505,6 +516,32 @@ const ManageUsers = () => {
                     disabled={saving}
                   />
                 </div>
+                <div className="col-md-6 col-lg-3">
+                  <label className="form-label fw-semibold" htmlFor="new-password">Password</label>
+                  <div className="input-group">
+                    <input
+                      id="new-password"
+                      type={showPassword ? 'text' : 'password'}
+                      className="form-control"
+                      name="password"
+                      placeholder="Enter password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => setShowPassword(!showPassword)}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <FiEyeOff /> : <FiEye />}
+                    </button>
+                  </div>
+                  <small className="text-muted" style={{ fontSize: '11px' }}>At least 6 characters.</small>
+                </div>
+                
                 <div className="col-md-2">
                   <label className="form-label" htmlFor="new-phone-number">Phone Number</label>
                   <input
@@ -567,7 +604,7 @@ const ManageUsers = () => {
               <th>Email</th>
               <th>Phone Number</th>
               <th>Role</th>
-              <th style={{ width: 160 }}>Actions</th>
+              <th style={{ width: 280 }}>Actions</th>
             </tr>
           </thead>
           <tbody>

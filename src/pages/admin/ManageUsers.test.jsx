@@ -73,6 +73,28 @@ describe('ManageUsers', () => {
     expect(await screen.findByText('1')).toBeInTheDocument();
   });
 
+  it('resets a user password to their default ID after confirmation', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /reset/i }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith('Reset password for alice back to default ID (DTU16R1001)?');
+      expect(api.post).toHaveBeenCalledWith('api/admin/reset_user_password.php', { id: 1 });
+      expect(alertSpy).toHaveBeenCalledWith('Password reset to default ID number successfully.');
+    });
+    confirmSpy.mockRestore();
+    alertSpy.mockRestore();
+  });
+
   it('generates an editable ID for the selected role', async () => {
     api.get.mockResolvedValue({
       data: {
