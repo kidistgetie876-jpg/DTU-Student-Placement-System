@@ -16,15 +16,25 @@ function setCorsHeaders(): void
         'http://localhost:3001',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
-        'https://dtu-student-placement-system.onrender.com',
-        'https://dtu-student-placement-system-1.onrender.com',
-        'https://dtu-student-placement-system-2.onrender.com',
     ];
 
-    if ($origin !== '' && (
+    foreach (['FRONTEND_URL', 'APP_URL', 'CLIENT_URL'] as $envName) {
+        $value = getenv($envName);
+        if (is_string($value) && $value !== '') {
+            $allowedOrigins[] = rtrim($value, '/');
+        }
+    }
+
+    $allowedOrigins = array_values(array_unique(array_filter(array_map('trim', $allowedOrigins))));
+
+    $isAllowedOrigin = $origin !== '' && (
         in_array($origin, $allowedOrigins, true) ||
-        preg_match('#^https?://[a-z0-9-]+\\.onrender\\.com$#i', $origin) === 1
-    )) {
+        preg_match('#^https?://[a-z0-9.-]+\\.onrender\\.com(:\d+)?$#i', $origin) === 1 ||
+        preg_match('#^https?://[a-z0-9.-]+\\.vercel\\.app(:\d+)?$#i', $origin) === 1 ||
+        preg_match('#^https?://localhost(:\d+)?$#i', $origin) === 1
+    );
+
+    if ($isAllowedOrigin) {
         header('Vary: Origin');
         header("Access-Control-Allow-Origin: $origin");
         header('Access-Control-Allow-Credentials: true');
@@ -44,13 +54,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // 4. የዳታቤዝ መረጃዎች
-$db_host = 'localhost';
-$db_user = 'root';
-$db_pass = ''; // XAMPP ላይ ብዙውን ጊዜ ባዶ ነው
-$db_name = 'placement_db';
+// Render / production uses environment variables. Local XAMPP falls back to localhost defaults.
+if (!empty(getenv('DATABASE_URL'))) {
+    $databaseUrl = parse_url(getenv('DATABASE_URL'));
+    if (is_array($databaseUrl) && !empty($databaseUrl['host'])) {
+        $db_host = $databaseUrl['host'];
+        $db_user = $databaseUrl['user'] ?? 'root';
+        $db_pass = $databaseUrl['pass'] ?? '';
+        $db_name = ltrim($databaseUrl['path'] ?? '/placement_db', '/');
+        $db_port = (int) ($databaseUrl['port'] ?? 3306);
+    }
+}
+
+if (!isset($db_host)) {
+    $db_host = getenv('DB_HOST') ?: getenv('MYSQL_HOST') ?: 'localhost';
+}
+if (!isset($db_user)) {
+    $db_user = getenv('DB_USER') ?: getenv('MYSQL_USER') ?: 'root';
+}
+if (!isset($db_pass)) {
+    $db_pass = getenv('DB_PASS') ?: getenv('MYSQL_PASSWORD') ?: getenv('MYSQL_PASS') ?: '';
+}
+if (!isset($db_name)) {
+    $db_name = getenv('DB_NAME') ?: getenv('MYSQL_DATABASE') ?: 'placement_db';
+}
+if (!isset($db_port)) {
+    $db_port = (int) (getenv('DB_PORT') ?: getenv('MYSQL_PORT') ?: 3306);
+}
 
 // 5. ከ MySQL ጋር ግንኙነት መፍጠር
-$mysqli = new mysqli($db_host, $db_user, $db_pass, $db_name);
+$mysqli = new mysqli($db_host, $db_user, $db_pass, $db_name, $db_port);
 
 // 6. ግንኙነቱ መሳካቱን ማረጋገጥ
 if ($mysqli->connect_error) {
