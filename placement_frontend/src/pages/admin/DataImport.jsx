@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import api from '../../services/api.js';
 import * as XLSX from 'xlsx';
 
-const DataImport = () => {
+const DataImport = ({ onImported }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
@@ -20,6 +20,7 @@ const DataImport = () => {
     });
     
     return {
+      id_number: normalized.id_number || normalized.student_id || normalized.studentid || '',
       first_name: normalized.first_name || normalized.firstname || '',
       last_name: normalized.last_name || normalized.lastname || '',
       username: normalized.username || normalized.name || '',
@@ -28,8 +29,8 @@ const DataImport = () => {
       gpa: normalized.gpa || '0',
       stream: normalized.stream || '',
       gender: normalized.gender || 'Not specified',
-      grade_12_result: normalized.grade_12_result || normalized.grade12 || '0',
-      coc_result: normalized.coc_result || normalized.coc || '0',
+      grade_12_result: normalized.grade_12_result || normalized.g12_result || normalized.grade_12 || normalized.grade12 || normalized.g12 || '0',
+      coc_result: normalized.coc_result || normalized.coc_score || normalized.coc || '0',
       disability: normalized.disability || 'No',
       minority: normalized.minority || 'No'
     };
@@ -59,7 +60,8 @@ const DataImport = () => {
       const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
       
       const normalizedData = rows.map(normalizeCSVRow).filter(row => (
-        row.email !== '' && (row.first_name !== '' || row.last_name !== '' || row.username !== '')
+        (row.email !== '' || row.id_number !== '')
+        && (row.first_name !== '' || row.last_name !== '' || row.username !== '')
       ));
 
       if (normalizedData.length === 0) {
@@ -90,9 +92,10 @@ const DataImport = () => {
 
     try {
       const students = previewRows.map(row => ({
+        id_number: row.id_number || '',
         first_name: row.first_name || '',
         last_name: row.last_name || '',
-        username: row.username || row.email.split('@')[0],
+        username: row.username || row.email.split('@')[0] || row.id_number,
         email: row.email || '',
         phone: row.phone || '',
         gpa: row.gpa || '0',
@@ -130,6 +133,7 @@ const DataImport = () => {
         setPreviewReady(false);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+        onImported?.();
       } else {
         setStatusType('error');
         setStatusMessage(responseData.message || responseData.error || 'No students were imported. Check the backend response.');
@@ -169,13 +173,13 @@ const DataImport = () => {
               <table className="table table-sm table-hover mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
+                    <th>Student ID</th><th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 10).map((row, i) => (
                     <tr key={i}>
-                      <td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
+                      <td>{row.id_number}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
                       <td>{row.stream}</td><td>{row.gender}</td><td>{row.grade_12_result}</td><td>{row.coc_result}</td><td>{row.disability}</td><td>{row.minority}</td>
                     </tr>
                   ))}

@@ -448,6 +448,13 @@ const StudentDashboard = () => {
 
           {tab === 'overview' && (
             <div className="row g-4">
+              {hasPublishedPlacement && (
+                <div className="col-12">
+                  <div className="alert alert-success mb-0" role="status">
+                    <strong>Placement meeting:</strong> You have been assigned to {placementResult.placement.assigned_department}. Please visit the Registrar&apos;s Office for your placement meeting. Bring or print your placement result slip.
+                  </div>
+                </div>
+              )}
               <div className="col-md-4">
                 <div className="card shadow-sm p-4 border-0 border-start border-primary border-5 rounded-4">
                   <span className="text-muted small fw-bold text-uppercase">GPA</span>
@@ -654,6 +661,9 @@ const StudentDashboard = () => {
                   <>
                     <div className="alert alert-success">
                       {placementResult.message}
+                    </div>
+                    <div className="alert alert-info" role="status">
+                      <strong>Placement meeting:</strong> You have been assigned to {placementResult.placement.assigned_department}. Please visit the Registrar&apos;s Office for your placement meeting. Bring or print your placement result slip.
                     </div>
 
                     <div className="table-responsive">

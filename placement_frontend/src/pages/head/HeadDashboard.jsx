@@ -27,76 +27,24 @@ const normalizeDepartment = (dept, index = 0) => {
   };
 };
 
-const defaultDepartments = [
-  {
-    id: 1,
-    name: 'Computer Science',
-    description: 'Department of computing and applied software systems',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 120,
-    assigned: 89,
-    available: 31,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 2,
-    name: 'Software Engineering',
-    description: 'Applied engineering of modern software systems',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 95,
-    assigned: 71,
-    available: 24,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 3,
-    name: 'Business Administration',
-    description: 'Management and strategic business operations',
-    stream: 'Social',
-    college_name: 'College of Business and Economics',
-    capacity: 85,
-    assigned: 64,
-    available: 21,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 4,
-    name: 'Nursing',
-    description: 'Health and clinical care professional program',
-    stream: 'Natural',
-    college_name: 'College of Medicine and Health Sciences',
-    capacity: 70,
-    assigned: 53,
-    available: 17,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-];
+const emptyDepartment = {
+  name: 'Not assigned',
+  stream: '—',
+  college_name: '—',
+  capacity: 0,
+  assigned: 0,
+  available: 0,
+  status: 'unassigned',
+};
 
 const HeadDashboard = () => {
   const navigate = useNavigate();
   const [leader, setLeader] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
-  const [department, setDepartment] = useState({
-    name: 'Computer Science',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 120,
-    assigned: 89,
-    available: 31,
-    status: 'active',
-  });
-  const [departments, setDepartments] = useState(defaultDepartments);
+  const [department, setDepartment] = useState(emptyDepartment);
+  const [departmentLoadError, setDepartmentLoadError] = useState('');
+  const [departments, setDepartments] = useState([]);
   const [placedStudents, setPlacedStudents] = useState([]);
   const [pendingApprovalStudents, setPendingApprovalStudents] = useState([]);
   const [approvalSavingId, setApprovalSavingId] = useState(null);
@@ -111,11 +59,7 @@ const HeadDashboard = () => {
     approvalRequests: 0,
     capacityUsed: 0,
   });
-  const [recentPlacements, setRecentPlacements] = useState([
-    { student: 'Amanuel Gebru', program: 'Software Engineering', status: 'Matched' },
-    { student: 'Martha Kassa', program: 'Data Science', status: 'Confirmed' },
-    { student: 'Samuel Tadesse', program: 'Information Systems', status: 'Pending' },
-  ]);
+  const [recentPlacements, setRecentPlacements] = useState([]);
   const [preferences, setPreferences] = useState(() => {
     return { notifications: true, reporting: true };
   });
@@ -266,6 +210,7 @@ const HeadDashboard = () => {
         }
 
         const primary = normalizeDepartment(responseData.department);
+        setDepartmentLoadError('');
         const nextDepartments = [primary];
         const students = (Array.isArray(responseData.students) ? responseData.students : []).filter((student) => (
           ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase())
@@ -292,9 +237,16 @@ const HeadDashboard = () => {
         })));
       } catch (error) {
         console.error('Department load error:', error);
+        setDepartment(emptyDepartment);
+        setDepartmentLoadError(
+          error.response?.data?.message ||
+          error.message ||
+          'Unable to load your assigned department.'
+        );
         setDepartments([]);
         setPlacedStudents([]);
         setPendingApprovalStudents([]);
+        setRecentPlacements([]);
         setStats({ totalStudents: 0, placedStudents: 0, approvalRequests: 0, capacityUsed: 0 });
       }
     };
@@ -334,47 +286,42 @@ const HeadDashboard = () => {
   const saveCapacityPlan = async () => {
     setCapacitySaveMsg('');
     try {
-      const updatedDepartments = departments.map((dept) => {
+      const updates = departments.map((dept) => {
         const nextCapacity = Number(capacityDraft[dept.id] ?? dept.capacity ?? 0);
-        return {
-          ...dept,
-          capacity: nextCapacity,
-          available: Math.max(0, nextCapacity - Number(dept.assigned || 0)),
-          college_name: dept.college_name || dept.faculty || 'General',
-          stream: dept.stream || 'Natural',
-          status: dept.status || 'active',
-        };
+        if (!Number.isInteger(nextCapacity) || nextCapacity < 0) {
+          throw new Error(`Capacity for ${dept.name} must be a non-negative whole number.`);
+        }
+        return { id: dept.id, capacity: nextCapacity };
       });
 
-      setDepartments(updatedDepartments);
-
-      const payload = {
-        departments: updatedDepartments.map((dept) => ({
-          id: dept.id,
-          name: dept.name,
-          capacity: Number(dept.capacity || 0),
-          description: dept.description || '',
-          stream: dept.stream || 'Natural',
-          college_name: dept.college_name || 'General',
-          status: dept.status || 'active',
-          head_id: dept.head_id ?? null,
-          created_at: dept.created_at || null,
-        })),
-      };
-
-      try {
-        await api.post('api/common/departments_update.php', payload);
-        setCapacitySaveMsg('Capacity plan saved successfully.');
-        setCapacitySaveMsgType('success');
-      } catch (error) {
-        console.error('departments_update.php save failed:', error);
-        localStorage.setItem('headCapacityPlan', JSON.stringify(payload.departments));
-        setCapacitySaveMsg('Saved locally. Backend unavailable.');
-        setCapacitySaveMsgType('warning');
+      if (updates.length === 0) {
+        throw new Error('No assigned department capacity is available to update.');
       }
+
+      const response = await api.post('api/common/departments_update.php', { departments: updates });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to save the capacity plan.');
+      }
+
+      const refreshedResponse = await api.get('api/head/get_head_dashboard.php');
+      if (!refreshedResponse.data?.success || !refreshedResponse.data?.department) {
+        throw new Error(refreshedResponse.data?.message || 'Unable to verify the saved capacity plan.');
+      }
+      const refreshedDepartment = normalizeDepartment(refreshedResponse.data.department);
+      if (updates.some((update) => (
+        String(update.id) === String(refreshedDepartment.id)
+        && Number(update.capacity) !== refreshedDepartment.capacity
+      ))) {
+        throw new Error('The capacity plan was not saved. Refresh and try again.');
+      }
+
+      setDepartments([refreshedDepartment]);
+      setDepartment(refreshedDepartment);
+      setCapacityDraft({ [refreshedDepartment.id]: refreshedDepartment.capacity });
+      setCapacitySaveMsg('Capacity plan saved and confirmed.');
+      setCapacitySaveMsgType('success');
     } catch (error) {
-      console.error('saveCapacityPlan error:', error);
-      setCapacitySaveMsg('Unable to save capacity plan.');
+      setCapacitySaveMsg(error.response?.data?.message || error.message || 'Unable to save capacity plan.');
       setCapacitySaveMsgType('danger');
     }
 
@@ -505,6 +452,12 @@ const HeadDashboard = () => {
             </div>
             <div className="status-chip">Head of Department</div>
           </header>
+
+          {departmentLoadError && (
+            <div className="alert alert-warning" role="alert">
+              {departmentLoadError} Contact an administrator to assign an active department to your account.
+            </div>
+          )}
 
           {tab === 'overview' && (
             <>
@@ -883,7 +836,7 @@ const HeadDashboard = () => {
                         <button className="btn btn-sm btn-outline-primary">View All</button>
                       </div>
                       <div className="activity-list">
-                        {recentPlacements.map(item => (
+                        {recentPlacements.length > 0 ? recentPlacements.map(item => (
                           <div key={item.student} className="activity-item">
                             <div>
                               <div className="fw-semibold">{item.student}</div>
@@ -893,7 +846,7 @@ const HeadDashboard = () => {
                               {item.status}
                             </span>
                           </div>
-                        ))}
+                        )) : <p className="text-muted mb-0">No recent placement activity.</p>}
                       </div>
                     </div>
                   </div>
@@ -975,11 +928,12 @@ const HeadDashboard = () => {
                                 <input
                                   type="number"
                                   min="0"
+                                  step="1"
                                   className="form-control"
+                                  aria-label={`Capacity for ${dept.name}`}
                                   value={draftCapacity}
                                   onChange={(e) => {
-                                    const nextValue = Number(e.target.value || 0);
-                                    setCapacityDraft((prev) => ({ ...prev, [dept.id]: nextValue }));
+                                    setCapacityDraft((prev) => ({ ...prev, [dept.id]: e.target.value }));
                                   }}
                                 />
                               </td>

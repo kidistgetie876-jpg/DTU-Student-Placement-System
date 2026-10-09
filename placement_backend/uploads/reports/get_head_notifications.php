@@ -23,7 +23,7 @@ $result = $stmt->get_result();
 $notifications = [];
 while ($row = $result->fetch_assoc()) {
     if ($row['file_path']) {
-        $row['file_url'] = "http://localhost/placment_backend/" . $row['file_path'];
+        $row['file_url'] = "http://localhost/student-placement/placement_backend/" . ltrim($row['file_path'], '/');
     }
     $notifications[] = $row;
 }

@@ -209,9 +209,9 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                     <input type="number" min="0" max="30" step="0.01" className="form-control" name="coc" value={form.coc} onChange={handleChange} placeholder="Leave blank if unavailable" />
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label fw-semibold">Stream</label>
-                    <select className="form-select" name="stream" value={form.stream} onChange={handleChange} required>
-                      <option value="">Select Stream</option>
+                    <label htmlFor="stream-select" className="form-label fw-semibold">Department</label>
+                    <select id="stream-select" className="form-select" name="stream" value={form.stream} onChange={handleChange} aria-label="Department" required>
+                      <option value="">Select Department</option>
                       {streamOptions.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>

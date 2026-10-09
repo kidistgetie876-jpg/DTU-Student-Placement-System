@@ -6,7 +6,7 @@ import api from '../../services/api.js';
 jest.mock('../../services/api.js', () => ({
   __esModule: true,
   default: {
-    defaults: { baseURL: 'http://localhost/placment_backend/' },
+    defaults: { baseURL: 'http://localhost/student-placement/placement_backend/' },
     get: jest.fn(),
     post: jest.fn(),
   },
@@ -81,7 +81,7 @@ describe('AdminReports', () => {
     render(<AdminReports />);
 
     const attachmentLink = await screen.findByRole('link', { name: 'Download Attachment' });
-    expect(attachmentLink).toHaveAttribute('href', 'http://localhost/placment_backend/uploads/reports/placement-report.pdf');
+    expect(attachmentLink).toHaveAttribute('href', 'http://localhost/student-placement/placement_backend/uploads/reports/placement-report.pdf');
     expect(attachmentLink).toHaveAttribute('target', '_blank');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));

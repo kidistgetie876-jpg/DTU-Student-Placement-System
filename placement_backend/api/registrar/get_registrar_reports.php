@@ -44,14 +44,14 @@ try {
         if (!empty($report['file_path'])) {
             $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
             $relative = ltrim($report['file_path'], '/');
-            $c1 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-            $c2 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
+            $c1 = $docRoot . DIRECTORY_SEPARATOR . 'student-placement' . DIRECTORY_SEPARATOR . 'placement_backend' . DIRECTORY_SEPARATOR . $relative;
+            $c2 = $docRoot . DIRECTORY_SEPARATOR . 'placement_backend' . DIRECTORY_SEPARATOR . $relative;
             if ($docRoot && file_exists($c1)) {
-                $report['file_url'] = 'http://localhost/placment_backend/' . $relative;
+                $report['file_url'] = 'http://localhost/student-placement/placement_backend/' . $relative;
             } elseif ($docRoot && file_exists($c2)) {
-                $report['file_url'] = 'http://localhost/placment_backend/placment_backend/' . $relative;
+                $report['file_url'] = 'http://localhost/placement_backend/' . $relative;
             } else {
-                $report['file_url'] = 'http://localhost/placment_backend/' . $relative;
+                $report['file_url'] = 'http://localhost/student-placement/placement_backend/' . $relative;
             }
         }
     }

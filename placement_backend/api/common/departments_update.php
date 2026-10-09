@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $departmentRead = $db->prepare('SELECT capacity FROM departments WHERE id = ? LIMIT 1');
     $capacityUpdate = $db->prepare('UPDATE departments SET capacity = ?, capacity_approved = COALESCE(?, capacity_approved) WHERE id = ?');
-    $statusUpdate = $db->prepare('UPDATE departments SET capacity = ?, status = ?, capacity_approved = COALESCE(?, capacity_approved) WHERE id = ?');
+    $statusUpdate = $db->prepare('UPDATE departments SET status = ? WHERE id = ?');
     if (!$departmentRead || !$capacityUpdate || !$statusUpdate) {
         echo json_encode(["success" => false, "message" => "Unable to prepare department updates."]);
         exit;
@@ -47,13 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $successCount = 0;
     foreach ($updates as $dept) {
         $id = (int) ($dept['id'] ?? 0);
-        $capacity = filter_var($dept['capacity'] ?? null, FILTER_VALIDATE_INT);
-        if ($id <= 0 || $capacity === false || $capacity < 0) {
+        if ($id <= 0) {
             $departmentRead->close();
             $capacityUpdate->close();
             $statusUpdate->close();
             http_response_code(400);
-            echo json_encode(["success" => false, "message" => "Each department needs a valid ID and non-negative integer capacity."]);
+            echo json_encode(["success" => false, "message" => "Each department needs a valid ID."]);
             exit;
         }
 
@@ -75,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $capacityUpdate->close();
             $statusUpdate->close();
             http_response_code(500);
-            echo json_encode(["success" => false, "message" => "Unable to read the current department capacity."]);
+            echo json_encode(["success" => false, "message" => "Unable to read the current department."]);
             exit;
         }
         $currentDepartment = $departmentRead->get_result()->fetch_assoc();
@@ -88,14 +87,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $approvalState = $approveCapacities
-            ? 1
-            : ($isHead && (int) $currentDepartment['capacity'] !== $capacity ? 0 : null);
-
         if (array_key_exists('status', $dept)) {
-            $statusUpdate->bind_param('isii', $capacity, $status, $approvalState, $id);
+            $statusUpdate->bind_param('si', $status, $id);
             $updated = $statusUpdate->execute();
         } else {
+            $capacity = filter_var($dept['capacity'] ?? null, FILTER_VALIDATE_INT);
+            if ($capacity === false || $capacity < 0) {
+                $departmentRead->close();
+                $capacityUpdate->close();
+                $statusUpdate->close();
+                http_response_code(400);
+                echo json_encode(["success" => false, "message" => "Each capacity update needs a non-negative integer capacity."]);
+                exit;
+            }
+
+            $approvalState = $approveCapacities
+                ? 1
+                : ($isHead && (int) $currentDepartment['capacity'] !== $capacity ? 0 : null);
             $capacityUpdate->bind_param('iii', $capacity, $approvalState, $id);
             $updated = $capacityUpdate->execute();
         }
@@ -116,10 +124,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $statusUpdate->close();
 
     echo json_encode([
-        "success" => true, 
-        "message" => "በተሳካ ሁኔታ የ $successCount ዲፓርትመንቶች አቅም በዳታቤዝ ተዘምኗል!"
+        "success" => true,
+        "message" => "Department updates saved successfully ({$successCount} updated)."
     ]);
-    logActivity($db, $auditActor['id'], $auditActor['name'], 'department.capacity_update', json_encode(['updated_count' => $successCount]));
+    $hasStatusUpdates = array_reduce($updates, static function (bool $hasStatus, array $department): bool {
+        return $hasStatus || array_key_exists('status', $department);
+    }, false);
+    logActivity(
+        $db,
+        $auditActor['id'],
+        $auditActor['name'],
+        $hasStatusUpdates ? 'department.status_update' : 'department.capacity_update',
+        json_encode(['updated_count' => $successCount])
+    );
 }
 $db->close();
 ?>

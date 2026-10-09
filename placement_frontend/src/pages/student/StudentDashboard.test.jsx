@@ -72,8 +72,35 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /placement result/i }));
 
     expect(await screen.findByText(/Placement Under Review/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Placement meeting:/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Computer Science')).not.toBeInTheDocument();
     expect(screen.queryByText(/Congratulations!/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the Registrar placement-meeting notice only for a published placement', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: true,
+            message: 'Congratulations! You have been placed in Computer Science',
+            placement: { assigned_department: 'Computer Science', placement_status: 'Approved' },
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findByText(/Please visit the Registrar's Office for your placement meeting/i)).toBeInTheDocument();
+    expect(screen.getByText(/assigned to Computer Science/i)).toBeInTheDocument();
   });
 
   it('shows the official ID number in the header when available', async () => {

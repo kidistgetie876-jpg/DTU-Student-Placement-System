@@ -4,7 +4,6 @@ import api from '../../services/api.js';
 import ManageUsers from './ManageUsers';
 import ManageDepartments from './ManageDepartments';
 import AssignHead from './AssignHead.jsx';
-import DataImport from './DataImport.jsx';
 import SystemConfig from './SystemConfig.jsx';
 import AuditLogs from './AuditLogs';
 import AdminAccount from './AdminAccount';
@@ -20,7 +19,8 @@ const AdminDashboard = () => {
     totalStudents: 0,
     totalDepartments: 0,
     activeAdmins: 0,
-    totalHeads: 0
+    totalHeads: 0,
+    totalRegistrars: 0,
   });
   const [statsLoading, setStatsLoading] = useState(false);
 
@@ -44,7 +44,7 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   const [tab, setTab] = useState('dashboard');
-  const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'totalDepartments', 'activeAdmins'
+  const [cardDetailModal, setCardDetailModal] = useState(null);
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
@@ -82,6 +82,7 @@ const AdminDashboard = () => {
         const role = u?.role?.toLowerCase();
         return role === 'head' || role === 'coordinator';
       }).length;
+      const totalRegistrars = users.filter((user) => user?.role?.toLowerCase() === 'registrar').length;
 
       const departmentsResponse = departmentsResult.status === 'fulfilled' ? departmentsResult.value.data : [];
       const depts = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse?.departments || [];
@@ -94,7 +95,8 @@ const AdminDashboard = () => {
         totalStudents,
         totalDepartments,
         activeAdmins,
-        totalHeads
+        totalHeads,
+        totalRegistrars
       });
     } catch (err) {
       console.error('Failed to fetch statistics:', err);
@@ -165,6 +167,15 @@ const AdminDashboard = () => {
             role: head.role || 'N/A',
             registeredAt: head.created_at || head.registration_date || 'N/A'
           }));
+      } else if (cardType === 'totalRegistrars') {
+        data = allUsers
+          .filter((user) => user?.role?.toLowerCase() === 'registrar')
+          .map((registrar, idx) => ({
+            id: idx + 1,
+            username: registrar.username || 'N/A',
+            email: registrar.email || 'N/A',
+            registeredAt: registrar.created_at || registrar.registration_date || 'N/A'
+          }));
       }
 
       setCardDetailData(data);
@@ -218,12 +229,6 @@ const AdminDashboard = () => {
               Reports
             </button>
           
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'data-import' ? 'active' : ''}`}
-              onClick={() => setTab('data-import')}
-            >
-              Data Import
-            </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'audit-logs' ? 'active' : ''}`}
               onClick={() => setTab('audit-logs')}
@@ -350,6 +355,29 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 </div>
+                <div className="col-lg-4">
+                  <div
+                    className="card summary-card shadow-sm"
+                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-5px)';
+                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
+                      e.currentTarget.style.borderColor = '#6f42c1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '';
+                      e.currentTarget.style.borderColor = 'transparent';
+                    }}
+                    onClick={() => handleCardClick('totalRegistrars')}
+                  >
+                    <div className="card-body">
+                      <span className="summary-label">Total Registrars</span>
+                      <h3 className="summary-value">{statsLoading ? '...' : stats.totalRegistrars}</h3>
+                      <div className="mt-2"><small className="fw-bold" style={{ color: '#6f42c1' }}>Click to view details →</small></div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Card Detail Modal */}
@@ -382,6 +410,7 @@ const AdminDashboard = () => {
                         {cardDetailModal === 'totalDepartments' && 'All Departments'}
                         {cardDetailModal === 'activeAdmins' && 'Admin Accounts'}
                         {cardDetailModal === 'totalHeads' && 'Department Heads and Coordinators'}
+                        {cardDetailModal === 'totalRegistrars' && 'Registrar Accounts'}
                       </h4>
                       <button 
                         className="btn btn-close" 
@@ -438,6 +467,14 @@ const AdminDashboard = () => {
                                   <th>Registered</th>
                                 </>
                               )}
+                              {cardDetailModal === 'totalRegistrars' && (
+                                <>
+                                  <th>#</th>
+                                  <th>Username</th>
+                                  <th>Email</th>
+                                  <th>Registered</th>
+                                </>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -479,6 +516,14 @@ const AdminDashboard = () => {
                                     <td>{item.registeredAt}</td>
                                   </>
                                 )}
+                                {cardDetailModal === 'totalRegistrars' && (
+                                  <>
+                                    <td>{item.id}</td>
+                                    <td><strong>{item.username}</strong></td>
+                                    <td>{item.email}</td>
+                                    <td>{item.registeredAt}</td>
+                                  </>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -505,8 +550,6 @@ const AdminDashboard = () => {
             <AdminReports />
           ) : tab === 'assign-head' ? (
             <AssignHead />
-          ) : tab === 'data-import' ? (
-            <DataImport />
           ) : tab === 'system-config' ? (
             <SystemConfig />
           ) : tab === 'account-settings' ? (

@@ -25,8 +25,8 @@ function importResponse(array $payload, int $status = 200): void
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $adminId = (int) ($_SESSION['user_id'] ?? 0);
 $role = strtolower((string) ($_SESSION['role'] ?? ''));
-if ($adminId <= 0 || $role !== 'admin') {
-    importResponse(['success' => false, 'message' => 'Only administrators can import student data.'], 403);
+if ($adminId <= 0 || !in_array($role, ['admin', 'registrar'], true)) {
+    importResponse(['success' => false, 'message' => 'Only administrators and registrars can import student data.'], 403);
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -43,9 +43,10 @@ $defaultPassword = password_hash('123456', PASSWORD_DEFAULT);
 try {
     $db->begin_transaction();
 
-    $findUser = $db->prepare('SELECT id, role, id_number FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
+    $findUserByEmail = $db->prepare('SELECT id, role, id_number FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
+    $findUserByIdNumber = $db->prepare('SELECT id, role, id_number FROM users WHERE LOWER(id_number) = LOWER(?) LIMIT 1');
     $insertUser = $db->prepare('INSERT INTO users (id_number, username, email, password, role, phone_number) VALUES (?, ?, ?, ?, \'student\', ?)');
-    $updateUser = $db->prepare('UPDATE users SET id_number = ?, username = ?, phone_number = ? WHERE id = ? AND role = \'student\'');
+    $updateUser = $db->prepare('UPDATE users SET id_number = ?, username = ?, email = ?, phone_number = ? WHERE id = ? AND role = \'student\'');
     $findStudent = $db->prepare('SELECT user_id FROM student_data WHERE user_id = ? LIMIT 1');
     $insertStudent = $db->prepare(
         'INSERT INTO student_data
@@ -58,24 +59,32 @@ try {
          WHERE user_id = ?'
     );
 
-    if (!$findUser || !$insertUser || !$updateUser || !$findStudent || !$insertStudent || !$updateStudent) {
+    if (!$findUserByEmail || !$findUserByIdNumber || !$insertUser || !$updateUser || !$findStudent || !$insertStudent || !$updateStudent) {
         throw new Exception('Unable to prepare student import statements.');
     }
 
     foreach ($data['students'] as $index => $student) {
-        $email = trim((string) ($student['email'] ?? ''));
+        $email = strtolower(trim((string) ($student['email'] ?? '')));
         $username = trim((string) ($student['username'] ?? ''));
         $firstName = trim((string) ($student['first_name'] ?? ''));
         $lastName = trim((string) ($student['last_name'] ?? ''));
         $phone = trim((string) ($student['phone'] ?? ''));
-        $emailValid = filter_var($email, FILTER_VALIDATE_EMAIL);
+        $idNumber = trim((string) ($student['id_number'] ?? ($student['student_id'] ?? '')));
 
-        if (!$emailValid || ($firstName === '' && $lastName === '' && $username === '')) {
-            $skipped[] = ['row' => $index + 2, 'reason' => 'Missing valid email or student name.'];
+        if (($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL))
+            || ($firstName === '' && $lastName === '' && $username === '' && $idNumber === '')) {
+            $skipped[] = ['row' => $index + 2, 'reason' => 'Missing a valid email or student ID, or student name.'];
             continue;
         }
 
-        $username = $username !== '' ? $username : strstr($email, '@', true);
+        $username = $username !== '' ? $username : (
+            $email !== ''
+                ? strstr($email, '@', true)
+                : strtolower((string) preg_replace('/[^a-z0-9._-]+/i', '', $idNumber))
+        );
+        if ($username === '') {
+            $username = strtolower((string) preg_replace('/[^a-z0-9._-]+/i', '', $firstName . '.' . $lastName));
+        }
         $gpa = (float) ($student['gpa'] ?? 0);
         $grade12 = (float) ($student['grade_12_result'] ?? 0);
         $coc = (float) ($student['coc_result'] ?? 0);
@@ -84,23 +93,76 @@ try {
         $disability = trim((string) ($student['disability'] ?? 'No')) ?: 'No';
         $minority = trim((string) ($student['minority'] ?? 'No')) ?: 'No';
 
-        $findUser->bind_param('s', $email);
-        $findUser->execute();
-        $existingUser = $findUser->get_result()->fetch_assoc();
+        $existingUser = null;
+        if ($idNumber !== '') {
+            $findUserByIdNumber->bind_param('s', $idNumber);
+            $findUserByIdNumber->execute();
+            $existingUser = $findUserByIdNumber->get_result()->fetch_assoc();
+        }
+
+        if ($email !== '') {
+            $findUserByEmail->bind_param('s', $email);
+            $findUserByEmail->execute();
+            $emailUser = $findUserByEmail->get_result()->fetch_assoc();
+            if ($existingUser && $emailUser && (int) $existingUser['id'] !== (int) $emailUser['id']) {
+                $skipped[] = ['row' => $index + 2, 'email' => $email, 'reason' => 'Student ID and email belong to different accounts.'];
+                continue;
+            }
+            $existingUser = $existingUser ?: $emailUser;
+        }
 
         if ($existingUser && strtolower((string) $existingUser['role']) !== 'student') {
             $skipped[] = ['row' => $index + 2, 'email' => $email, 'reason' => 'Email belongs to a non-student account.'];
             continue;
         }
 
-        $idNumber = trim((string) ($student['id_number'] ?? ($existingUser['id_number'] ?? '')));
+        $idNumber = $idNumber !== '' ? $idNumber : trim((string) ($existingUser['id_number'] ?? ''));
         if ($idNumber === '') {
             $idNumber = getNextRoleIdNumber($db, 'student');
         }
 
+        if ($email === '' && $existingUser) {
+            $email = strtolower(trim((string) ($existingUser['email'] ?? '')));
+        }
+
+        if ($email === '') {
+            $emailKey = strtolower((string) preg_replace('/[^a-z0-9._-]+/i', '-', $idNumber));
+            $emailKey = trim($emailKey, '.-_') ?: 'student';
+            $email = $emailKey . '@placeholder.local';
+            $suffix = 1;
+            while (true) {
+                $findUserByEmail->bind_param('s', $email);
+                $findUserByEmail->execute();
+                $emailUser = $findUserByEmail->get_result()->fetch_assoc();
+                if (!$emailUser || ($existingUser && (int) $emailUser['id'] === (int) $existingUser['id'])) {
+                    break;
+                }
+                if (
+                    strtolower((string) $emailUser['role']) === 'student'
+                    && strtolower((string) ($emailUser['id_number'] ?? '')) === strtolower($idNumber)
+                ) {
+                    $existingUser = $emailUser;
+                    break;
+                }
+                $email = $emailKey . '+' . $suffix . '@placeholder.local';
+                $suffix++;
+            }
+        }
+
+        if (!$existingUser) {
+            $findUserByEmail->bind_param('s', $email);
+            $findUserByEmail->execute();
+            $existingUser = $findUserByEmail->get_result()->fetch_assoc();
+        }
+
+        if ($existingUser && strtolower((string) $existingUser['role']) !== 'student') {
+            $skipped[] = ['row' => $index + 2, 'email' => $email, 'reason' => 'Email belongs to a non-student account.'];
+            continue;
+        }
+
         if ($existingUser) {
             $userId = (int) $existingUser['id'];
-            $updateUser->bind_param('sssi', $idNumber, $username, $phone, $userId);
+            $updateUser->bind_param('ssssi', $idNumber, $username, $email, $phone, $userId);
             if (!$updateUser->execute()) throw new Exception('Unable to update existing student account.');
         } else {
             $insertUser->bind_param('sssss', $idNumber, $username, $email, $defaultPassword, $phone);

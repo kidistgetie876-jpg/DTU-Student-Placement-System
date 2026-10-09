@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import { placementDateFields, validatePlacementSchedule } from '../../services/placementSchedule.js';
 import StudentRegistration from './StudentRegistration';
-import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
+import DataImport from '../admin/DataImport.jsx';
 import '../admin/AdminDashboard.css';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -21,6 +21,31 @@ export const parseYesNo = (value) => {
   const normalized = String(value).trim().toLowerCase();
   return ['yes', 'y', 'true', '1', 'on'].includes(normalized);
 };
+
+export const needsAcademicScores = (student) => {
+  const gpa = student?.gpa ?? student?.cgpa ?? null;
+  const g12 = student?.g12 ?? student?.grade_12_result ?? null;
+  const coc = student?.coc ?? student?.coc_result ?? null;
+
+  const isMissing = (value) => (
+    value === null
+    || value === undefined
+    || value === ''
+    || value === 'N/A'
+    || value === 'NA'
+    || (String(value).trim() !== '' && Number.isFinite(Number(value)) && Number(value) === 0)
+  );
+  return isMissing(gpa) || isMissing(g12) || isMissing(coc);
+};
+
+const studentIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+export const compareStudentIds = (leftStudent, rightStudent) => (
+  studentIdCollator.compare(
+    String(leftStudent?.id_number || leftStudent?.id || ''),
+    String(rightStudent?.id_number || rightStudent?.id || '')
+  )
+);
 
 const calculateCumulativeScore = (student, rules) => {
   const gpa = Number(student.gpa ?? student.cgpa ?? 0);
@@ -422,6 +447,7 @@ const RegistrarDashboard = () => {
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
   const [studentRecords, setStudentRecords] = useState([]);
+  const [studentRecordsRefresh, setStudentRecordsRefresh] = useState(0);
   const [streamFilter, setStreamFilter] = useState('all');
   const [deptSearch, setDeptSearch] = useState('');
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
@@ -432,7 +458,6 @@ const RegistrarDashboard = () => {
   const [placementCollege, setPlacementCollege] = useState('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const reportFileInputRef = useRef(null);
   const PAGE_SIZE = 10;
   const [placementBatch, setPlacementBatch] = useState(() => {
@@ -549,9 +574,6 @@ const RegistrarDashboard = () => {
   const selectedCollegeGroup = departmentStatusGroups.find((group) => group.collegeName === selectedCollegeStatus);
   const selectedCollegeDepartments = selectedCollegeGroup?.departments || emptyDepartments;
   const selectedDepartment = selectedCollegeDepartments.find((department) => String(department.id) === selectedDepartmentStatus);
-  const areAllSelectedCollegeDepartmentsActive = selectedCollegeDepartments.length > 0 && selectedCollegeDepartments.every((department) => (
-    String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
-  ));
   useEffect(() => {
     if (selectedCollegeDepartments.length === 0) {
       setSelectedDepartmentStatus('');
@@ -565,57 +587,15 @@ const RegistrarDashboard = () => {
     ));
   }, [selectedCollegeDepartments]);
 
-  const collegeHasAllDepartmentsActive = (collegeName) => {
-    const collegeDepartments = departments.filter((department) => (
-      String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
-    ));
-    return collegeDepartments.length > 0 && collegeDepartments.every((department) => (
-      String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
-    ));
-  };
+  const hasActiveSelectedCollegeDepartment = selectedCollegeDepartments.some((department) => (
+    String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
+  ));
+  const hasInactiveSelectedCollegeDepartment = selectedCollegeDepartments.some((department) => (
+    String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() !== 'active'
+  ));
 
-  const toggleEntireCollege = (collegeName) => {
-    const nextStatus = collegeHasAllDepartmentsActive(collegeName) ? 'inactive' : 'active';
-    setDepartmentStatusDrafts((current) => ({
-      ...current,
-      ...Object.fromEntries(departments
-        .filter((department) => (
-          String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
-        ))
-        .map((department) => [String(department.id), nextStatus])),
-    }));
-    setDepartmentStatusMessage('');
-    setDepartmentStatusError('');
-  };
-
-  const toggleDepartmentStatus = (department) => {
-    const departmentId = String(department.id);
-    const currentStatus = departmentStatusDrafts[departmentId] ?? department.status ?? 'active';
-    setDepartmentStatusDrafts((current) => ({
-      ...current,
-      [departmentId]: String(currentStatus).toLowerCase() === 'active' ? 'inactive' : 'active',
-    }));
-    setDepartmentStatusMessage('');
-    setDepartmentStatusError('');
-  };
-
-  const saveDepartmentStatuses = async () => {
-    const updates = selectedCollegeDepartments
-      .filter((department) => (
-        String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase()
-        !== String(department.status ?? 'active').toLowerCase()
-      ))
-      .map((department) => ({
-        id: department.id,
-        capacity: Number(department.capacity ?? 0),
-        status: departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active',
-      }));
-    if (!updates.length) {
-      setDepartmentStatusError('');
-      setDepartmentStatusMessage('There are no department status changes to save for this college.');
-      return;
-    }
-
+  const persistDepartmentStatuses = async (updates) => {
+    if (!updates.length) return;
     setDepartmentStatusSaving(true);
     setDepartmentStatusMessage('');
     setDepartmentStatusError('');
@@ -624,21 +604,53 @@ const RegistrarDashboard = () => {
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to save department statuses.');
       }
-      const statusesById = new Map(updates.map((department) => [String(department.id), department.status]));
-      setDepartments((current) => current.map((department) => ({
-        ...department,
-        status: statusesById.get(String(department.id)) ?? department.status,
-      })));
+      const refreshedDepartments = await fetchDepartments();
+      const refreshedById = new Map(refreshedDepartments.map((department) => [
+        String(department.id),
+        String(department.status || 'active').toLowerCase(),
+      ]));
+      if (updates.some((department) => refreshedById.get(String(department.id)) !== department.status)) {
+        throw new Error('Department status changes were not confirmed by the server. Refresh and try again.');
+      }
       setDepartmentStatusDrafts((current) => ({
         ...current,
         ...Object.fromEntries(updates.map((department) => [String(department.id), department.status])),
       }));
-      setDepartmentStatusMessage(`✓ ${updates.length} department status${updates.length === 1 ? '' : 'es'} updated for ${selectedCollegeStatus}.`);
+      const updatedDepartments = updates.length === selectedCollegeDepartments.length
+        ? `departments in ${selectedCollegeStatus}`
+        : updates.length === 1
+          ? 'department'
+          : 'departments';
+      setDepartmentStatusMessage(`✓ Status saved and confirmed for ${updatedDepartments}.`);
     } catch (error) {
       setDepartmentStatusError(error.response?.data?.message || error.message || 'Unable to save department statuses.');
     } finally {
       setDepartmentStatusSaving(false);
     }
+  };
+
+  const setEntireCollegeStatus = (collegeName, nextStatus) => {
+    const updates = selectedCollegeDepartments
+      .filter((department) => (
+        String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() !== nextStatus
+      ))
+      .map((department) => ({
+        id: department.id,
+        status: nextStatus,
+      }));
+    if (collegeName !== selectedCollegeStatus) return;
+    persistDepartmentStatuses(updates);
+  };
+
+  const setDepartmentStatus = (department, nextStatus) => {
+    const currentStatus = String(
+      departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active'
+    ).toLowerCase();
+    if (currentStatus === nextStatus) return;
+    persistDepartmentStatuses([{
+      id: department.id,
+      status: nextStatus,
+    }]);
   };
 
   useEffect(() => {
@@ -706,15 +718,6 @@ const RegistrarDashboard = () => {
     } finally {
       setAnnouncementsSaving(false);
     }
-  };
-
-  const needsAcademicScores = (student) => {
-    const gpa = student?.gpa ?? student?.cgpa ?? null;
-    const g12 = student?.g12 ?? student?.grade_12_result ?? null;
-    const coc = student?.coc ?? student?.coc_result ?? null;
-
-    const isMissing = (value) => value === null || value === undefined || value === '' || value === 'N/A' || value === 'NA';
-    return isMissing(gpa) || isMissing(g12) || isMissing(coc);
   };
 
   useEffect(() => {
@@ -1129,12 +1132,12 @@ const RegistrarDashboard = () => {
 
         const records = await Promise.all(
           studentUsers.map(async (user) => {
-            const email = user?.email || '';
             let profile = {};
 
-            if (email) {
+            const userId = user?.id ?? user?.student_id ?? null;
+            if (userId) {
               try {
-                const profileResponse = await api.get(`api/student/student_profile.php?email=${encodeURIComponent(email)}`);
+                const profileResponse = await api.get(`api/student/student_profile.php?student_id=${encodeURIComponent(userId)}`);
                 profile = profileResponse.data?.student || profileResponse.data?.data || {};
               } catch (error) {
                 profile = {};
@@ -1170,7 +1173,7 @@ const RegistrarDashboard = () => {
 
             // ===== FETCH STUDENT PREFERENCES =====
             let choices = [];
-            const studentId = user?.id ?? user?.student_id ?? profile?.student_id ?? profile?.id ?? null;
+            const studentId = userId ?? profile?.student_id ?? profile?.id ?? null;
             if (studentId) {
               try {
                 const preferencesResponse = await api.get(`api/student/student_preferences.php?student_id=${encodeURIComponent(studentId)}`);
@@ -1243,7 +1246,7 @@ const RegistrarDashboard = () => {
     if (registrar) {
       fetchStudentRecords();
     }
-  }, [placementRules, registrar]);
+  }, [placementRules, registrar, studentRecordsRefresh]);
 
   // Refresh overview counts from the database-backed dashboard API when Overview opens.
   useEffect(() => {
@@ -1332,7 +1335,7 @@ const RegistrarDashboard = () => {
       .toLowerCase();
 
     return searchableText.includes(searchTerm);
-  });
+  }).sort(compareStudentIds);
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
   const paginatedStudents = filteredStudents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -1548,6 +1551,12 @@ const RegistrarDashboard = () => {
               onClick={() => setTab('student-info')}
             >
               Student Information
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'data-import' ? 'active' : ''}`}
+              onClick={() => setTab('data-import')}
+            >
+              Import Students
             </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'choice-matrix' ? 'active' : ''}`}
@@ -2006,15 +2015,11 @@ const RegistrarDashboard = () => {
                     <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
                       🖨️ Print List
                     </button>
-                    {/* <button 
-                      className="btn btn-outline-success btn-sm" 
-                      onClick={() => setShowBulkUpload(true)}
-                      title="Upload multiple students from CSV or Excel"
-                    >
-                      📤 Bulk Upload
-                    </button> */}
                     <button className="btn btn-primary btn-sm register-new-student-btn" onClick={() => setTab('student-registration')}>
                       ➕ Register New Student
+                    </button>
+                    <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => setTab('data-import')}>
+                      Import CSV / Excel
                     </button>
                   </div>
                 </div>
@@ -2376,6 +2381,13 @@ const RegistrarDashboard = () => {
                 )}
               </div>
             </div>
+          ) : tab === 'data-import' ? (
+            <DataImport
+              onImported={() => {
+                setStudentRecordsRefresh((current) => current + 1);
+                setTab('student-info');
+              }}
+            />
           ) : tab === 'student-registration' ? (
             <StudentRegistration onBack={() => setTab('student-info')} onSuccess={() => setTab('student-info')} />
           ) : tab === 'capacity' ? (
@@ -2521,7 +2533,7 @@ const RegistrarDashboard = () => {
                     Department &amp; College Placement Status
                   </h4>
                   <p className="text-muted mb-0">
-                    Use the college button to activate or deactivate every department in the selected college, or choose one department to change it individually.
+                    Deactivate or activate a department or an entire college. Each change is saved and verified automatically.
                   </p>
                 </div>
 
@@ -2545,16 +2557,24 @@ const RegistrarDashboard = () => {
                                 <option key={group.collegeName} value={group.collegeName}>{group.collegeName}</option>
                               ))}
                             </select>
-                            <button
-                              type="button"
-                              className={`btn fw-semibold ${areAllSelectedCollegeDepartmentsActive ? 'btn-outline-danger' : 'btn-success'}`}
-                              onClick={() => toggleEntireCollege(selectedCollegeStatus)}
-                              disabled={departmentStatusSaving || selectedCollegeDepartments.length === 0}
-                            >
-                              {areAllSelectedCollegeDepartmentsActive
-                                ? '✕ Deactivate Entire College'
-                                : '✓ Activate Entire College'}
-                            </button>
+                            <div className="btn-group" role="group" aria-label="Set entire college placement status">
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger fw-semibold"
+                                onClick={() => setEntireCollegeStatus(selectedCollegeStatus, 'inactive')}
+                                disabled={departmentStatusSaving || !hasActiveSelectedCollegeDepartment}
+                              >
+                                Deactivate Entire College
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline-success fw-semibold"
+                                onClick={() => setEntireCollegeStatus(selectedCollegeStatus, 'active')}
+                                disabled={departmentStatusSaving || !hasInactiveSelectedCollegeDepartment}
+                              >
+                                Activate Entire College
+                              </button>
+                            </div>
                           </div>
                         </div>
 
@@ -2579,14 +2599,24 @@ const RegistrarDashboard = () => {
                                   <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
                                     {isActive ? 'Active' : 'Inactive'}
                                   </span>
-                                  <button
-                                    type="button"
-                                    className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-success'}`}
-                                    onClick={() => toggleDepartmentStatus(selectedDepartment)}
-                                    disabled={departmentStatusSaving}
-                                  >
-                                    {isActive ? '🔴 Set to Inactive' : '🟢 Set to Active'}
-                                  </button>
+                                  <div className="btn-group btn-group-sm" role="group" aria-label={`Set ${selectedDepartment.name} status`}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-danger"
+                                      onClick={() => setDepartmentStatus(selectedDepartment, 'inactive')}
+                                      disabled={departmentStatusSaving || !isActive}
+                                    >
+                                      Deactivate
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-success"
+                                      onClick={() => setDepartmentStatus(selectedDepartment, 'active')}
+                                      disabled={departmentStatusSaving || isActive}
+                                    >
+                                      Activate
+                                    </button>
+                                  </div>
                                 </>
                               );
                             })()}
@@ -2621,15 +2651,24 @@ const RegistrarDashboard = () => {
                                   </span>
                                 </td>
                                 <td>
-                                  <button
-                                    type="button"
-                                    className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
-                                    onClick={() => toggleDepartmentStatus(department)}
-                                    disabled={departmentStatusSaving}
-                                    aria-label={`${isActive ? 'Deactivate' : 'Activate'} ${department.name}`}
-                                  >
-                                    {isActive ? 'Set to Inactive' : 'Set to Active'}
-                                  </button>
+                                  <div className="btn-group btn-group-sm" role="group" aria-label={`Set ${department.name} status`}>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-danger"
+                                      onClick={() => setDepartmentStatus(department, 'inactive')}
+                                      disabled={departmentStatusSaving || !isActive}
+                                    >
+                                      Deactivate
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-success"
+                                      onClick={() => setDepartmentStatus(department, 'active')}
+                                      disabled={departmentStatusSaving || isActive}
+                                    >
+                                      Activate
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -2641,14 +2680,11 @@ const RegistrarDashboard = () => {
                 )}
 
                 <div className="mt-4">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={saveDepartmentStatuses}
-                    disabled={departmentStatusSaving || selectedCollegeDepartments.length === 0}
-                  >
-                    {departmentStatusSaving ? 'Saving statuses...' : `Save Status Changes for ${selectedCollegeStatus || 'Selected College'}`}
-                  </button>
+                  {departmentStatusSaving && (
+                    <div className="alert alert-info mt-2 py-2 px-3 small" role="status">
+                      Saving and confirming department status changes...
+                    </div>
+                  )}
                   {departmentStatusMessage && (
                     <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">
                       {departmentStatusMessage}
@@ -3687,101 +3723,6 @@ const RegistrarDashboard = () => {
         </main>
       </div>
 
-      <BulkUploadModal 
-        isOpen={showBulkUpload} 
-        onClose={() => setShowBulkUpload(false)}
-        onSuccess={() => {
-          setShowBulkUpload(false);
-          setStudentInfoLoading(true);
-          // Refresh student records
-          if (registrar) {
-            const fetchStudentRecords = async () => {
-              try {
-                        const usersResponse = await api.get('api/admin/users_api.php');
-                const usersPayload = Array.isArray(usersResponse.data)
-                  ? usersResponse.data
-                  : Array.isArray(usersResponse.data?.users)
-                    ? usersResponse.data.users
-                    : Array.isArray(usersResponse.data?.data)
-                      ? usersResponse.data.data
-                      : [];
-
-                const studentUsers = usersPayload.filter((user) => {
-                  const role = String(user?.role || '').trim().toLowerCase();
-                  return role === 'student';
-                });
-
-                const records = await Promise.all(
-                  studentUsers.map(async (user) => {
-                    const email = user?.email || '';
-                    let profile = {};
-
-                    if (email) {
-                      try {
-                        const profileResponse = await api.get(`api/student/student_profile.php?email=${encodeURIComponent(email)}`);
-                        profile = profileResponse.data?.student || profileResponse.data?.data || {};
-                      } catch (error) {
-                        profile = {};
-                      }
-                    }
-
-                    const cgpaValue = Number(profile.cgpa ?? profile.gpa ?? user.cgpa ?? 0);
-                    const numericCgpa = Number.isFinite(cgpaValue) ? cgpaValue : 0;
-
-                    const g12 = profile?.grade_12_result ?? profile?.g12 ?? profile?.g12_score ?? null;
-                    const coc = profile?.coc_result ?? profile?.coc ?? profile?.certificateOfCompetence ?? null;
-                    // Ensure COC is a number if it exists
-                    const cocValue = coc ? Number(coc) : null;
-                    const gender = (profile?.gender || user?.gender || '').toString();
-                    const hasDisability = parseYesNo(profile?.disability ?? profile?.has_disability ?? profile?.hasDisability ?? profile?.specialSupport);
-                    const minority = parseYesNo(profile?.minority ?? profile?.is_minority ?? profile?.isMinority);
-
-                    const cumulative = calculateCumulativeScore({
-                      gpa: numericCgpa,
-                      grade12: g12,
-                      coc: cocValue,
-                      gender,
-                      disability: hasDisability,
-                      minority,
-                    }, placementRules);
-
-                    return {
-                      id: user?.id ?? user?.student_id ?? profile?.studentId ?? profile?.id ?? null,
-                      first_name: user?.first_name || profile?.first_name || '',
-                      last_name: user?.last_name || profile?.last_name || '',
-                      username: user?.username || profile?.username || '',
-                      name: profile?.fullname || profile?.full_name || profile?.name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || '',
-                      email: profile?.email || user?.email || '',
-                      phone: profile?.phone || profile?.phoneNumber || profile?.contact || profile?.mobile || '',
-                      cgpa: numericCgpa.toFixed(2),
-                      g12: g12 ?? 'N/A',
-                      coc: cocValue,
-                      gender,
-                      hasDisability: hasDisability,
-                      minority: minority,
-                      cumulativeScore: cumulative,
-                      department: profile?.placement_result_department || profile?.department || profile?.program || profile?.stream || profile?.major || user?.department || '',
-                      status: profile?.placement_result_department
-                        ? (profile?.placement_result_status === 'Approved' ? 'Approved' : 'Placed')
-                        : (profile?.placementStatus || profile?.status || profile?.placement_status || 'Pending'),
-                      placementResult: profile?.placement_result_department || profile?.placement_result || profile?.placementResult || profile?.placement || profile?.result || null,
-                    };
-                  })
-                );
-
-                setStudentRecords(records.filter((record) => record.id !== null && record.name.trim()));
-              } catch (error) {
-                console.error('Failed to fetch student records:', error);
-              } finally {
-                setStudentInfoLoading(false);
-              }
-            };
-
-            fetchStudentRecords();
-          }
-        }}
-        departments={departments} 
-      />
     </div>
   );
 };

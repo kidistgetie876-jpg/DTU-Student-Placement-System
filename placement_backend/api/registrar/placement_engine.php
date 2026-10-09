@@ -78,6 +78,17 @@ function normalizeDepartmentName($value): string
     return strtolower(trim((string) $value));
 }
 
+class PlacementRequestException extends Exception
+{
+    public int $statusCode;
+
+    public function __construct(string $message, int $statusCode)
+    {
+        parent::__construct($message);
+        $this->statusCode = $statusCode;
+    }
+}
+
 function normalizeYesNo($value): bool
 {
     if (is_bool($value)) return $value;
@@ -135,7 +146,7 @@ function computeMeritScore(array $student, array $rules): float
 try {
     $placementLock = $db->query("SELECT GET_LOCK('placement_engine', 10) AS lock_acquired");
     if (!$placementLock || (int) $placementLock->fetch_assoc()['lock_acquired'] !== 1) {
-        throw new Exception('Another placement run is already in progress');
+        throw new PlacementRequestException('Another placement run is already in progress', 409);
     }
 
     $db->begin_transaction();
@@ -155,12 +166,13 @@ try {
             || normalizeDepartmentName($department['college_name'] ?? '') === normalizeDepartmentName($selectedCollege);
     }));
     if (empty($scopedDepartments)) {
-        throw new Exception('No active departments found for the selected college');
+        throw new PlacementRequestException('No active departments found for the selected college', 422);
     }
-    foreach ($scopedDepartments as $department) {
-        if ((int) ($department['capacity'] ?? 0) <= 0) {
-            throw new Exception('Every active department in the selected college must have capacity greater than zero');
-        }
+    $availableCapacity = array_sum(array_map(function ($department) {
+        return max(0, (int) ($department['capacity'] ?? 0));
+    }, $scopedDepartments));
+    if ($availableCapacity <= 0) {
+        throw new PlacementRequestException('No placement capacity is available in the selected college', 409);
     }
 
     $departmentMap = [];
@@ -216,7 +228,7 @@ try {
     }
 
     if (empty($studentEntries)) {
-        throw new Exception('No eligible students found for placement');
+        throw new PlacementRequestException('No eligible students found for placement', 422);
     }
 
     $allStudents = [];
@@ -299,7 +311,7 @@ try {
     }
 
     if (empty($allStudents)) {
-        throw new Exception('No eligible students found for placement');
+        throw new PlacementRequestException('No eligible students found for placement', 422);
     }
 
     usort($allStudents, function ($a, $b) {
@@ -475,7 +487,7 @@ try {
                 $insertSql->close();
 
                 if ($insertedRows !== 1) {
-                    throw new Exception('Student already has a placement result');
+                    throw new PlacementRequestException('Student already has a placement result', 409);
                 }
 
                 $markSql = $db->prepare('UPDATE student_data SET status = "Placed", department = ? WHERE user_id = ?');
@@ -533,7 +545,7 @@ try {
         $db->rollback();
     }
 
-    http_response_code(500);
+    http_response_code($e instanceof PlacementRequestException ? $e->statusCode : 500);
     echo json_encode([
         'success' => false,
         'message' => 'Placement error: ' . $e->getMessage(),

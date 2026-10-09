@@ -54,32 +54,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // 4. የዳታቤዝ መረጃዎች
-// Render / production uses environment variables. Local XAMPP falls back to localhost defaults.
-if (!empty(getenv('DATABASE_URL'))) {
-    $databaseUrl = parse_url(getenv('DATABASE_URL'));
-    if (is_array($databaseUrl) && !empty($databaseUrl['host'])) {
-        $db_host = $databaseUrl['host'];
-        $db_user = $databaseUrl['user'] ?? 'root';
-        $db_pass = $databaseUrl['pass'] ?? '';
-        $db_name = ltrim($databaseUrl['path'] ?? '/placement_db', '/');
-        $db_port = (int) ($databaseUrl['port'] ?? 3306);
-    }
-}
+// Localhost requests use the XAMPP database; deployed requests use environment variables.
+$requestHost = $_SERVER['HTTP_HOST'] ?? '';
+$isLocalRequest = preg_match('/^(localhost|127\.0\.0\.1)(:\d+)?$/i', $requestHost) === 1;
 
-if (!isset($db_host)) {
-    $db_host = getenv('DB_HOST') ?: getenv('MYSQL_HOST') ?: 'localhost';
-}
-if (!isset($db_user)) {
-    $db_user = getenv('DB_USER') ?: getenv('MYSQL_USER') ?: 'root';
-}
-if (!isset($db_pass)) {
-    $db_pass = getenv('DB_PASS') ?: getenv('MYSQL_PASSWORD') ?: getenv('MYSQL_PASS') ?: '';
-}
-if (!isset($db_name)) {
-    $db_name = getenv('DB_NAME') ?: getenv('MYSQL_DATABASE') ?: 'placement_db';
-}
-if (!isset($db_port)) {
-    $db_port = (int) (getenv('DB_PORT') ?: getenv('MYSQL_PORT') ?: 3306);
+if ($isLocalRequest) {
+    $db_host = 'localhost';
+    $db_user = 'root';
+    $db_pass = '';
+    $db_name = 'placement_db';
+    $db_port = 3306;
+} else {
+    if (!empty(getenv('DATABASE_URL'))) {
+        $databaseUrl = parse_url(getenv('DATABASE_URL'));
+        if (is_array($databaseUrl) && !empty($databaseUrl['host'])) {
+            $db_host = $databaseUrl['host'];
+            $db_user = $databaseUrl['user'] ?? 'root';
+            $db_pass = $databaseUrl['pass'] ?? '';
+            $db_name = ltrim($databaseUrl['path'] ?? '/placement_db', '/');
+            $db_port = (int) ($databaseUrl['port'] ?? 3306);
+        }
+    }
+
+    if (!isset($db_host)) {
+        $db_host = getenv('DB_HOST') ?: getenv('MYSQL_HOST') ?: 'localhost';
+    }
+    if (!isset($db_user)) {
+        $db_user = getenv('DB_USER') ?: getenv('MYSQL_USER') ?: 'root';
+    }
+    if (!isset($db_pass)) {
+        $db_pass = getenv('DB_PASS') ?: getenv('MYSQL_PASSWORD') ?: getenv('MYSQL_PASS') ?: '';
+    }
+    if (!isset($db_name)) {
+        $db_name = getenv('DB_NAME') ?: getenv('MYSQL_DATABASE') ?: 'placement_db';
+    }
+    if (!isset($db_port)) {
+        $db_port = (int) (getenv('DB_PORT') ?: getenv('MYSQL_PORT') ?: 3306);
+    }
 }
 
 // 5. ከ MySQL ጋር ግንኙነት መፍጠር

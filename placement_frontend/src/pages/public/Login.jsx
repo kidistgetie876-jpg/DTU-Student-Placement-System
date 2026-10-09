@@ -40,7 +40,7 @@ const Login = () => {
       return 'Please enter the correct email or username.';
     }
     if (responseCode === 'INVALID_IDENTIFIER' || responseCode === 'USER_NOT_FOUND') {
-      return 'Please enter the correct email orusername.';
+      return 'Please enter the correct email or username.';
     }
     if (normalizedMessage.includes('email') || normalizedMessage.includes('username') || normalizedMessage.includes('identifier')) {
       return 'Please enter the correct email or username.';
@@ -220,7 +220,7 @@ const Login = () => {
                       </button>
                     </div>
                     <div className="form-text small text-muted" style={{ fontSize: '11px' }}>
-                      Tip: New students can use their Student ID as default password.
+                      Newly imported accounts use 123456 only when first created; existing account passwords stay unchanged after re-import. Registered students use the password they chose.
                     </div>
                   </div>
 

@@ -34,6 +34,7 @@ describe('Login', () => {
     );
 
     expect(localStorage.getItem('darkMode')).toBe('true');
+    expect(screen.getByText(/existing account passwords stay unchanged after re-import/i)).toBeInTheDocument();
   });
 
   test('submits login and stores the user payload for a dynamic role', async () => {
