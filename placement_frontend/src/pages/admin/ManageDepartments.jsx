@@ -168,7 +168,6 @@ const ManageDepartments = () => {
         stream: getDepartmentStream(department),
       })));
 
-      const resUsers = await api.get('api/admin/users_api.php');
     } catch (err) {
       setError('Backend connection error!');
     } finally {

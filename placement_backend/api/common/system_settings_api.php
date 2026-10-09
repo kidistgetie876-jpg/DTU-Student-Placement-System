@@ -1,6 +1,10 @@
 <?php
+<<<<<<< HEAD:placement_backend/api/common/system_settings_api.php
 require_once __DIR__ . '/../../config/db_config.php';
 setCorsHeaders();
+=======
+header('Access-Control-Allow-Origin: http://localhost:3000');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/common/system_settings_api.php
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Access-Control-Allow-Credentials: true');
@@ -76,11 +80,19 @@ function defaultSystemSettings(): array
         'placement' => [
             'submissionStart' => '2026-10-01',
             'submissionDeadline' => '2026-10-11',
+<<<<<<< HEAD:placement_backend/api/common/system_settings_api.php
             'processingStart' => '2026-10-12',
             'processingEnd' => '2026-10-20',
             'resultsDate' => '2026-10-21',
             'appealStart' => '2026-10-22',
             'appealEnd' => '2026-10-25',
+=======
+            'processingStart' => '2026-08-16',
+            'processingEnd' => '2026-08-24',
+            'resultsDate' => '2026-08-27',
+            'appealStart' => '2026-08-27',
+            'appealEnd' => '2026-08-30',
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/common/system_settings_api.php
             'gpa_weight' => 40,
             'grade_12_weight' => 20,
             'coc_weight' => 30,
@@ -223,6 +235,7 @@ try {
 
     $incoming = isset($input['settings']) && is_array($input['settings']) ? $input['settings'] : $input;
 
+<<<<<<< HEAD:placement_backend/api/common/system_settings_api.php
     if (isset($incoming['placement']) && is_array($incoming['placement'])) {
         if (session_status() !== PHP_SESSION_ACTIVE) {
             session_start();
@@ -282,6 +295,8 @@ try {
         }
     }
 
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/common/system_settings_api.php
     if (array_key_exists('maintenance', $incoming)) {
         if (session_status() !== PHP_SESSION_ACTIVE) {
             session_start();

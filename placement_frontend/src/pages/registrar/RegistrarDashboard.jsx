@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import { placementDateFields, validatePlacementSchedule } from '../../services/placementSchedule.js';
+=======
+import { useNavigate } from 'react-router-dom';
+import api from '../../services/api.js';
+import { notifySystemSettingsUpdated } from '../../services/systemSettingsEvents.js';
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
 import StudentRegistration from './StudentRegistration';
 import DataImport from '../admin/DataImport.jsx';
 import '../admin/AdminDashboard.css';
@@ -22,6 +28,7 @@ export const parseYesNo = (value) => {
   return ['yes', 'y', 'true', '1', 'on'].includes(normalized);
 };
 
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
 export const needsAcademicScores = (student) => {
   const gpa = student?.gpa ?? student?.cgpa ?? null;
   const g12 = student?.g12 ?? student?.grade_12_result ?? null;
@@ -47,6 +54,8 @@ export const compareStudentIds = (leftStudent, rightStudent) => (
   )
 );
 
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
 const calculateCumulativeScore = (student, rules) => {
   const gpa = Number(student.gpa ?? student.cgpa ?? 0);
   const grade12 = Number(student.grade12 ?? student.grade_12_result ?? 0);
@@ -104,6 +113,7 @@ const emptyAnnouncementDraft = {
 };
 const defaultPlacementDates = {
   submissionStart: '2026-10-01',
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
   submissionDeadline: '2026-10-11',
   processingStart: '2026-10-12',
   processingEnd: '2026-10-20',
@@ -111,6 +121,24 @@ const defaultPlacementDates = {
   appealStart: '2026-10-22',
   appealEnd: '2026-10-25',
 };
+=======
+  submissionDeadline: '2026-10-04',
+  processingStart: '2026-10-12',
+  processingEnd: '2026-10-14',
+  resultsDate: '2026-10-15',
+  appealStart: '2026-10-16',
+  appealEnd: '2026-10-17',
+};
+const placementDateFields = [
+  ['submissionStart', 'Preference Submission Start Date'],
+  ['submissionDeadline', 'Preference Submission Deadline'],
+  ['processingStart', 'Placement Processing Start Date'],
+  ['processingEnd', 'Placement Processing End Date'],
+  ['resultsDate', 'Results Announcement Date'],
+  ['appealStart', 'Appeal Window Start Date'],
+  ['appealEnd', 'Appeal Window End Date'],
+];
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
 
 const downloadCsv = (filename, headers, rows) => {
   const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
@@ -328,6 +356,16 @@ const getDepartmentStream = (department) => {
   return 'Natural Science';
 };
 
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
+=======
+const getPlacementStreamGroup = (value) => {
+  const stream = String(value || '').toLowerCase();
+  if (stream.includes('natural')) return 'natural';
+  if (/social|human|business|economics|law|education/.test(stream)) return 'social';
+  return stream;
+};
+
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
 const normalizeDepartmentPayload = (payload) => {
   const list = Array.isArray(payload)
     ? payload
@@ -341,6 +379,11 @@ const normalizeDepartmentPayload = (payload) => {
     id: dept.id || dept.department_id || dept.department || dept.name?.toLowerCase().replace(/\s+/g, '-'),
     name: dept.name || dept.department || '',
     capacity: Number(dept.capacity ?? dept.seats ?? dept.quota ?? 0),
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
+=======
+    assigned: Number(dept.assigned ?? dept.assigned_count ?? dept.placed_count ?? 0),
+    availableSeats: dept.availableSeats ?? dept.available_seats ?? null,
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
     college: dept.college || dept.college_name || dept.collegeName || dept.program_college || '',
     status: dept.status || 'active',
     stream: dept.stream || dept.academic_stream || dept.category || getDepartmentStream({
@@ -388,7 +431,11 @@ const RegistrarDashboard = () => {
     }
   });
   const [rulesSaved, setRulesSaved] = useState(false);
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
   const [placementDates, setPlacementDates] = useState(defaultPlacementDates);
+=======
+  const [deadlineForm, setDeadlineForm] = useState(defaultPlacementDates);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
   const [deadlineLoading, setDeadlineLoading] = useState(false);
   const [deadlineSaving, setDeadlineSaving] = useState(false);
   const [deadlineError, setDeadlineError] = useState('');
@@ -457,6 +504,10 @@ const RegistrarDashboard = () => {
   const [selectedStream, setSelectedStream] = useState('all');
   const [placementCollege, setPlacementCollege] = useState('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [manualPlacementStudentId, setManualPlacementStudentId] = useState(null);
+  const [manualPlacementDepartmentId, setManualPlacementDepartmentId] = useState('');
+  const [manualPlacementSaving, setManualPlacementSaving] = useState(false);
+  const [manualPlacementError, setManualPlacementError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const reportFileInputRef = useRef(null);
   const PAGE_SIZE = 10;
@@ -482,6 +533,254 @@ const RegistrarDashboard = () => {
       setAnnouncementsLoading(false);
     }
   }, []);
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
+=======
+
+  const fetchDepartments = useCallback(async () => {
+    const response = await api.get('api/common/departments_api.php');
+    if (response.data?.success === false) {
+      throw new Error(response.data?.message || 'Unable to load departments.');
+    }
+    const normalized = normalizeDepartmentPayload(response.data ?? {});
+    setDepartments(normalized);
+    setCapacityDrafts(Object.fromEntries(normalized.map((department) => [String(department.id), department.capacity])));
+    setDepartmentStatusDrafts(Object.fromEntries(normalized.map((department) => [String(department.id), String(department.status || 'active').toLowerCase()])));
+    return normalized;
+  }, []);
+
+  const saveCapacityUpdates = async (updates) => {
+    if (!updates.length) {
+      setCapacityError('No department capacities are available to approve.');
+      setCapacityMessage('');
+      return;
+    }
+    if (updates.some((department) => String(department.capacity).trim() === '' || !Number.isInteger(Number(department.capacity)) || Number(department.capacity) < 0)) {
+      setCapacityError('Capacities must be whole numbers greater than or equal to zero.');
+      setCapacityMessage('');
+      return;
+    }
+
+    setCapacitySaving(true);
+    setCapacityError('');
+    setCapacityMessage('');
+    try {
+      const response = await api.post('api/common/departments_update.php', {
+        departments: updates,
+        approve_capacities: true,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to save department capacities.');
+      }
+      const refreshedDepartments = await fetchDepartments();
+      const refreshedById = new Map(refreshedDepartments.map((department) => [String(department.id), Number(department.capacity)]));
+      const hasUnpersistedUpdates = updates.some((department) => refreshedById.get(String(department.id)) !== Number(department.capacity));
+      if (hasUnpersistedUpdates) {
+        throw new Error('Some capacities were not updated. Refresh the page and try again.');
+      }
+      setCapacityMessage('Department capacities successfully approved and updated.');
+    } catch (error) {
+      setCapacityError(error.response?.data?.message || error.message || 'Unable to save department capacities.');
+    } finally {
+      setCapacitySaving(false);
+    }
+  };
+
+  const approveAllDepartmentCapacities = () => {
+    const updates = departments.map((department) => ({
+      id: department.id,
+      capacity: capacityDrafts[String(department.id)] ?? department.capacity,
+    }));
+    saveCapacityUpdates(updates);
+  };
+
+  const departmentStatusGroups = useMemo(() => {
+    const groups = departments.reduce((currentGroups, department) => {
+      const collegeName = String(department.college || department.college_name || department.collegeName || 'General').trim() || 'General';
+      if (!currentGroups[collegeName]) currentGroups[collegeName] = [];
+      currentGroups[collegeName].push(department);
+      return currentGroups;
+    }, {});
+
+    return Object.entries(groups)
+      .map(([collegeName, collegeDepartments]) => ({
+        collegeName,
+        departments: collegeDepartments,
+        streamLabel: [...new Set(collegeDepartments.map((department) => getDepartmentStream(department)).filter(Boolean))].join(' / ') || 'Unspecified',
+      }))
+      .sort((left, right) => left.collegeName.localeCompare(right.collegeName));
+  }, [departments]);
+
+  useEffect(() => {
+    if (departmentStatusGroups.length === 0) {
+      setSelectedCollegeStatus('');
+      setSelectedDepartmentStatus('');
+      return;
+    }
+
+    setSelectedCollegeStatus((current) => (
+      departmentStatusGroups.some((group) => group.collegeName === current)
+        ? current
+        : departmentStatusGroups[0].collegeName
+    ));
+  }, [departmentStatusGroups]);
+
+  const selectedCollegeGroup = departmentStatusGroups.find((group) => group.collegeName === selectedCollegeStatus);
+  const selectedCollegeDepartments = selectedCollegeGroup?.departments || emptyDepartments;
+  const selectedDepartment = selectedCollegeDepartments.find((department) => String(department.id) === selectedDepartmentStatus);
+
+  useEffect(() => {
+    if (selectedCollegeDepartments.length === 0) {
+      setSelectedDepartmentStatus('');
+      return;
+    }
+
+    setSelectedDepartmentStatus((current) => (
+      selectedCollegeDepartments.some((department) => String(department.id) === current)
+        ? current
+        : String(selectedCollegeDepartments[0].id)
+    ));
+  }, [selectedCollegeDepartments]);
+
+  const collegeHasActiveDepartment = (collegeName) => {
+    const collegeDepartments = departments.filter((department) => (
+      String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
+    ));
+    return collegeDepartments.some((department) => (
+      String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
+    ));
+  };
+
+  const toggleEntireCollege = (collegeName) => {
+    const nextStatus = collegeHasActiveDepartment(collegeName) ? 'inactive' : 'active';
+    setDepartmentStatusDrafts((current) => ({
+      ...current,
+      ...Object.fromEntries(departments
+        .filter((department) => (
+          String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
+        ))
+        .map((department) => [String(department.id), nextStatus])),
+    }));
+    setDepartmentStatusMessage('');
+    setDepartmentStatusError('');
+  };
+
+  const toggleDepartmentStatus = (department) => {
+    const departmentId = String(department.id);
+    const currentStatus = departmentStatusDrafts[departmentId] ?? department.status ?? 'active';
+    setDepartmentStatusDrafts((current) => ({
+      ...current,
+      [departmentId]: String(currentStatus).toLowerCase() === 'active' ? 'inactive' : 'active',
+    }));
+    setDepartmentStatusMessage('');
+    setDepartmentStatusError('');
+  };
+
+  const saveDepartmentStatuses = async () => {
+    const updates = departments.map((department) => ({
+      id: department.id,
+      capacity: Number(department.capacity ?? 0),
+      status: departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active',
+    }));
+    if (!updates.length) {
+      setDepartmentStatusError('No department statuses are available to save.');
+      setDepartmentStatusMessage('');
+      return;
+    }
+
+    setDepartmentStatusSaving(true);
+    setDepartmentStatusMessage('');
+    setDepartmentStatusError('');
+    try {
+      const response = await api.post('api/common/departments_update.php', { departments: updates });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to save department statuses.');
+      }
+      const statusesById = new Map(updates.map((department) => [String(department.id), department.status]));
+      setDepartments((current) => current.map((department) => ({
+        ...department,
+        status: statusesById.get(String(department.id)) ?? department.status,
+      })));
+      setDepartmentStatusDrafts(Object.fromEntries(updates.map((department) => [String(department.id), department.status])));
+      setDepartmentStatusMessage('✓ Department placement statuses updated successfully!');
+    } catch (error) {
+      setDepartmentStatusError(error.response?.data?.message || error.message || 'Unable to save department statuses.');
+    } finally {
+      setDepartmentStatusSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!registrar || tab !== 'announcements') return;
+    fetchAnnouncements();
+  }, [registrar, tab, fetchAnnouncements]);
+
+  const resetAnnouncementDraft = () => {
+    setAnnouncementDraft(emptyAnnouncementDraft);
+    setEditingAnnouncementId(null);
+  };
+
+  const saveAnnouncement = async (event) => {
+    event.preventDefault();
+    setAnnouncementsSaving(true);
+    setAnnouncementsError('');
+    setAnnouncementsMessage('');
+    const payload = {
+      ...announcementDraft,
+      publisher: registrarAnnouncementPublisher,
+    };
+
+    try {
+      const response = editingAnnouncementId
+        ? await api.put(`api/common/announcements_api.php?id=${encodeURIComponent(editingAnnouncementId)}`, payload)
+        : await api.post('api/common/announcements_api.php', payload);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to save announcement.');
+      }
+      await fetchAnnouncements();
+      setAnnouncementsMessage(editingAnnouncementId ? 'Announcement updated.' : 'Announcement published.');
+      resetAnnouncementDraft();
+    } catch (error) {
+      setAnnouncementsError(error.response?.data?.message || error.message || 'Unable to save announcement.');
+    } finally {
+      setAnnouncementsSaving(false);
+    }
+  };
+
+  const editAnnouncement = (announcement) => {
+    setAnnouncementDraft({
+      title: announcement.title || '',
+      category: announcement.category || 'Notice',
+      priority: announcement.priority || 'Normal',
+      deadline: announcement.deadline || '',
+      content: announcement.content || announcement.message || '',
+    });
+    setEditingAnnouncementId(announcement.id);
+    setAnnouncementsMessage('');
+    setAnnouncementsError('');
+  };
+
+  const deleteAnnouncement = async (id) => {
+    if (!window.confirm('Delete this announcement?')) return;
+    setAnnouncementsSaving(true);
+    setAnnouncementsError('');
+    setAnnouncementsMessage('');
+    try {
+      await api.delete(`api/common/announcements_api.php?id=${encodeURIComponent(id)}`);
+      await fetchAnnouncements();
+      if (editingAnnouncementId === id) resetAnnouncementDraft();
+      setAnnouncementsMessage('Announcement deleted.');
+    } catch (error) {
+      setAnnouncementsError(error.response?.data?.message || 'Unable to delete announcement.');
+    } finally {
+      setAnnouncementsSaving(false);
+    }
+  };
+
+  const needsAcademicScores = (student) => {
+    const gpa = student?.gpa ?? student?.cgpa ?? null;
+    const g12 = student?.g12 ?? student?.grade_12_result ?? null;
+    const coc = student?.coc ?? student?.coc_result ?? null;
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
 
   const fetchDepartments = useCallback(async () => {
     const response = await api.get('api/common/departments_api.php');
@@ -879,10 +1178,17 @@ const RegistrarDashboard = () => {
       setDeadlineLoading(true);
       setDeadlineError('');
       try {
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
         const response = await api.get('api/common/system_settings_api.php');
         if (!isCurrent) return;
         const savedDates = response.data?.settings?.placement || response.data?.placement || {};
         setPlacementDates((current) => ({ ...current, ...savedDates }));
+=======
+        const res = await api.get('api/common/system_settings_api.php');
+        if (!isCurrent) return;
+        const dates = res.data?.settings?.placement || res.data?.placement || {};
+        setDeadlineForm((current) => ({ ...current, ...dates }));
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
       } catch (error) {
         if (isCurrent) {
           setDeadlineError(error.response?.data?.message || 'Unable to load the placement schedule.');
@@ -900,6 +1206,7 @@ const RegistrarDashboard = () => {
 
   const savePlacementDates = async (event) => {
     event.preventDefault();
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
     const scheduleError = validatePlacementSchedule(placementDates);
     if (scheduleError) {
       setDeadlineError(scheduleError);
@@ -907,6 +1214,8 @@ const RegistrarDashboard = () => {
       return;
     }
 
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
     setDeadlineSaving(true);
     setDeadlineError('');
     setDeadlineSuccess('');
@@ -914,6 +1223,7 @@ const RegistrarDashboard = () => {
       const payload = {
         settings: {
           placement: {
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
             submissionStart: placementDates.submissionStart,
             submissionDeadline: placementDates.submissionDeadline,
             processingStart: placementDates.processingStart,
@@ -921,6 +1231,15 @@ const RegistrarDashboard = () => {
             resultsDate: placementDates.resultsDate,
             appealStart: placementDates.appealStart,
             appealEnd: placementDates.appealEnd,
+=======
+            submissionStart: deadlineForm.submissionStart,
+            submissionDeadline: deadlineForm.submissionDeadline,
+            processingStart: deadlineForm.processingStart,
+            processingEnd: deadlineForm.processingEnd,
+            resultsDate: deadlineForm.resultsDate,
+            appealStart: deadlineForm.appealStart,
+            appealEnd: deadlineForm.appealEnd,
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
           },
         },
       };
@@ -929,10 +1248,18 @@ const RegistrarDashboard = () => {
         throw new Error(response.data?.message || 'Unable to save the placement schedule.');
       }
 
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
       const savedDates = response.data?.settings?.placement || placementDates;
       setPlacementDates((current) => ({ ...current, ...savedDates }));
       setDeadlineSuccess('✓ Placement schedule and deadlines updated successfully!');
       window.dispatchEvent(new Event('system-settings-updated'));
+=======
+      const savedDates = response.data?.settings?.placement || deadlineForm;
+      setDeadlineForm((current) => ({ ...current, ...savedDates }));
+      setDeadlineSuccess('✓ Placement schedule and deadlines updated successfully!');
+      notifySystemSettingsUpdated();
+      window.setTimeout(() => setTab('overview'), 1500);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
     } catch (error) {
       setDeadlineError(error.response?.data?.message || error.message || 'Unable to save the placement schedule.');
     } finally {
@@ -1469,6 +1796,77 @@ const RegistrarDashboard = () => {
 
     return true;
   });
+
+  const getAvailableDepartmentSeats = (department) => {
+    const reportedAvailable = department.availableSeats;
+    if (reportedAvailable !== null && reportedAvailable !== undefined && Number.isFinite(Number(reportedAvailable))) {
+      return Math.max(0, Number(reportedAvailable));
+    }
+
+    const departmentName = String(department.name || '').trim().toLowerCase();
+    const placedStudentIds = new Set([
+      ...studentRecords
+        .filter((student) => hasPlacementResult(student) && String(student.department || '').trim().toLowerCase() === departmentName)
+        .map((student) => String(student.id)),
+      ...(latestPlacementRun?.placements || [])
+        .filter((placement) => String(placement.status || '').toLowerCase() === 'placed'
+          && String(placement.department || '').trim().toLowerCase() === departmentName)
+        .map((placement) => String(placement.studentId)),
+    ]);
+    const assignedCount = Math.max(Number(department.assigned) || 0, placedStudentIds.size);
+    return Math.max(0, Number(department.capacity || 0) - assignedCount);
+  };
+
+  const handleManualPlacement = async (placement) => {
+    const department = departments.find((item) => String(item.id) === String(manualPlacementDepartmentId));
+    if (!department) {
+      setManualPlacementError('Select an available department before confirming.');
+      return;
+    }
+
+    setManualPlacementSaving(true);
+    setManualPlacementError('');
+    try {
+      const response = await api.post('api/registrar/manual_placement.php', {
+        student_id: placement.studentId,
+        dept_id: department.id,
+        reason: 'Manual Registrar Placement',
+      });
+      if (response.data?.success === false) {
+        throw new Error(response.data?.message || 'Unable to complete manual placement.');
+      }
+
+      const assignedPlacement = {
+        ...placement,
+        department: department.name,
+        college: department.college,
+        stream: department.stream || getDepartmentStream(department),
+        status: 'placed',
+        reason: 'Manual Registrar Placement',
+      };
+      setPendingResults((current) => current.map((run) => run.id === latestPlacementRun?.id
+        ? { ...run, placements: run.placements.map((item) => String(item.studentId) === String(placement.studentId) ? assignedPlacement : item) }
+        : run));
+      setStudentRecords((current) => current.map((student) => String(student.id) === String(placement.studentId)
+        ? { ...student, department: department.name, status: 'Placed', placementResult: department.name }
+        : student));
+      setDepartments((current) => current.map((item) => String(item.id) === String(department.id)
+        ? {
+          ...item,
+          assigned: (Number(item.assigned) || 0) + 1,
+          availableSeats: item.availableSeats === null || item.availableSeats === undefined
+            ? item.availableSeats
+            : Math.max(0, Number(item.availableSeats) - 1),
+        }
+        : item));
+      setManualPlacementStudentId(null);
+      setManualPlacementDepartmentId('');
+    } catch (error) {
+      setManualPlacementError(error.response?.data?.message || error.message || 'Unable to complete manual placement.');
+    } finally {
+      setManualPlacementSaving(false);
+    }
+  };
 
   const savePlacementRules = async (event) => {
     event.preventDefault();
@@ -2015,6 +2413,16 @@ const RegistrarDashboard = () => {
                     <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
                       🖨️ Print List
                     </button>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
+=======
+                    {/* <button 
+                      className="btn btn-outline-success btn-sm" 
+                      onClick={() => setShowBulkUpload(true)}
+                      title="Upload multiple students from CSV or Excel"
+                    >
+                      📤 Bulk Upload
+                    </button> */}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                     <button className="btn btn-primary btn-sm register-new-student-btn" onClick={() => setTab('student-registration')}>
                       ➕ Register New Student
                     </button>
@@ -2533,7 +2941,11 @@ const RegistrarDashboard = () => {
                     Department &amp; College Placement Status
                   </h4>
                   <p className="text-muted mb-0">
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                     Deactivate or activate a department or an entire college. Each change is saved and verified automatically.
+=======
+                    Control which colleges and departments are open (Active) for Year 1 placement, or closed (Inactive) for Year 2.
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                   </p>
                 </div>
 
@@ -2545,7 +2957,11 @@ const RegistrarDashboard = () => {
                       <div className="row g-3 align-items-end">
                         <div className="col-12">
                           <label className="form-label fw-semibold" htmlFor="status-college-select">Select College</label>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                           <div className="d-grid gap-2">
+=======
+                          <div className="d-flex gap-2 flex-wrap">
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                             <select
                               id="status-college-select"
                               className="form-select flex-grow-1"
@@ -2557,6 +2973,7 @@ const RegistrarDashboard = () => {
                                 <option key={group.collegeName} value={group.collegeName}>{group.collegeName}</option>
                               ))}
                             </select>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                             <div className="btn-group" role="group" aria-label="Set entire college placement status">
                               <button
                                 type="button"
@@ -2575,6 +2992,18 @@ const RegistrarDashboard = () => {
                                 Activate Entire College
                               </button>
                             </div>
+=======
+                            <button
+                              type="button"
+                              className={`btn fw-semibold ${collegeHasActiveDepartment(selectedCollegeStatus) ? 'btn-outline-danger' : 'btn-success'}`}
+                              onClick={() => toggleEntireCollege(selectedCollegeStatus)}
+                              disabled={departmentStatusSaving || !selectedCollegeStatus}
+                            >
+                              {collegeHasActiveDepartment(selectedCollegeStatus)
+                                ? '✕ Deactivate Entire College'
+                                : '✓ Activate Entire College'}
+                            </button>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                           </div>
                         </div>
 
@@ -2599,6 +3028,7 @@ const RegistrarDashboard = () => {
                                   <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
                                     {isActive ? 'Active' : 'Inactive'}
                                   </span>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                                   <div className="btn-group btn-group-sm" role="group" aria-label={`Set ${selectedDepartment.name} status`}>
                                     <button
                                       type="button"
@@ -2617,6 +3047,16 @@ const RegistrarDashboard = () => {
                                       Activate
                                     </button>
                                   </div>
+=======
+                                  <button
+                                    type="button"
+                                    className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-success'}`}
+                                    onClick={() => toggleDepartmentStatus(selectedDepartment)}
+                                    disabled={departmentStatusSaving}
+                                  >
+                                    {isActive ? '🔴 Set to Inactive' : '🟢 Set to Active'}
+                                  </button>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                                 </>
                               );
                             })()}
@@ -2651,6 +3091,7 @@ const RegistrarDashboard = () => {
                                   </span>
                                 </td>
                                 <td>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                                   <div className="btn-group btn-group-sm" role="group" aria-label={`Set ${department.name} status`}>
                                     <button
                                       type="button"
@@ -2669,6 +3110,17 @@ const RegistrarDashboard = () => {
                                       Activate
                                     </button>
                                   </div>
+=======
+                                  <button
+                                    type="button"
+                                    className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
+                                    onClick={() => toggleDepartmentStatus(department)}
+                                    disabled={departmentStatusSaving}
+                                    aria-label={`${isActive ? 'Deactivate' : 'Activate'} ${department.name}`}
+                                  >
+                                    {isActive ? 'Set to Inactive' : 'Set to Active'}
+                                  </button>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                                 </td>
                               </tr>
                             );
@@ -2680,11 +3132,22 @@ const RegistrarDashboard = () => {
                 )}
 
                 <div className="mt-4">
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                   {departmentStatusSaving && (
                     <div className="alert alert-info mt-2 py-2 px-3 small" role="status">
                       Saving and confirming department status changes...
                     </div>
                   )}
+=======
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={saveDepartmentStatuses}
+                    disabled={departmentStatusSaving || departments.length === 0}
+                  >
+                    {departmentStatusSaving ? 'Saving statuses...' : 'Save Status Changes'}
+                  </button>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                   {departmentStatusMessage && (
                     <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">
                       {departmentStatusMessage}
@@ -2718,11 +3181,14 @@ const RegistrarDashboard = () => {
 
                 {deadlineLoading && <div className="small text-muted mb-3" role="status">Loading saved schedule...</div>}
                 <form onSubmit={savePlacementDates}>
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                   {validatePlacementSchedule(placementDates) && (
                     <div className="alert alert-warning py-2 small" role="alert">
                       {validatePlacementSchedule(placementDates)}
                     </div>
                   )}
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                   <div className="row g-3">
                     {placementDateFields.map(([key, label]) => (
                       <div className="col-md-6" key={key}>
@@ -2731,15 +3197,25 @@ const RegistrarDashboard = () => {
                           id={`registrar-${key}`}
                           type="date"
                           className="form-control"
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                           value={placementDates[key] || ''}
                           onChange={(event) => {
                             setPlacementDates((current) => ({ ...current, [key]: event.target.value }));
                             setDeadlineError('');
+=======
+                          value={deadlineForm[key] || ''}
+                          onChange={(event) => {
+                            setDeadlineForm((current) => ({ ...current, [key]: event.target.value }));
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                             setDeadlineSuccess('');
                           }}
                           required
                         />
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
                         <span className="d-none d-print-inline">{placementDates[key] || ''}</span>
+=======
+                        <span className="d-none d-print-inline">{deadlineForm[key] || ''}</span>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
                       </div>
                     ))}
                   </div>
@@ -3136,6 +3612,11 @@ const RegistrarDashboard = () => {
                     {placementError && <div className="alert alert-warning py-2">{placementError}</div>}
                     <div>Assigned: <strong>{runResult.assigned}</strong></div>
                     <div>Unassigned: <strong>{runResult.unassigned}</strong></div>
+                    {runResult.unassigned > 0 && (
+                      <div className="alert alert-warning py-2 px-3 mt-2 rounded-3 border-warning shadow-sm d-inline-block">
+                        ⚠️ <strong>Capacity Notice:</strong> {runResult.unassigned} student{runResult.unassigned === 1 ? '' : 's'} could not be assigned because the requested department capacity was reached (100% full).
+                      </div>
+                    )}
                     {runResult.alreadyPlaced > 0 && (
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
                     )}
@@ -3176,33 +3657,106 @@ const RegistrarDashboard = () => {
                           <table className="table table-hover align-middle mb-0">
                             <thead className="table-light">
                               <tr>
-                                <th>Student ID</th>
-                                <th>Student Name</th>
-                                <th>Merit Score</th>
-                                <th>Department</th>
-                                <th>College</th>
-                                <th>Stream</th>
-                                <th>Choice Rank</th>
-                                <th>Status</th>
+                                <th>STUDENT ID</th>
+                                <th>STUDENT NAME</th>
+                                <th>MERIT SCORE</th>
+                                <th>DEPARTMENT</th>
+                                <th>COLLEGE</th>
+                                <th>STREAM</th>
+                                <th>CHOICE RANK</th>
+                                <th>STATUS</th>
                               </tr>
                             </thead>
                             <tbody>
                               {latestPlacementRun.placements.map((placement) => {
-                                const assigned = placement.status === 'placed';
+                                const assigned = String(placement.status || '').toLowerCase() === 'placed';
+                                const requestedDepartment = placement.requestedDepartment || placement.requested_department || placement.department;
+                                const studentRecord = studentRecords.find((student) => String(student.id) === String(placement.studentId));
+                                const targetStream = placement.stream || studentRecord?.stream || '';
+                                const manualDepartmentOptions = departments.filter((item) => {
+                                  if (String(item.status || '').toLowerCase() !== 'active' || getAvailableDepartmentSeats(item) <= 0) return false;
+                                  const departmentStream = item.stream || getDepartmentStream(item);
+                                  return !targetStream
+                                    || getPlacementStreamGroup(departmentStream) === getPlacementStreamGroup(targetStream);
+                                });
+                                const isManualAssignmentOpen = manualPlacementStudentId === String(placement.studentId);
 
                                 return (
                                   <tr key={`${placement.studentId}-${placement.department || 'unassigned'}`}>
                                     <td className="fw-semibold text-primary">{placement.id_number || placement.studentId}</td>
                                     <td>{placement.studentName || '—'}</td>
                                     <td>{placement.score !== null && placement.score !== undefined ? Number(placement.score).toFixed(2) : '—'}</td>
-                                    <td>{placement.department || '—'}</td>
+                                    <td>
+                                      {assigned
+                                        ? placement.department || '—'
+                                        : <span className="text-muted">{requestedDepartment ? `${requestedDepartment} (Full)` : '—'}</span>}
+                                    </td>
                                     <td>{placement.college || '—'}</td>
                                     <td>{placement.stream || '—'}</td>
                                     <td className="text-center">{placement.choiceRank || '—'}</td>
                                     <td>
-                                      <span className={`badge ${assigned ? 'bg-success' : 'bg-secondary'}`}>
-                                        {assigned ? 'Assigned' : 'Unassigned'}
-                                      </span>
+                                      <div className="d-flex flex-column align-items-start gap-1">
+                                        <span className={`badge ${assigned ? 'bg-success' : 'bg-secondary'}`}>
+                                          {assigned ? 'Assigned' : 'Unassigned'}
+                                        </span>
+                                        {!assigned && (isManualAssignmentOpen ? (
+                                        <div className="d-flex flex-column gap-2">
+                                          <select
+                                            className="form-select form-select-sm"
+                                            value={manualPlacementDepartmentId}
+                                            onChange={(event) => setManualPlacementDepartmentId(event.target.value)}
+                                            disabled={manualPlacementSaving}
+                                            style={{ maxWidth: 180 }}
+                                            aria-label={`Manual placement department for ${placement.studentName || placement.studentId}`}
+                                          >
+                                            <option value="">Select available department</option>
+                                            {manualDepartmentOptions.map((item) => (
+                                              <option key={item.id} value={item.id}>
+                                                {item.name} ({getAvailableDepartmentSeats(item)} seats)
+                                              </option>
+                                            ))}
+                                          </select>
+                                          {manualDepartmentOptions.length === 0 && (
+                                            <small className="text-muted">No active same-stream departments have available seats.</small>
+                                          )}
+                                          <div className="d-flex gap-1">
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-primary"
+                                              onClick={() => handleManualPlacement(placement)}
+                                              disabled={manualPlacementSaving || !manualPlacementDepartmentId}
+                                            >
+                                              {manualPlacementSaving ? 'Assigning...' : 'Confirm Assign'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-outline-secondary"
+                                              onClick={() => {
+                                                setManualPlacementStudentId(null);
+                                                setManualPlacementDepartmentId('');
+                                                setManualPlacementError('');
+                                              }}
+                                              disabled={manualPlacementSaving}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                          {manualPlacementError && <small className="text-danger" role="alert">{manualPlacementError}</small>}
+                                        </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="btn btn-link btn-sm p-0"
+                                            onClick={() => {
+                                              setManualPlacementStudentId(String(placement.studentId));
+                                              setManualPlacementDepartmentId('');
+                                              setManualPlacementError('');
+                                            }}
+                                          >
+                                            Manual Assign
+                                          </button>
+                                        ))}
+                                      </div>
                                     </td>
                                   </tr>
                                 );
@@ -3723,6 +4277,104 @@ const RegistrarDashboard = () => {
         </main>
       </div>
 
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/RegistrarDashboard.jsx
+=======
+      <BulkUploadModal 
+        isOpen={showBulkUpload} 
+        onClose={() => setShowBulkUpload(false)}
+        onSuccess={() => {
+          setShowBulkUpload(false);
+          setStudentInfoLoading(true);
+          // Refresh student records
+          if (registrar) {
+            const fetchStudentRecords = async () => {
+              try {
+                        const usersResponse = await api.get('api/admin/users_api.php');
+                const usersPayload = Array.isArray(usersResponse.data)
+                  ? usersResponse.data
+                  : Array.isArray(usersResponse.data?.users)
+                    ? usersResponse.data.users
+                    : Array.isArray(usersResponse.data?.data)
+                      ? usersResponse.data.data
+                      : [];
+
+                const studentUsers = usersPayload.filter((user) => {
+                  const role = String(user?.role || '').trim().toLowerCase();
+                  return role === 'student';
+                });
+
+                const records = await Promise.all(
+                  studentUsers.map(async (user) => {
+                    const email = user?.email || '';
+                    let profile = {};
+
+                    if (email) {
+                      try {
+                        const profileResponse = await api.get(`api/student/student_profile.php?email=${encodeURIComponent(email)}`);
+                        profile = profileResponse.data?.student || profileResponse.data?.data || {};
+                      } catch (error) {
+                        profile = {};
+                      }
+                    }
+
+                    const cgpaValue = Number(profile.cgpa ?? profile.gpa ?? user.cgpa ?? 0);
+                    const numericCgpa = Number.isFinite(cgpaValue) ? cgpaValue : 0;
+
+                    const g12 = profile?.grade_12_result ?? profile?.g12 ?? profile?.g12_score ?? null;
+                    const coc = profile?.coc_result ?? profile?.coc ?? profile?.certificateOfCompetence ?? null;
+                    // Ensure COC is a number if it exists
+                    const cocValue = coc ? Number(coc) : null;
+                    const gender = (profile?.gender || user?.gender || '').toString();
+                    const hasDisability = parseYesNo(profile?.disability ?? profile?.has_disability ?? profile?.hasDisability ?? profile?.specialSupport);
+                    const minority = parseYesNo(profile?.minority ?? profile?.is_minority ?? profile?.isMinority);
+
+                    const cumulative = calculateCumulativeScore({
+                      gpa: numericCgpa,
+                      grade12: g12,
+                      coc: cocValue,
+                      gender,
+                      disability: hasDisability,
+                      minority,
+                    }, placementRules);
+
+                    return {
+                      id: user?.id ?? user?.student_id ?? profile?.studentId ?? profile?.id ?? null,
+                      first_name: user?.first_name || profile?.first_name || '',
+                      last_name: user?.last_name || profile?.last_name || '',
+                      username: user?.username || profile?.username || '',
+                      name: profile?.fullname || profile?.full_name || profile?.name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || '',
+                      email: profile?.email || user?.email || '',
+                      phone: profile?.phone || profile?.phoneNumber || profile?.contact || profile?.mobile || '',
+                      cgpa: numericCgpa.toFixed(2),
+                      g12: g12 ?? 'N/A',
+                      coc: cocValue,
+                      gender,
+                      hasDisability: hasDisability,
+                      minority: minority,
+                      cumulativeScore: cumulative,
+                      department: profile?.placement_result_department || profile?.department || profile?.program || profile?.stream || profile?.major || user?.department || '',
+                      status: profile?.placement_result_department
+                        ? (profile?.placement_result_status === 'Approved' ? 'Approved' : 'Placed')
+                        : (profile?.placementStatus || profile?.status || profile?.placement_status || 'Pending'),
+                      placementResult: profile?.placement_result_department || profile?.placement_result || profile?.placementResult || profile?.placement || profile?.result || null,
+                    };
+                  })
+                );
+
+                setStudentRecords(records.filter((record) => record.id !== null && record.name.trim()));
+              } catch (error) {
+                console.error('Failed to fetch student records:', error);
+              } finally {
+                setStudentInfoLoading(false);
+              }
+            };
+
+            fetchStudentRecords();
+          }
+        }}
+        departments={departments} 
+      />
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/RegistrarDashboard.jsx
     </div>
   );
 };

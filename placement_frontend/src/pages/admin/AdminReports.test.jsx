@@ -6,7 +6,11 @@ import api from '../../services/api.js';
 jest.mock('../../services/api.js', () => ({
   __esModule: true,
   default: {
+<<<<<<< HEAD:placement_frontend/src/pages/admin/AdminReports.test.jsx
     defaults: { baseURL: 'http://localhost/student-placement/placement_backend/' },
+=======
+    defaults: { baseURL: 'http://localhost/placment_backend/' },
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/AdminReports.test.jsx
     get: jest.fn(),
     post: jest.fn(),
   },
@@ -44,6 +48,7 @@ describe('AdminReports', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
   });
 
+<<<<<<< HEAD:placement_frontend/src/pages/admin/AdminReports.test.jsx
   it('rejects attachments larger than the server limit before sending', () => {
     render(<AdminReports />);
 
@@ -60,6 +65,8 @@ describe('AdminReports', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/AdminReports.test.jsx
   it('opens report file paths and keeps message deletion available', async () => {
     api.get.mockResolvedValue({
       data: {
@@ -81,7 +88,11 @@ describe('AdminReports', () => {
     render(<AdminReports />);
 
     const attachmentLink = await screen.findByRole('link', { name: 'Download Attachment' });
+<<<<<<< HEAD:placement_frontend/src/pages/admin/AdminReports.test.jsx
     expect(attachmentLink).toHaveAttribute('href', 'http://localhost/student-placement/placement_backend/uploads/reports/placement-report.pdf');
+=======
+    expect(attachmentLink).toHaveAttribute('href', 'http://localhost/placment_backend/uploads/reports/placement-report.pdf');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/AdminReports.test.jsx
     expect(attachmentLink).toHaveAttribute('target', '_blank');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));

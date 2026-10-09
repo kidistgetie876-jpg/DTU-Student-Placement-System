@@ -56,6 +56,7 @@ describe('App maintenance lockdown', () => {
 
     expect(await screen.findByText('Admin dashboard available')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Scheduled maintenance' })).not.toBeInTheDocument();
+<<<<<<< HEAD:placement_frontend/src/App.maintenance.test.js
     expect(screen.queryByText('Site footer')).not.toBeInTheDocument();
   });
 
@@ -64,6 +65,8 @@ describe('App maintenance lockdown', () => {
     render(<App />);
 
     expect(await screen.findByLabelText(/username or email/i)).toBeInTheDocument();
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/App.maintenance.test.js
     expect(screen.getByText('Site footer')).toBeInTheDocument();
   });
 });

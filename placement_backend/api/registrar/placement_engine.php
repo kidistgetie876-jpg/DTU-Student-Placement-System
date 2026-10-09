@@ -166,6 +166,7 @@ try {
             || normalizeDepartmentName($department['college_name'] ?? '') === normalizeDepartmentName($selectedCollege);
     }));
     if (empty($scopedDepartments)) {
+<<<<<<< HEAD:placement_backend/api/registrar/placement_engine.php
         throw new PlacementRequestException('No active departments found for the selected college', 422);
     }
     $availableCapacity = array_sum(array_map(function ($department) {
@@ -173,6 +174,14 @@ try {
     }, $scopedDepartments));
     if ($availableCapacity <= 0) {
         throw new PlacementRequestException('No placement capacity is available in the selected college', 409);
+=======
+        throw new Exception('No active departments found for the selected college');
+    }
+    foreach ($scopedDepartments as $department) {
+        if ((int) ($department['capacity'] ?? 0) <= 0) {
+            throw new Exception('Every active department in the selected college must have capacity greater than zero');
+        }
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/registrar/placement_engine.php
     }
 
     $departmentMap = [];

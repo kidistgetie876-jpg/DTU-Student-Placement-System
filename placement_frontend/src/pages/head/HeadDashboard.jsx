@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+<<<<<<< HEAD:placement_frontend/src/pages/head/HeadDashboard.jsx
+=======
+import { FaBell, FaTrash } from 'react-icons/fa';
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/head/HeadDashboard.jsx
 import dtuLogo from '../../assets/images6.jpg';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import api from '../../services/api';
@@ -59,6 +63,7 @@ const HeadDashboard = () => {
     approvalRequests: 0,
     capacityUsed: 0,
   });
+<<<<<<< HEAD:placement_frontend/src/pages/head/HeadDashboard.jsx
   const [recentPlacements, setRecentPlacements] = useState([]);
   const [preferences, setPreferences] = useState(() => {
     return { notifications: true, reporting: true };
@@ -67,6 +72,18 @@ const HeadDashboard = () => {
   const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [preferencesSaveMsg, setPreferencesSaveMsg] = useState('');
   
+=======
+  const [recentPlacements, setRecentPlacements] = useState([
+    { student: 'Amanuel Gebru', program: 'Software Engineering', status: 'Matched' },
+    { student: 'Martha Kassa', program: 'Data Science', status: 'Confirmed' },
+    { student: 'Samuel Tadesse', program: 'Information Systems', status: 'Pending' },
+  ]);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
+  const [deletingNotificationId, setDeletingNotificationId] = useState(null);
+
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/head/HeadDashboard.jsx
   // State for card detail modals
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'placedStudents', 'approvalRequests', 'capacityUsed'
   const [cardDetailData, setCardDetailData] = useState([]);
@@ -246,7 +263,10 @@ const HeadDashboard = () => {
         setDepartments([]);
         setPlacedStudents([]);
         setPendingApprovalStudents([]);
+<<<<<<< HEAD:placement_frontend/src/pages/head/HeadDashboard.jsx
         setRecentPlacements([]);
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/head/HeadDashboard.jsx
         setStats({ totalStudents: 0, placedStudents: 0, approvalRequests: 0, capacityUsed: 0 });
       }
     };
@@ -255,25 +275,76 @@ const HeadDashboard = () => {
   }, [leader, tab]);
 
   useEffect(() => {
-    if (!leader) return;
+    if (!leader) return undefined;
 
-    const loadPreferences = async () => {
-      setPreferencesLoading(true);
+    let cancelled = false;
+    const loadNotifications = async () => {
+      setNotificationsLoading(true);
       try {
-        const response = await api.get('api/head/head_preferences.php');
+        const response = await api.get('api/head/get_head_reports.php');
         if (!response.data?.success) {
-          throw new Error(response.data?.message || 'Unable to load preferences.');
+          throw new Error(response.data?.message || 'Unable to load notifications.');
         }
-        setPreferences(response.data.preferences || { notifications: true, reporting: true });
+        const receivedNotifications = (Array.isArray(response.data.reports) ? response.data.reports : [])
+          .filter((notification) => notification.direction !== 'sent')
+          .sort((left, right) => (
+            Number(!Number(right.is_read)) - Number(!Number(left.is_read))
+            || new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+          ));
+        if (!cancelled) {
+          setNotifications(receivedNotifications);
+          setNotificationsError('');
+        }
       } catch (error) {
-        setPreferencesSaveMsg(error.response?.data?.message || error.message || 'Unable to load preferences.');
+        if (!cancelled) {
+          setNotificationsError(error.response?.data?.message || error.message || 'Unable to load notifications.');
+        }
       } finally {
-        setPreferencesLoading(false);
+        if (!cancelled) setNotificationsLoading(false);
       }
     };
 
-    loadPreferences();
-  }, [leader]);
+    loadNotifications();
+    const refreshInterval = tab === 'notifications' ? window.setInterval(loadNotifications, 30000) : null;
+    return () => {
+      cancelled = true;
+      if (refreshInterval) window.clearInterval(refreshInterval);
+    };
+  }, [leader, tab]);
+
+  const unreadNotificationCount = notifications.filter((notification) => !Number(notification.is_read)).length;
+
+  const markNotificationAsRead = async (notification) => {
+    if (Number(notification.is_read)) return;
+    try {
+      const response = await api.post('api/head/mark_report_read.php', { notification_id: notification.id });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to mark notification as read.');
+      }
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, is_read: 1 } : item
+      )));
+      setNotificationsError('');
+    } catch (error) {
+      setNotificationsError(error.response?.data?.message || error.message || 'Unable to mark notification as read.');
+    }
+  };
+
+  const deleteNotification = async (notification) => {
+    setDeletingNotificationId(notification.id);
+    try {
+      const response = await api.post('api/head/delete_head_report.php', { notification_id: notification.id });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to delete notification.');
+      }
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      setNotificationsError('');
+    } catch (error) {
+      setNotificationsError(error.response?.data?.message || error.message || 'Unable to delete notification.');
+    } finally {
+      setDeletingNotificationId(null);
+    }
+  };
 
   useEffect(() => {
     const draft = {};
@@ -294,8 +365,36 @@ const HeadDashboard = () => {
         return { id: dept.id, capacity: nextCapacity };
       });
 
+<<<<<<< HEAD:placement_frontend/src/pages/head/HeadDashboard.jsx
       if (updates.length === 0) {
         throw new Error('No assigned department capacity is available to update.');
+=======
+      setDepartments(updatedDepartments);
+
+      const payload = {
+        departments: updatedDepartments.map((dept) => ({
+          id: dept.id,
+          name: dept.name,
+          capacity: Number(dept.capacity || 0),
+          description: dept.description || '',
+          stream: dept.stream || 'Natural',
+          college_name: dept.college_name || 'General',
+          status: dept.status || 'active',
+          head_id: dept.head_id ?? null,
+          created_at: dept.created_at || null,
+        })),
+      };
+
+      try {
+        await api.post('api/common/departments_update.php', payload);
+        setCapacitySaveMsg('Capacity plan saved successfully.');
+        setCapacitySaveMsgType('success');
+      } catch (error) {
+        console.error('departments_update.php save failed:', error);
+        localStorage.setItem('headCapacityPlan', JSON.stringify(payload.departments));
+        setCapacitySaveMsg('Saved locally. Backend unavailable.');
+        setCapacitySaveMsgType('warning');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/head/HeadDashboard.jsx
       }
 
       const response = await api.post('api/common/departments_update.php', { departments: updates });
@@ -321,7 +420,12 @@ const HeadDashboard = () => {
       setCapacitySaveMsg('Capacity plan saved and confirmed.');
       setCapacitySaveMsgType('success');
     } catch (error) {
+<<<<<<< HEAD:placement_frontend/src/pages/head/HeadDashboard.jsx
       setCapacitySaveMsg(error.response?.data?.message || error.message || 'Unable to save capacity plan.');
+=======
+      console.error('saveCapacityPlan error:', error);
+      setCapacitySaveMsg('Unable to save capacity plan.');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/head/HeadDashboard.jsx
       setCapacitySaveMsgType('danger');
     }
 
@@ -428,7 +532,7 @@ const HeadDashboard = () => {
   return (
     <div className="head-dashboard container-fluid px-0">
       <div className="row g-0">
-        <aside className="col-xl-2 sidebar p-4">
+        <aside className="col-md-2 sidebar p-4">
           <div className="sidebar-brand mb-5">
             <h5 className="mb-2">Head Dashboard</h5>
             <p className="small text-white-75 mb-0">Department leadership tools and placement oversight.</p>
@@ -440,11 +544,14 @@ const HeadDashboard = () => {
             <button className={`nav-button ${tab === 'capacity' ? 'active' : ''}`} onClick={() => setTab('capacity')}>Capacity Plan</button>
             <button className={`nav-button ${tab === 'students' ? 'active' : ''}`} onClick={() => setTab('students')}>Placed Students</button>
             <button className={`nav-button ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>Reports</button>
-            <button className={`nav-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Preferences</button>
+            <button className={`nav-button d-flex align-items-center justify-content-between ${tab === 'notifications' ? 'active' : ''}`} onClick={() => setTab('notifications')}>
+              <span className="d-inline-flex align-items-center gap-2"><FaBell aria-hidden="true" /> Notifications</span>
+              {unreadNotificationCount > 0 && <span className="badge rounded-pill bg-danger">{unreadNotificationCount}</span>}
+            </button>
           </nav>
         </aside>
 
-        <main className="col-xl-10 p-5 main-section">
+        <main className="col-md-10 p-5 main-section">
           <header className="dashboard-header mb-5">
             <div>
               <h2 className="fw-bold mb-1">Welcome back, {leader.username}</h2>
@@ -1098,54 +1205,67 @@ const HeadDashboard = () => {
             </div>
           )}
 
-          {tab === 'settings' && (
+          {tab === 'notifications' && (
             <div className="card analytics-card">
               <div className="card-body">
-                <h5 className="card-title mb-4">Department Preferences</h5>
-                <p className="text-muted">Update notification and reporting preferences for this dashboard.</p>
-                {preferencesLoading && <p className="text-muted">Loading preferences...</p>}
-                <div className="settings-grid">
-                  <div className="settings-card">
-                    <h6>Notifications</h6>
-                    <label className="d-flex align-items-center gap-2">
-                      <input type="checkbox" checked={preferences.notifications} onChange={(event) => setPreferences((current) => ({ ...current, notifications: event.target.checked }))} />
-                      <span className="text-muted small">Receive alerts for new placement requests.</span>
-                    </label>
+                <div className="d-flex justify-content-between align-items-center mb-4">
+                  <div>
+                    <h5 className="card-title mb-1">Notifications</h5>
+                    <p className="text-muted mb-0">Placement updates and messages received by your department.</p>
                   </div>
-                  <div className="settings-card">
-                    <h6>Reporting</h6>
-                    <label className="d-flex align-items-center gap-2">
-                      <input type="checkbox" checked={preferences.reporting} onChange={(event) => setPreferences((current) => ({ ...current, reporting: event.target.checked }))} />
-                      <span className="text-muted small">Receive reporting summaries for your department.</span>
-                    </label>
+                  {unreadNotificationCount > 0 && <span className="badge bg-primary">{unreadNotificationCount} unread</span>}
+                </div>
+                {notificationsError && <div className="alert alert-danger" role="alert">{notificationsError}</div>}
+                {notificationsLoading && notifications.length === 0 && <p className="text-muted mb-0">Loading notifications...</p>}
+                {!notificationsLoading && notifications.length === 0 && !notificationsError && (
+                  <div className="alert alert-light border mb-0">You have no notifications yet.</div>
+                )}
+                {notifications.length > 0 && (
+                  <div className="list-group">
+                    {notifications.map((notification) => {
+                      const isUnread = !Number(notification.is_read);
+                      return (
+                        <div
+                          className={`list-group-item ${isUnread ? 'border-primary-subtle' : ''}`}
+                          key={notification.id}
+                        >
+                          <div className="d-flex justify-content-between align-items-start gap-3">
+                            <div className="flex-grow-1">
+                              <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                <h6 className="mb-0">{notification.title || 'Notification'}</h6>
+                                {isUnread && <span className="badge bg-success">New</span>}
+                                <span className="badge bg-secondary">From {notification.sender_role || 'Office'}</span>
+                              </div>
+                              <p className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>{notification.message}</p>
+                              <small className="text-muted">{notification.created_at}</small>
+                            </div>
+                            <div className="d-flex align-items-center gap-2">
+                              {isUnread && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary text-nowrap"
+                                  onClick={() => markNotificationAsRead(notification)}
+                                >
+                                  Mark as read
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                aria-label={`Delete notification: ${notification.title || notification.id}`}
+                                title="Delete notification"
+                                disabled={deletingNotificationId === notification.id}
+                                onClick={() => deleteNotification(notification)}
+                              >
+                                <FaTrash aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-                <div className="d-flex gap-3 align-items-center mt-4">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={preferencesLoading || preferencesSaving}
-                    onClick={async () => {
-                      setPreferencesSaving(true);
-                      setPreferencesSaveMsg('');
-                      try {
-                        const response = await api.post('api/head/head_preferences.php', preferences);
-                        if (!response.data?.success) {
-                          throw new Error(response.data?.message || 'Unable to save preferences.');
-                        }
-                        setPreferences(response.data.preferences || preferences);
-                        setPreferencesSaveMsg(response.data.message || 'Preferences saved successfully.');
-                      } catch (error) {
-                        setPreferencesSaveMsg(error.response?.data?.message || error.message || 'Unable to save preferences.');
-                      } finally {
-                        setPreferencesSaving(false);
-                      }
-                    }}
-                  >
-                    {preferencesSaving ? 'Saving...' : 'Save Preferences'}
-                  </button>
-                  {preferencesSaveMsg && <span className={`${preferencesSaveMsg.includes('Unable') || preferencesSaveMsg.includes('must') || preferencesSaveMsg.includes('Only') ? 'text-danger' : 'text-success'} fw-semibold`}>{preferencesSaveMsg}</span>}
-                </div>
+                )}
               </div>
             </div>
           )}

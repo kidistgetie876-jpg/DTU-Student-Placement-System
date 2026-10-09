@@ -69,7 +69,11 @@ function Services() {
   }, [query, category]);
 
   return (
+<<<<<<< HEAD:placement_frontend/src/pages/public/Services.jsx
     <div className="services-container py-5" style={{ paddingTop: '200px' }}>
+=======
+    <div className="services-container" style={{ paddingTop: '160px', paddingBottom: '60px', minHeight: '100vh' }}>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/Services.jsx
       <div className="container">
         {/* Header Section */}
         <div className="text-center mb-5">

@@ -28,13 +28,13 @@ if ($registrarId <= 0 || $reportId <= 0) markRegistrarReportResponse(['success' 
 try {
     $pdo = getAuditPdo();
     $statement = $pdo->prepare(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP
+        'UPDATE notifications SET is_read = 1, read_at = NOW()
          WHERE id = :report_id AND recipient_role = "registrar"
            AND (recipient_id = :registrar_id OR recipient_id IS NULL)'
     );
     $statement->execute([':report_id' => $reportId, ':registrar_id' => $registrarId]);
     if ($statement->rowCount() === 0) markRegistrarReportResponse(['success' => false, 'message' => 'Message not found.'], 404);
-    markRegistrarReportResponse(['success' => true]);
+    markRegistrarReportResponse(['success' => true, 'message' => 'Notification marked as read.']);
 } catch (Throwable $error) {
     error_log('Registrar report read update failed: ' . $error->getMessage());
     markRegistrarReportResponse(['success' => false, 'message' => 'Unable to update message status.'], 500);

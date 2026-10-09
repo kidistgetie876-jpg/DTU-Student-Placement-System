@@ -68,6 +68,22 @@ const formatScoreValue = (value) => {
   return Number.isNaN(numericValue) ? String(value) : numericValue.toFixed(2);
 };
 
+const hasSubmissionDeadlinePassed = (submissionDeadline, currentTime = new Date()) => {
+  if (!submissionDeadline) return false;
+  const deadline = new Date(submissionDeadline);
+  if (Number.isNaN(deadline.getTime())) return false;
+  deadline.setHours(23, 59, 59, 999);
+  return currentTime > deadline;
+};
+
+const isNotificationUnread = (notification) => (
+  notification.is_read === null
+  || notification.is_read === undefined
+  || Number(notification.is_read) === 0
+  || notification.read === false
+  || String(notification.status || '').toLowerCase() === 'unread'
+);
+
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
@@ -83,9 +99,13 @@ const StudentDashboard = () => {
   const [placementResult, setPlacementResult] = useState(null);
   const [placementResultLoading, setPlacementResultLoading] = useState(false);
   const [preferencesSubmitted, setPreferencesSubmitted] = useState(false);
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
   const [submissionStart, setSubmissionStart] = useState('');
   const [submissionDeadline, setSubmissionDeadline] = useState('');
   const [submissionScheduleError, setSubmissionScheduleError] = useState('');
+=======
+  const [submissionDeadline, setSubmissionDeadline] = useState('');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
   const [deadlineClock, setDeadlineClock] = useState(Date.now());
   const [prefError, setPrefError] = useState('');
   const [prefSuccess, setPrefSuccess] = useState('');
@@ -93,6 +113,8 @@ const StudentDashboard = () => {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState('');
   const [deletingNotificationId, setDeletingNotificationId] = useState(null);
+  const [markingNotificationId, setMarkingNotificationId] = useState(null);
+  const [markingAllNotificationsRead, setMarkingAllNotificationsRead] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -161,6 +183,7 @@ const StudentDashboard = () => {
     const loadSubmissionDeadline = async () => {
       try {
         const response = await api.get('api/common/system_settings_api.php');
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
         if (response.data?.success === false) {
           throw new Error(response.data.message || 'Unable to load the placement schedule.');
         }
@@ -174,6 +197,14 @@ const StudentDashboard = () => {
         if (isMounted) {
           setSubmissionScheduleError(error.response?.data?.message || error.message || 'Unable to load the placement schedule.');
         }
+=======
+        if (isMounted) {
+          setSubmissionDeadline(response.data?.settings?.placement?.submissionDeadline || '');
+          setDeadlineClock(Date.now());
+        }
+      } catch (error) {
+        // Keep the last known deadline if settings cannot be refreshed.
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
       }
     };
 
@@ -190,11 +221,17 @@ const StudentDashboard = () => {
     };
   }, []);
 
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
   const isSubmissionOpen = useMemo(() => (
     !submissionScheduleError
     && isSubmissionWindowOpenForDate(submissionStart, submissionDeadline, getUniversityDate(new Date(deadlineClock)))
   ), [submissionStart, submissionDeadline, submissionScheduleError, deadlineClock]);
   const isSubmissionClosed = Boolean(submissionScheduleError) || (Boolean(submissionDeadline) && !isSubmissionOpen);
+=======
+  const isDeadlinePassed = useMemo(() => (
+    hasSubmissionDeadlinePassed(submissionDeadline, new Date(deadlineClock))
+  ), [submissionDeadline, deadlineClock]);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
   const studentGpa = Number(profile?.gpa || profile?.cgpa || 0);
   const studentStatus = String(profile?.status || '').toUpperCase();
   const minimumGpa = Number(placementRules.minGpa || 1.75);
@@ -205,6 +242,10 @@ const StudentDashboard = () => {
   const hasPublishedPlacement = Boolean(placementResult?.placement) &&
     placementResult.published !== false &&
     ['approved', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
+=======
+  const isNotificationsTab = tab === 'notifications';
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
 
   useEffect(() => {
     if (!['overview', 'result'].includes(tab) || !student?.id) return;
@@ -225,7 +266,7 @@ const StudentDashboard = () => {
   }, [student, tab]);
 
   useEffect(() => {
-    if (tab !== 'notifications' || !student?.id) return;
+    if (!student?.id) return;
 
     const loadNotifications = async () => {
       setNotificationsLoading(true);
@@ -248,14 +289,70 @@ const StudentDashboard = () => {
     };
 
     loadNotifications();
-  }, [student, tab]);
+  }, [student, isNotificationsTab]);
 
-  const unreadNotifications = notifications.filter((notification) => (
-    notification.is_read === false ||
-    notification.is_read === 0 ||
-    notification.read === false ||
-    notification.status === 'unread'
-  )).length;
+  const unreadNotifications = notifications.filter(isNotificationUnread).length;
+
+  const markAsRead = async (notification) => {
+    if (!isNotificationUnread(notification)) return;
+
+    setMarkingNotificationId(notification.id);
+    setNotificationsError('');
+    try {
+      const response = await api.post('api/student/mark_notification_read.php', {
+        notification_id: notification.id,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to mark notification as read.');
+      }
+      setNotifications((current) => current.map((item) => (
+        item.id === notification.id ? { ...item, is_read: 1, read: true, status: 'read' } : item
+      )));
+      setNotificationsError('');
+    } catch (error) {
+      setNotificationsError(error.response?.data?.message || error.message || 'Unable to mark notification as read.');
+    } finally {
+      setMarkingNotificationId(null);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unread = notifications.filter(isNotificationUnread);
+    if (unread.length === 0) return;
+
+    setMarkingAllNotificationsRead(true);
+    setNotificationsError('');
+    try {
+      const results = await Promise.allSettled(unread.map(async (notification) => {
+        const response = await api.post('api/student/mark_notification_read.php', {
+          notification_id: notification.id,
+        });
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'Unable to mark notification as read.');
+        }
+        return notification.id;
+      }));
+      const markedIds = new Set(
+        results
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value)
+      );
+      setNotifications((current) => current.map((notification) => (
+        markedIds.has(notification.id)
+          ? { ...notification, is_read: 1, read: true, status: 'read' }
+          : notification
+      )));
+
+      const failedCount = results.length - markedIds.size;
+      setNotificationsError(
+        failedCount > 0
+          ? `${failedCount} notification${failedCount === 1 ? '' : 's'} could not be marked as read. Please try again.`
+          : ''
+      );
+    } finally {
+      setMarkingAllNotificationsRead(false);
+    }
+  };
 
   const deleteNotification = async (notification) => {
     if (!window.confirm('Delete this notification?')) return;
@@ -342,6 +439,7 @@ const StudentDashboard = () => {
       return;
     }
 
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
     if (isSubmissionClosed || (submissionDeadline && !isSubmissionWindowOpenForDate(
       submissionStart,
       submissionDeadline,
@@ -349,6 +447,11 @@ const StudentDashboard = () => {
     ))) {
       setDeadlineClock(Date.now());
       setPrefError(submissionScheduleError || getSubmissionWindowMessage(submissionStart, submissionDeadline));
+=======
+    if (isDeadlinePassed || hasSubmissionDeadlinePassed(submissionDeadline)) {
+      setDeadlineClock(Date.now());
+      setPrefError(`The preference submission deadline closed on ${submissionDeadline}. The submission window is now officially closed.`);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
       return;
     }
 
@@ -514,7 +617,11 @@ const StudentDashboard = () => {
                   <div className="alert alert-success mb-4" role="alert">
                     <h5 className="alert-heading fw-bold">&#10003; Preferences submitted</h5>
                     <p className="mb-0">You have already submitted your department preferences. Re-submitting or changing preferences is not permitted.</p>
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
                     {isSubmissionClosed && <span className="badge bg-secondary mt-3">Submission Closed (Recorded)</span>}
+=======
+                    {isDeadlinePassed && <span className="badge bg-secondary mt-3">Submission Closed (Recorded)</span>}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
                   </div>
 
                   <div className="row g-3 mb-4">
@@ -565,12 +672,18 @@ const StudentDashboard = () => {
                 <>
                   <h5 className="fw-bold text-primary mb-4 text-center">Rank Your Department Preferences</h5>
 
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
                   {isSubmissionClosed && (
                     <div className="alert alert-warning border-warning border-start border-4 shadow-sm" role="alert">
                       <strong>
                         &#9888;&#65039; {submissionScheduleError || getSubmissionWindowMessage(submissionStart, submissionDeadline, getUniversityDate(new Date(deadlineClock)))}
                         {!submissionScheduleError && ' New submissions are not accepted outside the submission period.'}
                       </strong>
+=======
+                  {isDeadlinePassed && (
+                    <div className="alert alert-warning border-warning border-start border-4 shadow-sm" role="alert">
+                      <strong>&#9888;&#65039; The preference submission deadline closed on {submissionDeadline}. New submissions are no longer accepted.</strong>
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
                     </div>
                   )}
 
@@ -590,7 +703,11 @@ const StudentDashboard = () => {
                       <div className="col-md-6">
                         <label className="form-label fw-bold small text-muted">2. SELECT COLLEGE</label>
                         <select className="form-select" value={preferences.college}
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
                           disabled={isSubmissionClosed}
+=======
+                          disabled={isDeadlinePassed}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
                           onChange={(e) => {
                             setPreferences({ ...preferences, college: e.target.value, depts: [] });
                             setPrefError('');
@@ -609,7 +726,11 @@ const StudentDashboard = () => {
                         <div className="p-3 border rounded-3 bg-white">
                           <label className="small fw-bold text-primary mb-2 d-block">Preference Rank #{idx + 1}</label>
                           <select className="form-select border-0 bg-light shadow-none" value={choice}
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
                             disabled={isSubmissionClosed}
+=======
+                            disabled={isDeadlinePassed}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
                             onChange={(e) => handleChoiceChange(idx, e.target.value)}>
                             <option value="">-- Select Department --</option>
                             {departmentOptions.map(dName => (
@@ -624,7 +745,11 @@ const StudentDashboard = () => {
                   </div>
 
                   <div className="text-end mt-4">
+<<<<<<< HEAD:placement_frontend/src/pages/student/StudentDashboard.jsx
                     {!isSubmissionClosed && (
+=======
+                    {!isDeadlinePassed && (
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/student/StudentDashboard.jsx
                       <button className="btn px-4 py-2 fw-bold shadow-sm rounded-pill dtu-submit-button" onClick={handleSave}>
                         submit
                       </button>
@@ -730,9 +855,21 @@ const StudentDashboard = () => {
               <div className="card-body p-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <h4 className="fw-bold text-primary mb-0">Notifications</h4>
-                  {unreadNotifications > 0 && (
-                    <span className="badge bg-primary">{unreadNotifications} unread</span>
-                  )}
+                  <div className="d-flex align-items-center gap-2">
+                    {unreadNotifications > 0 && (
+                      <span className="badge bg-primary">{unreadNotifications} unread</span>
+                    )}
+                    {unreadNotifications > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={markAllAsRead}
+                        disabled={markingAllNotificationsRead}
+                      >
+                        {markingAllNotificationsRead ? 'Marking...' : '✓ Mark all as read'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {notificationsLoading && (
@@ -750,18 +887,35 @@ const StudentDashboard = () => {
                 {!notificationsLoading && !notificationsError && notifications.length > 0 && (
                   <div className="list-group">
                     {notifications.map((notification, index) => {
-                      const isUnread = notification.is_read === false ||
-                        notification.is_read === 0 ||
-                        notification.read === false ||
-                        notification.status === 'unread';
+                      const isUnread = isNotificationUnread(notification);
 
                       return (
-                        <div className={`list-group-item ${isUnread ? 'fw-semibold' : ''}`} key={notification.id || index}>
+                        <div
+                          className={`list-group-item ${isUnread ? 'border-start border-primary border-4 fw-bold' : 'fw-normal'}`}
+                          key={notification.id || index}
+                          style={{ backgroundColor: isUnread ? '#f0f7ff' : '#ffffff' }}
+                        >
                           <div className="d-flex justify-content-between align-items-start gap-3">
-                            <span>{notification.message || notification.title || 'New notification'}</span>
+                            <div className="flex-grow-1">
+                              {isUnread && <span className="badge bg-success me-2">New</span>}
+                              <span>{notification.message || notification.title || 'New notification'}</span>
+                              {notification.title && notification.message && (
+                                <div className="text-muted small mt-1">{notification.title}</div>
+                              )}
+                            </div>
                             <div className="d-flex align-items-center gap-2">
                               {notification.created_at && (
                                 <small className="text-muted text-nowrap">{notification.created_at}</small>
+                              )}
+                              {isUnread && (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary text-nowrap"
+                                  onClick={() => markAsRead(notification)}
+                                  disabled={markingNotificationId === notification.id || markingAllNotificationsRead}
+                                >
+                                  Mark as read
+                                </button>
                               )}
                               <button
                                 type="button"
@@ -775,9 +929,6 @@ const StudentDashboard = () => {
                               </button>
                             </div>
                           </div>
-                          {notification.title && notification.message && (
-                            <div className="text-muted small mt-1">{notification.title}</div>
-                          )}
                           {notification.file_url && (
                             <a
                               className="btn btn-sm btn-outline-primary mt-2"

@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../services/api.js'; // ያንተን የaxios instance ተጠቀም
 
+const formatClientIp = (ip) => {
+  if (!ip || ip === '::1' || ip === '::ffff:127.0.0.1') return '127.0.0.1';
+  return ip;
+};
+
 const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +38,7 @@ const AuditLogs = () => {
   }, []);
 
   const filteredLogs = logs.filter(log => {
-    const value = `${log.created_at} ${log.full_name} ${log.action} ${log.details}`.toLowerCase();
+    const value = `${log.created_at} ${log.user || log.full_name} ${log.action} ${log.details}`.toLowerCase();
     return value.includes(searchText.toLowerCase());
   });
 
@@ -121,9 +126,9 @@ const AuditLogs = () => {
                     </th>
                     <th>Date & Time</th>
                     <th>User</th>
+                    <th>IP Address</th>
                     <th>Action</th>
                     <th>Details</th>
-                    <th>IP Address</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -142,10 +147,17 @@ const AuditLogs = () => {
                           />
                         </td>
                         <td style={{fontSize: '0.85rem'}}>{new Date(log.created_at).toLocaleString()}</td>
-                        <td><strong>{log.full_name || 'System'}</strong></td>
+                        <td><strong>{log.user || log.full_name || 'System'}</strong></td>
+                        <td>
+                          <span
+                            className="badge bg-light text-dark border font-monospace px-2 py-1 shadow-sm"
+                            style={{ fontSize: '12px' }}
+                          >
+                            {formatClientIp(log.ip_address || log.ip || '127.0.0.1')}
+                          </span>
+                        </td>
                         <td><span className="badge bg-info text-dark">{log.action}</span></td>
                         <td><small>{log.details}</small></td>
-                        <td><code style={{fontSize: '0.75rem'}}>{log.ip_address}</code></td>
                       </tr>
                     ))
                   ) : (

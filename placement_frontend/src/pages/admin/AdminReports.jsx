@@ -3,7 +3,10 @@ import api from '../../services/api.js';
 
 const EMPTY_STATUS = { type: '', message: '' };
 const ALLOWED_FILE_EXTENSIONS = ['pdf', 'xls', 'xlsx', 'doc', 'docx'];
+<<<<<<< HEAD:placement_frontend/src/pages/admin/AdminReports.jsx
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/AdminReports.jsx
 
 const getAttachmentUrl = (report) => {
   const fileUrl = report.file_url || report.file_path;
@@ -59,12 +62,15 @@ const AdminReports = () => {
       setStatus({ type: 'danger', message: 'Choose a PDF, Excel, or Word file.', action: 'send' });
       return;
     }
+<<<<<<< HEAD:placement_frontend/src/pages/admin/AdminReports.jsx
     if (file.size > MAX_ATTACHMENT_SIZE) {
       setSelectedFile(null);
       event.target.value = '';
       setStatus({ type: 'danger', message: 'Attachments must be 10 MB or smaller.', action: 'send' });
       return;
     }
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/AdminReports.jsx
 
     setStatus(EMPTY_STATUS);
     setSelectedFile(file);

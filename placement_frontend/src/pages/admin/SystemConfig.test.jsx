@@ -65,6 +65,7 @@ describe('SystemConfig maintenance settings', () => {
     expect(await screen.findByRole('button', { name: '🔴 ON' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
+<<<<<<< HEAD:placement_frontend/src/pages/admin/SystemConfig.test.jsx
 
 describe('SystemConfig placement schedule', () => {
   beforeEach(() => {
@@ -89,3 +90,5 @@ describe('SystemConfig placement schedule', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 });
+=======
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/admin/SystemConfig.test.jsx

@@ -42,6 +42,7 @@ try {
     $reports = $statement->fetchAll();
     foreach ($reports as &$report) {
         if (!empty($report['file_path'])) {
+<<<<<<< HEAD:placement_backend/api/registrar/get_registrar_reports.php
             $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
             $relative = ltrim($report['file_path'], '/');
             $c1 = $docRoot . DIRECTORY_SEPARATOR . 'student-placement' . DIRECTORY_SEPARATOR . 'placement_backend' . DIRECTORY_SEPARATOR . $relative;
@@ -53,6 +54,9 @@ try {
             } else {
                 $report['file_url'] = 'http://localhost/student-placement/placement_backend/' . $relative;
             }
+=======
+            $report['file_url'] = 'http://localhost/placment_backend/' . ltrim($report['file_path'], '/');
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/registrar/get_registrar_reports.php
         }
     }
     unset($report);

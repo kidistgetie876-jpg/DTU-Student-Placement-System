@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 
@@ -18,21 +18,13 @@ const initialForm = {
   minority: 'No',
 };
 
-const normalizeDepartmentPayload = (payload) => {
-  const topLevel = payload?.data ?? payload;
-  if (Array.isArray(topLevel)) return topLevel.filter(Boolean);
-  if (Array.isArray(topLevel?.departments)) return topLevel.departments.filter(Boolean);
-  if (Array.isArray(topLevel?.data)) return topLevel.data.filter(Boolean);
-  return [];
-};
-
 const StudentRegistration = ({ onBack, onSuccess }) => {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialForm);
-  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/StudentRegistration.jsx
 
   useEffect(() => {
     const loadDepartments = async () => {
@@ -55,10 +47,16 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
     () => [...new Set(departments.map((department) => (department.stream || department.academic_stream || '').trim()).filter(Boolean))],
     [departments]
   );
+=======
+  const streamOptions = ['Natural Science', 'Social Science'];
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/StudentRegistration.jsx
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const validateForm = () => {
@@ -97,6 +95,8 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
         username: form.username.trim(),
         email: form.email.trim().toLowerCase(),
         password: form.password,
+        phone_number: form.phone.trim(),
+        phone: form.phone.trim(),
         role: 'student',
       };
 
@@ -122,10 +122,12 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
         email: form.email.trim().toLowerCase(),
         first_name: form.firstName.trim(),
         last_name: form.lastName.trim(),
+         phone_number: form.phone.trim(),
         phone: form.phone.trim(),
         gender: form.gender,
         gpa: Number(form.gpa) || 0,
         stream: form.stream || null,
+        department: 'Not assigned',
         grade_12_result: Number(form.grade12) || 0,
         coc_result: form.coc.trim() !== '' ? form.coc.trim() : null,
         disability: form.disability,
@@ -209,10 +211,17 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                     <input type="number" min="0" max="30" step="0.01" className="form-control" name="coc" value={form.coc} onChange={handleChange} placeholder="Leave blank if unavailable" />
                   </div>
                   <div className="col-md-6">
+<<<<<<< HEAD:placement_frontend/src/pages/registrar/StudentRegistration.jsx
                     <label htmlFor="stream-select" className="form-label fw-semibold">Department</label>
                     <select id="stream-select" className="form-select" name="stream" value={form.stream} onChange={handleChange} aria-label="Department" required>
                       <option value="">Select Department</option>
                       {streamOptions.map(s => <option key={s} value={s}>{s}</option>)}
+=======
+                    <label htmlFor="student-stream" className="form-label fw-semibold">Stream</label>
+                    <select id="student-stream" className="form-select" name="stream" value={form.stream} onChange={handleChange} required>
+                      <option value="">Select Stream</option>
+                      {streamOptions.map((stream) => <option key={stream} value={stream}>{stream}</option>)}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/registrar/StudentRegistration.jsx
                     </select>
                   </div>
                   <div className="col-md-3">

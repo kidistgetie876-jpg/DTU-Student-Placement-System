@@ -95,10 +95,41 @@
   --dtu-font-sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
 }
 
-html,body,#root{height:100%;}
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #0c1a3b;
+}
+
+#root,
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main,
+.dashboard-main {
+  flex: 1 0 auto;
+  overflow-y: visible;
+}
+
+footer,
+.footer,
+.main-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  margin-bottom: 0 !important;
+  position: relative !important;
+  clear: both;
+  z-index: 10;
+}
+
 body{
   font-family: var(--dtu-font-sans);
-  background: var(--dtu-bg);
+  background-color: #0c1a3b;
   color: #0f1724;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;

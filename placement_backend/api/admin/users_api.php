@@ -171,6 +171,7 @@ try {
         $email = $email !== null ? strtolower($email) : null;
         $password = isset($data['password']) ? (string)$data['password'] : '';
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : 'student';
+<<<<<<< HEAD:placement_backend/api/admin/users_api.php
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
         $roleIdNumber = normalizeOptionalValue($data['id_number'] ?? null) ?? '';
         $gender = trim((string)($data['gender'] ?? 'Not specified')) ?: 'Not specified';
@@ -196,6 +197,13 @@ try {
                 $suffix++;
             }
         }
+=======
+        $phone_number = isset($data['phone_number']) ? trim((string)$data['phone_number']) : '';
+        $roleIdNumber = isset($data['id_number']) ? trim((string)$data['id_number']) : '';
+        $gender = trim((string)($data['gender'] ?? 'Not specified')) ?: 'Not specified';
+        $requestedStream = trim((string)($data['stream'] ?? ''));
+        $stream = in_array($requestedStream, ['Natural', 'Social'], true) ? $requestedStream : 'Natural';
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/admin/users_api.php
 
         // Validate required fields
         if (!$first_name || !$last_name || !$username || !$password) {
@@ -314,8 +322,13 @@ try {
         $email = normalizeOptionalValue($data['email'] ?? null);
         if ($email !== null) $email = strtolower($email);
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : null;
+<<<<<<< HEAD:placement_backend/api/admin/users_api.php
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
         $role_id_number = normalizeOptionalValue($data['id_number'] ?? null);
+=======
+        $phone_number = isset($data['phone_number']) ? trim((string)$data['phone_number']) : null;
+        $role_id_number = isset($data['id_number']) ? trim((string)$data['id_number']) : null;
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:placment_backend/api/admin/users_api.php
         $current_password = isset($data['current_password']) ? (string)$data['current_password'] : '';
         $new_password = isset($data['new_password']) ? (string)$data['new_password'] : '';
 

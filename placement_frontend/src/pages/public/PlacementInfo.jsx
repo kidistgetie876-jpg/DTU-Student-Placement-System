@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from '../../services/api.js';
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
 
 const defaultPlacementSettings = {
   submissionStart: '2026-10-01',
@@ -9,6 +10,14 @@ const defaultPlacementSettings = {
   resultsDate: '2026-10-21',
   appealStart: '2026-10-22',
   appealEnd: '2026-10-25',
+=======
+import {
+  SYSTEM_SETTINGS_UPDATED_EVENT,
+  SYSTEM_SETTINGS_UPDATED_STORAGE_KEY,
+} from '../../services/systemSettingsEvents.js';
+
+const defaultPlacementSettings = {
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
   gpa_weight: 40,
   grade_12_weight: 20,
   coc_weight: 30,
@@ -249,6 +258,18 @@ function PlacementInfo() {
   const [activeTab, setActiveTab] = useState("rules");
   const [placementSettings, setPlacementSettings] = useState(defaultPlacementSettings);
   const [rulesSettings, setRulesSettings] = useState(defaultPlacementSettings);
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
+=======
+  const [placementDates, setPlacementDates] = useState({
+    submissionStart: '',
+    submissionDeadline: '',
+    processingStart: '',
+    processingEnd: '',
+    resultsDate: '',
+    appealStart: '',
+    appealEnd: '',
+  });
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
   const activeContent = placementGuidance[activeTab];
 
   useEffect(() => {
@@ -260,28 +281,60 @@ function PlacementInfo() {
       ]);
       if (!isMounted) return;
 
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
       const dates = portalResult.status === 'fulfilled'
         ? portalResult.value.data?.settings?.placement || {}
         : {};
+=======
+      const res = portalResult.status === 'fulfilled' ? portalResult.value : { data: {} };
+      const dates = res.data?.settings?.placement || res.data?.placement || {};
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
       const registrarRules = rulesResult.status === 'fulfilled'
         ? rulesResult.value.data?.settings || rulesResult.value.data?.data || rulesResult.value.data || {}
         : {};
       const weightKeys = ['gpa_weight', 'grade_12_weight', 'coc_weight', 'gender_weight', 'disability_weight', 'minority_weight'];
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
 
       setPlacementSettings((current) => ({ ...current, ...dates }));
+=======
+      const dateKeys = ['submissionStart', 'submissionDeadline', 'processingStart', 'processingEnd', 'resultsDate', 'appealStart', 'appealEnd'];
+
+      setPlacementSettings((current) => ({ ...current, ...dates }));
+      if (portalResult.status === 'fulfilled') {
+        setPlacementDates(dateKeys.reduce((currentDates, key) => ({
+          ...currentDates,
+          [key]: dates[key] || '',
+        }), {}));
+      }
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
       setRulesSettings((current) => weightKeys.reduce((next, key) => {
         const value = dates[key] ?? registrarRules[key] ?? current[key];
         return { ...next, [key]: Number.isFinite(Number(value)) ? Number(value) : current[key] };
       }, current));
     };
 
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
     loadPlacementSettings();
     window.addEventListener('system-settings-updated', loadPlacementSettings);
+=======
+    const handleStorage = (event) => {
+      if (event.key === SYSTEM_SETTINGS_UPDATED_STORAGE_KEY) loadPlacementSettings();
+    };
+
+    loadPlacementSettings();
+    window.addEventListener(SYSTEM_SETTINGS_UPDATED_EVENT, loadPlacementSettings);
+    window.addEventListener('storage', handleStorage);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
     const refreshInterval = window.setInterval(loadPlacementSettings, 15000);
 
     return () => {
       isMounted = false;
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
       window.removeEventListener('system-settings-updated', loadPlacementSettings);
+=======
+      window.removeEventListener(SYSTEM_SETTINGS_UPDATED_EVENT, loadPlacementSettings);
+      window.removeEventListener('storage', handleStorage);
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
       window.clearInterval(refreshInterval);
     };
   }, []);
@@ -318,7 +371,13 @@ function PlacementInfo() {
             <p className="text-muted mb-0">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
           </div>
 
+<<<<<<< HEAD:placement_frontend/src/pages/public/PlacementInfo.jsx
           {typeof activeContent.body === 'function' ? activeContent.body({ ...placementSettings, ...rulesSettings }) : activeContent.body}
+=======
+          {typeof activeContent.body === 'function'
+            ? activeContent.body(activeTab === 'schedule' ? placementDates : { ...placementSettings, ...rulesSettings })
+            : activeContent.body}
+>>>>>>> 0804fa7a9466ce2c9657e71058cbe88e873d7e70:src/pages/public/PlacementInfo.jsx
         </div>
       </div>
     </div>
