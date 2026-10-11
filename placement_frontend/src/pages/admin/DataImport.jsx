@@ -2,7 +2,90 @@ import React, { useRef, useState } from 'react';
 import api from '../../services/api.js';
 import * as XLSX from 'xlsx';
 
-const DataImport = () => {
+const normalizeHeader = (header) => String(header ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const studentImportHeaders = {
+  idNumber: ['idnumber', 'studentid', 'studentnumber'],
+  email: ['email', 'emailaddress', 'studentemail', 'studentemailaddress', 'emailid'],
+  firstName: ['firstname', 'studentfirstname', 'givenname'],
+  lastName: ['lastname', 'studentlastname', 'surname', 'familyname'],
+  fullName: ['fullname', 'studentname', 'name'],
+  username: ['username', 'loginname'],
+  phone: ['phone', 'phonenumber', 'mobilenumber', 'mobile'],
+  gpa: ['gpa', 'cgpa', 'cumulativegpa'],
+  stream: ['stream'],
+  gender: ['gender'],
+  grade12: ['grade12result', 'grade12', 'g12result', 'g12'],
+  coc: ['cocresult', 'coc', 'competencyexamresult'],
+  disability: ['disability', 'hasdisability'],
+  minority: ['minority', 'isminority'],
+};
+
+const getHeaderIndex = (headerRow, aliases) => headerRow.findIndex((header) => aliases.includes(normalizeHeader(header)));
+
+export const parseStudentImportGrid = (grid) => {
+  const headerRowIndex = grid.slice(0, 10).findIndex((row) => {
+    const emailIndex = getHeaderIndex(row, studentImportHeaders.email);
+    const hasIdentifier = [
+      ...studentImportHeaders.idNumber,
+      ...studentImportHeaders.username,
+    ].some((alias) => getHeaderIndex(row, [alias]) >= 0);
+    const hasNameColumn = [
+      ...studentImportHeaders.firstName,
+      ...studentImportHeaders.lastName,
+      ...studentImportHeaders.fullName,
+      ...studentImportHeaders.username,
+    ].some((alias) => getHeaderIndex(row, [alias]) >= 0);
+    return (emailIndex >= 0 || hasIdentifier) && hasNameColumn;
+  });
+
+  if (headerRowIndex < 0) {
+    return { rows: [], headersFound: false };
+  }
+
+  const headers = grid[headerRowIndex];
+  const getCell = (row, aliases) => {
+    const index = getHeaderIndex(headers, aliases);
+    return index < 0 ? '' : String(row[index] ?? '').trim();
+  };
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const rows = grid.slice(headerRowIndex + 1).map((row) => {
+    let firstName = getCell(row, studentImportHeaders.firstName);
+    let lastName = getCell(row, studentImportHeaders.lastName);
+    const fullName = getCell(row, studentImportHeaders.fullName);
+    if (!firstName && !lastName && fullName) {
+      const nameParts = fullName.split(/\s+/);
+      firstName = nameParts.shift() || '';
+      lastName = nameParts.join(' ');
+    }
+
+    const email = getCell(row, studentImportHeaders.email);
+    const username = getCell(row, studentImportHeaders.username)
+      || (emailPattern.test(email) ? email.split('@')[0] : '');
+    return {
+      id_number: getCell(row, studentImportHeaders.idNumber),
+      first_name: firstName,
+      last_name: lastName,
+      username,
+      email,
+      phone: getCell(row, studentImportHeaders.phone),
+      gpa: getCell(row, studentImportHeaders.gpa) || '0',
+      stream: getCell(row, studentImportHeaders.stream),
+      gender: getCell(row, studentImportHeaders.gender) || 'Not specified',
+      grade_12_result: getCell(row, studentImportHeaders.grade12) || '0',
+      coc_result: getCell(row, studentImportHeaders.coc) || '0',
+      disability: getCell(row, studentImportHeaders.disability) || 'No',
+      minority: getCell(row, studentImportHeaders.minority) || 'No',
+    };
+  }).filter((row) => (
+    (emailPattern.test(row.email) || row.id_number || row.username)
+    && (row.first_name || row.last_name || row.username)
+  ));
+
+  return { rows, headersFound: true };
+};
+
+const DataImport = ({ onImportSuccess }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
@@ -10,30 +93,6 @@ const DataImport = () => {
   const [previewRows, setPreviewRows] = useState([]);
   const [previewReady, setPreviewReady] = useState(false);
   const fileInputRef = useRef(null);
-
-  // 1. ኮለሞችን ወደ ዳታቤዝ ስም መቀየሪያ (Normalization)
-  const normalizeCSVRow = (row) => {
-    const normalized = {};
-    Object.entries(row).forEach(([key, value]) => {
-      const cleanKey = key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-      normalized[cleanKey] = String(value ?? '').trim();
-    });
-    
-    return {
-      first_name: normalized.first_name || normalized.firstname || '',
-      last_name: normalized.last_name || normalized.lastname || '',
-      username: normalized.username || normalized.name || '',
-      email: normalized.email || '',
-      phone: normalized.phone || normalized.phone_number || '',
-      gpa: normalized.gpa || '0',
-      stream: normalized.stream || '',
-      gender: normalized.gender || 'Not specified',
-      grade_12_result: normalized.grade_12_result || normalized.grade12 || '0',
-      coc_result: normalized.coc_result || normalized.coc || '0',
-      disability: normalized.disability || 'No',
-      minority: normalized.minority || 'No'
-    };
-  };
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -55,15 +114,17 @@ const DataImport = () => {
     try {
       const dataBuffer = await file.arrayBuffer();
       const workbook = XLSX.read(dataBuffer, { type: 'array' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
-      
-      const normalizedData = rows.map(normalizeCSVRow).filter(row => (
-        row.email !== '' && (row.first_name !== '' || row.last_name !== '' || row.username !== '')
-      ));
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) throw new Error('The selected workbook does not contain a worksheet.');
+      const firstSheet = workbook.Sheets[firstSheetName];
+      const grid = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false });
+      const { rows: normalizedData, headersFound } = parseStudentImportGrid(grid);
 
       if (normalizedData.length === 0) {
-        throw new Error("ምንም ትክክለኛ የተማሪ ዳታ አልተገኘም።");
+        if (!headersFound) {
+          throw new Error('Could not identify the required columns. Include an Email/Email Address column and a First Name, Last Name, Full Name, Student Name, or Username column.');
+        }
+        throw new Error('No valid student rows found. Check that each row has a valid email address and student name or username.');
       }
 
       setPreviewRows(normalizedData);
@@ -93,6 +154,7 @@ const DataImport = () => {
         first_name: row.first_name || '',
         last_name: row.last_name || '',
         username: row.username || row.email.split('@')[0],
+        id_number: row.id_number || '',
         email: row.email || '',
         phone: row.phone || '',
         gpa: row.gpa || '0',
@@ -130,6 +192,7 @@ const DataImport = () => {
         setPreviewReady(false);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+        onImportSuccess?.();
       } else {
         setStatusType('error');
         setStatusMessage(responseData.message || responseData.error || 'No students were imported. Check the backend response.');
@@ -153,6 +216,9 @@ const DataImport = () => {
           </div>
         )}
         
+        <p className="text-muted small mb-2">
+          Match existing students by Student ID or username; new accounts require an email address. Common headers such as Student ID, Email Address, Student Name, Given Name, and Surname are supported.
+        </p>
         <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx" className="form-control mb-3" onChange={handleFileChange} />
         
         <div className="d-flex gap-2">
@@ -169,13 +235,13 @@ const DataImport = () => {
               <table className="table table-sm table-hover mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
+                    <th>Student ID</th><th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 10).map((row, i) => (
                     <tr key={i}>
-                      <td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
+                      <td>{row.id_number}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
                       <td>{row.stream}</td><td>{row.gender}</td><td>{row.grade_12_result}</td><td>{row.coc_result}</td><td>{row.disability}</td><td>{row.minority}</td>
                     </tr>
                   ))}

@@ -15,6 +15,7 @@ const StudentAppeal = ({ studentId, placement }) => {
   const [appeals, setAppeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingAppealId, setDeletingAppealId] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
   const loadAppeals = async (id = studentId) => {
@@ -69,6 +70,28 @@ const StudentAppeal = ({ studentId, placement }) => {
       setFeedback({ type: 'danger', text: error.response?.data?.message || error.message || 'Unable to submit appeal.' });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (appeal) => {
+    if (!window.confirm('Delete this appeal? This cannot be undone.')) return;
+
+    setDeletingAppealId(appeal.id);
+    setFeedback(null);
+    try {
+      const response = await api.post('api/student/submit_appeal.php', {
+        action: 'delete',
+        appeal_id: appeal.id,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to delete appeal.');
+      }
+      setAppeals((current) => current.filter((item) => item.id !== appeal.id));
+      setFeedback({ type: 'success', text: response.data.message || 'Appeal deleted successfully.' });
+    } catch (error) {
+      setFeedback({ type: 'danger', text: error.response?.data?.message || error.message || 'Unable to delete appeal.' });
+    } finally {
+      setDeletingAppealId(null);
     }
   };
 
@@ -134,7 +157,19 @@ const StudentAppeal = ({ studentId, placement }) => {
             <div className="border rounded-3 p-3" key={appeal.id}>
               <div className="d-flex justify-content-between gap-2 flex-wrap mb-2">
                 <strong>{appeal.subject}</strong>
-                <span className="badge bg-secondary">{appeal.status}</span>
+                <div className="d-flex align-items-center gap-2">
+                  <span className="badge bg-secondary">{appeal.status}</span>
+                  {String(appeal.status).toLowerCase() === 'received' && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={() => handleDelete(appeal)}
+                      disabled={deletingAppealId === appeal.id}
+                    >
+                      {deletingAppealId === appeal.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  )}
+                </div>
               </div>
               <p className="mb-2 text-muted">{appeal.message}</p>
               {appeal.response && <div className="alert alert-info mb-0"><strong>Registrar response:</strong> {appeal.response}</div>}

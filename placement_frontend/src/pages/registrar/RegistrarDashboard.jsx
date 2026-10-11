@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import StudentRegistration from './StudentRegistration';
+import DataImport from '../admin/DataImport.jsx';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
 import * as XLSX from 'xlsx';
@@ -337,6 +338,7 @@ const RegistrarDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [registrar, setRegistrar] = useState(null);
+  const [studentRecordsRefreshToken, setStudentRecordsRefreshToken] = useState(0);
   const [tab, setActiveTab] = useState(() => {
     if (location.state?.activeTab) return location.state.activeTab;
     const savedTab = sessionStorage.getItem('registrarActiveTab');
@@ -435,11 +437,13 @@ const RegistrarDashboard = () => {
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [choiceMatrixSearch, setChoiceMatrixSearch] = useState('');
+  const [choiceMatrixPage, setChoiceMatrixPage] = useState(1);
   const [choiceDetailsStudent, setChoiceDetailsStudent] = useState(null);
   const [selectedStream, setSelectedStream] = useState('all');
   const [placementCollege, setPlacementCollege] = useState('all');
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [capacityPage, setCapacityPage] = useState(1);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const reportFileInputRef = useRef(null);
   const PAGE_SIZE = 10;
@@ -711,7 +715,13 @@ const RegistrarDashboard = () => {
     const g12 = student?.g12 ?? student?.grade_12_result ?? null;
     const coc = student?.coc ?? student?.coc_result ?? null;
 
-    const isMissing = (value) => value === null || value === undefined || value === '' || value === 'N/A' || value === 'NA';
+    const isMissing = (value) => {
+      if (value === null || value === undefined) return true;
+      const normalized = String(value).trim().toLowerCase();
+      if (normalized === '' || normalized === 'n/a' || normalized === 'na') return true;
+      const numericValue = Number(normalized);
+      return Number.isFinite(numericValue) && numericValue <= 0;
+    };
     return isMissing(gpa) || isMissing(g12) || isMissing(coc);
   };
 
@@ -1143,7 +1153,7 @@ const RegistrarDashboard = () => {
             // Certificate of Competence Result - Map from database column (numeric score)
             const coc = profile?.coc_result ?? profile?.coc ?? profile?.certificate_of_competence ?? null;
             // Ensure COC is a number if it exists
-            const cocValue = coc ? Number(coc) : null;
+            const cocValue = coc !== null && coc !== undefined && coc !== '' ? Number(coc) : null;
 
             // Additional Student Attributes
             const gender = (profile?.gender || user?.gender || '').toString();
@@ -1234,7 +1244,7 @@ const RegistrarDashboard = () => {
     if (registrar) {
       fetchStudentRecords();
     }
-  }, [placementRules, registrar]);
+  }, [placementRules, registrar, studentRecordsRefreshToken]);
 
   // Refresh overview counts from the database-backed dashboard API when Overview opens.
   useEffect(() => {
@@ -1305,28 +1315,59 @@ const RegistrarDashboard = () => {
 
       return searchableText.includes(term);
     });
+  const choiceMatrixTotalPages = Math.max(1, Math.ceil(choiceMatrixRows.length / PAGE_SIZE));
+  const paginatedChoiceMatrixRows = choiceMatrixRows.slice(
+    (choiceMatrixPage - 1) * PAGE_SIZE,
+    choiceMatrixPage * PAGE_SIZE
+  );
 
-  const filteredStudents = studentRecords.filter((student) => {
-    const searchTerm = studentSearch.trim().toLowerCase();
-    if (!searchTerm) return true;
+  const filteredStudents = [...studentRecords]
+    .sort((left, right) => {
+      const leftId = String(left.id_number || left.id || '');
+      const rightId = String(right.id_number || right.id || '');
+      if (!leftId) return rightId ? 1 : 0;
+      if (!rightId) return -1;
+      return leftId.localeCompare(rightId, undefined, { numeric: true, sensitivity: 'base' });
+    })
+    .filter((student) => {
+      const searchTerm = studentSearch.trim().toLowerCase();
+      if (!searchTerm) return true;
 
-    const searchableText = [
-      student.name,
-      student.email,
-      student.department,
-      student.status,
-      student.id,
-      student.gender,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
+      const searchableText = [
+        student.name,
+        student.email,
+        student.department,
+        student.status,
+        student.id,
+        student.gender,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
-    return searchableText.includes(searchTerm);
-  });
+      return searchableText.includes(searchTerm);
+    });
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
   const paginatedStudents = filteredStudents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const filteredCapacityDepartments = (departments || []).filter((department) => {
+    const name = String(department.name || '').toLowerCase().trim();
+    const college = String(department.college || '').toLowerCase().trim();
+    const streamName = getDepartmentStream(department);
+    const currentStream = (streamFilter || 'all').toLowerCase().trim();
+
+    if (currentStream !== 'all' && streamName.toLowerCase().trim() !== currentStream) {
+      return false;
+    }
+
+    const query = (deptSearch || '').trim().toLowerCase();
+    return !query || `${name} ${college} ${streamName}`.toLowerCase().includes(query);
+  });
+  const capacityTotalPages = Math.max(1, Math.ceil(filteredCapacityDepartments.length / PAGE_SIZE));
+  const paginatedCapacityDepartments = filteredCapacityDepartments.slice(
+    (capacityPage - 1) * PAGE_SIZE,
+    capacityPage * PAGE_SIZE
+  );
   const latestPlacementRun = pendingResults[0] || null;
 
   const handleReportFileChange = (event) => {
@@ -1511,6 +1552,26 @@ const RegistrarDashboard = () => {
     setCurrentPage(1);
   }, [studentRecords.length, studentSearch]);
 
+  useEffect(() => {
+    setChoiceMatrixPage(1);
+  }, [studentRecords.length, choiceMatrixSearch]);
+
+  useEffect(() => {
+    setCapacityPage(1);
+  }, [streamFilter, deptSearch]);
+
+  useEffect(() => {
+    if (capacityPage > capacityTotalPages) {
+      setCapacityPage(capacityTotalPages);
+    }
+  }, [capacityPage, capacityTotalPages]);
+
+  useEffect(() => {
+    if (choiceMatrixPage > choiceMatrixTotalPages) {
+      setChoiceMatrixPage(choiceMatrixTotalPages);
+    }
+  }, [choiceMatrixPage, choiceMatrixTotalPages]);
+
   if (!registrar) return <div className="text-center mt-5">Loading...</div>;
 
   return (
@@ -1539,6 +1600,12 @@ const RegistrarDashboard = () => {
               onClick={() => setTab('student-info')}
             >
               Student Information
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'data-import' ? 'active' : ''}`}
+              onClick={() => setTab('data-import')}
+            >
+              Import Student Data
             </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'choice-matrix' ? 'active' : ''}`}
@@ -2281,7 +2348,7 @@ const RegistrarDashboard = () => {
                           </td>
                         </tr>
                       ) : (
-                        choiceMatrixRows.map((student) => (
+                        paginatedChoiceMatrixRows.map((student) => (
                           <tr key={`${student.id}-${student.email}`}>
                             <td>
                               <span className="badge px-3 py-2 fw-bold" style={{ backgroundColor: '#e2edff', color: '#0d6efd', borderRadius: '8px' }}>
@@ -2310,6 +2377,34 @@ const RegistrarDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+                {choiceMatrixRows.length > PAGE_SIZE && (
+                  <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                    <div className="text-muted small">
+                      Showing {Math.min((choiceMatrixPage - 1) * PAGE_SIZE + 1, choiceMatrixRows.length)}-{Math.min(choiceMatrixPage * PAGE_SIZE, choiceMatrixRows.length)} of {choiceMatrixRows.length}
+                    </div>
+                    <div className="btn-group" role="group" aria-label="Student choice matrix pagination">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setChoiceMatrixPage((page) => Math.max(1, page - 1))}
+                        disabled={choiceMatrixPage === 1}
+                      >
+                        Previous
+                      </button>
+                      <button type="button" className="btn btn-sm btn-light" disabled>
+                        Page {choiceMatrixPage} of {choiceMatrixTotalPages}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setChoiceMatrixPage((page) => Math.min(choiceMatrixTotalPages, page + 1))}
+                        disabled={choiceMatrixPage === choiceMatrixTotalPages}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {choiceDetailsStudent && (
                   <div
                     className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
@@ -2369,6 +2464,8 @@ const RegistrarDashboard = () => {
             </div>
           ) : tab === 'student-registration' ? (
             <StudentRegistration onBack={() => setTab('student-info')} onSuccess={() => setTab('student-info')} />
+          ) : tab === 'data-import' ? (
+            <DataImport onImportSuccess={() => setStudentRecordsRefreshToken((current) => current + 1)} />
           ) : tab === 'capacity' ? (
             <div className="card shadow-sm border-0">
               <div className="card-body p-4">
@@ -2403,7 +2500,10 @@ const RegistrarDashboard = () => {
                     <select
                       className="form-select dtu-form-control"
                       value={streamFilter}
-                      onChange={(e) => setStreamFilter(e.target.value)}
+                      onChange={(e) => {
+                        setStreamFilter(e.target.value);
+                        setCapacityPage(1);
+                      }}
                     >
                       <option value="all">All Streams</option>
                       {Array.from(
@@ -2424,7 +2524,10 @@ const RegistrarDashboard = () => {
                       className="form-control dtu-form-control"
                       placeholder="Search by department name"
                       value={deptSearch}
-                      onChange={(e) => setDeptSearch(e.target.value)}
+                      onChange={(e) => {
+                        setDeptSearch(e.target.value);
+                        setCapacityPage(1);
+                      }}
                     />
                   </div>
                 </div>
@@ -2441,28 +2544,7 @@ const RegistrarDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(departments || [])
-                        .filter((d) => {
-                          const name = String(d.name || '').toLowerCase().trim();
-                          const college = String(d.college || '').toLowerCase().trim();
-                          const streamName = getDepartmentStream(d);
-                          const currentStream = (streamFilter || 'all').toLowerCase().trim();
-
-                          if (currentStream !== 'all' && streamName.toLowerCase().trim() !== currentStream) {
-                            return false;
-                          }
-
-                          const query = (deptSearch || '').trim().toLowerCase();
-                          if (query) {
-                            const searchableText = `${name} ${college} ${streamName}`.toLowerCase();
-                            if (!searchableText.includes(query)) {
-                              return false;
-                            }
-                          }
-
-                          return true;
-                        })
-                        .map((d, index) => {
+                      {paginatedCapacityDepartments.map((d, index) => {
                           const streamName = getDepartmentStream(d);
                           const collegeText = String(d.college || 'General')
                             .replace(/^\s*college\s+of\s+/i, '')
@@ -2473,7 +2555,7 @@ const RegistrarDashboard = () => {
 
                           return (
                             <tr key={d.id || `${d.name}-${index}`}>
-                              <td>{index + 1}</td>
+                              <td>{(capacityPage - 1) * PAGE_SIZE + index + 1}</td>
                               <td className="fw-semibold text-primary">{streamName}</td>
                               <td>{collegeText}</td>
                               <td className="fw-bold dtu-department-name">{d.name}</td>
@@ -2501,6 +2583,34 @@ const RegistrarDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+                {filteredCapacityDepartments.length > PAGE_SIZE && (
+                  <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                    <div className="text-muted small">
+                      Showing {Math.min((capacityPage - 1) * PAGE_SIZE + 1, filteredCapacityDepartments.length)}-{Math.min(capacityPage * PAGE_SIZE, filteredCapacityDepartments.length)} of {filteredCapacityDepartments.length} departments
+                    </div>
+                    <div className="btn-group" role="group" aria-label="Department capacity pagination">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setCapacityPage((page) => Math.max(1, page - 1))}
+                        disabled={capacityPage === 1}
+                      >
+                        Previous
+                      </button>
+                      <button type="button" className="btn btn-sm btn-light" disabled>
+                        Page {capacityPage} of {capacityTotalPages}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setCapacityPage((page) => Math.min(capacityTotalPages, page + 1))}
+                        disabled={capacityPage === capacityTotalPages}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
 
               </div>
             </div>
@@ -3716,7 +3826,7 @@ const RegistrarDashboard = () => {
                     const g12 = profile?.grade_12_result ?? profile?.g12 ?? profile?.g12_score ?? null;
                     const coc = profile?.coc_result ?? profile?.coc ?? profile?.certificateOfCompetence ?? null;
                     // Ensure COC is a number if it exists
-                    const cocValue = coc ? Number(coc) : null;
+                    const cocValue = coc !== null && coc !== undefined && coc !== '' ? Number(coc) : null;
                     const gender = (profile?.gender || user?.gender || '').toString();
                     const hasDisability = parseYesNo(profile?.disability ?? profile?.has_disability ?? profile?.hasDisability ?? profile?.specialSupport);
                     const minority = parseYesNo(profile?.minority ?? profile?.is_minority ?? profile?.isMinority);

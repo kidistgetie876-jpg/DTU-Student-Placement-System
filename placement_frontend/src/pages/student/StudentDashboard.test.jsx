@@ -48,6 +48,67 @@ describe('StudentDashboard', () => {
     expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
   });
 
+  it('marks all student notifications as read', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{ id: 10, message: 'Placement update', is_read: '0' }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true, message: 'All notifications marked as read.' } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+
+    expect(await screen.findByRole('button', { name: 'Mark all as read' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/student/mark_all_notifications_read.php'));
+    expect(await screen.findByText('All notifications marked as read.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument();
+  });
+
+  it('marks an individual student notification as read', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{ id: 11, message: 'New placement notice', is_read: 0 }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true, message: 'Notification marked as read.' } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+
+    const markReadButton = await screen.findByRole('button', { name: 'Mark as read' });
+    fireEvent.click(markReadButton);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/mark_notification_read.php',
+      { notification_id: 11 }
+    ));
+    expect(await screen.findByText('Notification marked as read.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument();
+  });
+
   it('hides Pending placement details until the Registrar publishes the result', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });

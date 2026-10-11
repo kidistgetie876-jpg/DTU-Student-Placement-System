@@ -22,7 +22,8 @@ const needsAcademicScores = (student) => {
     value === undefined ||
     value === '' ||
     value === 'N/A' ||
-    value === 'NA';
+    value === 'NA' ||
+    (Number.isFinite(Number(value)) && Number(value) <= 0);
 
   return isMissing(gpa) || isMissing(g12) || isMissing(coc);
 };

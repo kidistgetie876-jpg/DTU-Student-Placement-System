@@ -14,10 +14,12 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Reset Password State
   const [showModal, setShowModal] = useState(false);
-  const [resetData, setResetData] = useState({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
+  const [resetData, setResetData] = useState({ email: '', code: '', newPassword: '', confirmPassword: '' });
+  const [resetStep, setResetStep] = useState('request');
+  const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
 
   useEffect(() => {
     setIdentifier('');
@@ -80,27 +82,77 @@ const Login = () => {
     }
   };
 
-  const handleResetSubmit = async (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
-    if (resetData.newPassword !== resetData.confirmPassword) {
-      setResetError("New passwords do not match!");
+    const email = resetData.email.trim();
+    if (!isValidEmail(email)) {
+      setResetError('Please enter a valid email address.');
       return;
     }
-    setLoading(true);
+    setResetLoading(true);
+    setResetError('');
+    setResetMessage('');
     try {
-      const response = await api.post('auth/reset_password.php', resetData);
-      if (response.data.status === 'success' || response.data.success === true) {
-        alert("Success! Password changed.");
-        setShowModal(false);
-        setResetData({ email: '', oldPassword: '', newPassword: '', confirmPassword: '' });
-      } else {
-        setResetError(response.data.message);
-      }
-    } catch (err) { 
-      setResetError("Server error."); 
+      const response = await api.post('auth/forgot_password.php', { email });
+      setResetStep('reset');
+      setResetMessage(response.data?.message || 'If an account uses that email and email delivery is available, a verification code will arrive shortly.');
+    } catch (err) {
+      setResetError(err.response?.data?.message || 'Unable to process the request right now. Please try again.');
     } finally {
-      setLoading(false);
+      setResetLoading(false);
     }
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(resetData.code.trim())) {
+      setResetError('Enter the six-digit verification code from your email.');
+      return;
+    }
+    if (resetData.newPassword.length < 6) {
+      setResetError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (resetData.newPassword !== resetData.confirmPassword) {
+      setResetError('New passwords do not match.');
+      return;
+    }
+    setResetLoading(true);
+    setResetError('');
+    setResetMessage('');
+    try {
+      const response = await api.post('auth/reset_password.php', {
+        email: resetData.email.trim(),
+        code: resetData.code.trim(),
+        newPassword: resetData.newPassword,
+      });
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to reset the password.');
+      setResetStep('complete');
+      setResetMessage(response.data.message || 'Your password has been reset. You can now sign in.');
+    } catch (err) { 
+      setResetError(err.response?.data?.message || err.message || 'Unable to reset the password right now.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const closeResetModal = () => {
+    setShowModal(false);
+    setResetData({ email: '', code: '', newPassword: '', confirmPassword: '' });
+    setResetStep('request');
+    setResetError('');
+    setResetMessage('');
+  };
+
+  const openResetModal = () => {
+    setResetData((current) => ({
+      ...current,
+      email: isValidEmail(identifier.trim()) ? identifier.trim() : '',
+    }));
+    setResetStep('request');
+    setResetError('');
+    setResetMessage('');
+    setShowModal(true);
   };
 
   return (
@@ -240,7 +292,7 @@ const Login = () => {
                   <div className="text-center mt-3 pt-1">
                     <button 
                       type="button" 
-                      onClick={() => setShowModal(true)} 
+                      onClick={openResetModal}
                       className="btn btn-link btn-sm text-decoration-none fw-semibold"
                       style={{ color: '#0a2d6d' }}
                     >
@@ -255,43 +307,109 @@ const Login = () => {
         </div>
       </div>
 
-      {/* --- RESET PASSWORD MODAL --- */}
+      {/* --- FORGOT PASSWORD MODAL --- */}
       {showModal && (
         <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(10, 45, 109, 0.45)', backdropFilter: 'blur(4px)', zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '20px', overflow: 'hidden' }}>
               <div className="modal-header text-white px-4 py-3" style={{ backgroundColor: '#0a2d6d' }}>
-                <h5 className="modal-title fw-bold">Reset Your Password</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
+                <h5 className="modal-title fw-bold">
+                  {resetStep === 'request' ? 'Forgot Password' : resetStep === 'reset' ? 'Reset Your Password' : 'Password Updated'}
+                </h5>
+                <button type="button" className="btn-close btn-close-white" aria-label="Close" onClick={closeResetModal}></button>
               </div>
-              <form onSubmit={handleResetSubmit}>
+              {resetStep === 'request' ? (
+                <form onSubmit={handleForgotPassword}>
+                  <div className="modal-body p-4">
+                    <p className="text-muted small">Enter the email address on your account. If it is registered, we’ll send a six-digit reset code.</p>
+                    {resetError && <div className="alert alert-danger small rounded-3">{resetError}</div>}
+                    <div className="mb-3">
+                      <label htmlFor="reset-email" className="small fw-bold text-secondary">Email Address</label>
+                      <input
+                        id="reset-email"
+                        type="email"
+                        className="form-control py-2 rounded-3"
+                        placeholder="Enter your email"
+                        autoComplete="email"
+                        value={resetData.email}
+                        onChange={(e) => setResetData((current) => ({ ...current, email: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer border-0 px-4 pb-4 pt-0">
+                    <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={closeResetModal}>Cancel</button>
+                    <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={resetLoading}>
+                      {resetLoading ? 'Sending...' : 'Send reset code'}
+                    </button>
+                  </div>
+                </form>
+              ) : resetStep === 'reset' ? (
+                <form onSubmit={handleResetSubmit}>
+                  <div className="modal-body p-4">
+                    {resetMessage && <div className="alert alert-info small rounded-3">{resetMessage}</div>}
+                    {resetError && <div className="alert alert-danger small rounded-3">{resetError}</div>}
+                    <div className="mb-3">
+                      <label htmlFor="reset-code" className="small fw-bold text-secondary">Six-digit verification code</label>
+                      <input
+                        id="reset-code"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        className="form-control py-2 rounded-3"
+                        autoComplete="one-time-code"
+                        value={resetData.code}
+                        onChange={(e) => setResetData((current) => ({ ...current, code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                        required
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label htmlFor="reset-new-password" className="small fw-bold text-secondary">New Password</label>
+                      <input
+                        id="reset-new-password"
+                        type="password"
+                        minLength={6}
+                        className="form-control py-2 rounded-3"
+                        autoComplete="new-password"
+                        value={resetData.newPassword}
+                        onChange={(e) => setResetData((current) => ({ ...current, newPassword: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label htmlFor="reset-confirm-password" className="small fw-bold text-secondary">Confirm New Password</label>
+                      <input
+                        id="reset-confirm-password"
+                        type="password"
+                        minLength={6}
+                        className="form-control py-2 rounded-3"
+                        autoComplete="new-password"
+                        value={resetData.confirmPassword}
+                        onChange={(e) => setResetData((current) => ({ ...current, confirmPassword: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer border-0 px-4 pb-4 pt-0">
+                    <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={() => {
+                      setResetStep('request');
+                      setResetError('');
+                      setResetMessage('');
+                    }}>Change email</button>
+                    <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={resetLoading}>
+                      {resetLoading ? 'Resetting...' : 'Reset password'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
                 <div className="modal-body p-4">
-                  {resetError && <div className="alert alert-danger small rounded-3">{resetError}</div>}
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Email Address</label>
-                    <input type="email" className="form-control py-2 rounded-3" placeholder="Enter your registered email" onChange={(e) => setResetData({...resetData, email: e.target.value})} required />
-                  </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Current (Old) Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter current password" onChange={(e) => setResetData({...resetData, oldPassword: e.target.value})} required />
-                  </div>
-                  <hr className="my-3 text-muted" />
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Enter new password" onChange={(e) => setResetData({...resetData, newPassword: e.target.value})} required />
-                  </div>
-                  <div className="mb-3">
-                    <label className="small fw-bold text-secondary">Confirm New Password</label>
-                    <input type="password" className="form-control py-2 rounded-3" placeholder="Confirm new password" onChange={(e) => setResetData({...resetData, confirmPassword: e.target.value})} required />
-                  </div>
-                </div>
-                <div className="modal-footer border-0 px-4 pb-4 pt-0">
-                  <button type="button" className="btn btn-light px-3 py-2 rounded-3" onClick={() => setShowModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary px-4 py-2 rounded-3 fw-bold" style={{ backgroundColor: '#0a2d6d' }} disabled={loading}>
-                    {loading ? 'Processing...' : 'Change Password'}
+                  <div className="alert alert-success small rounded-3">{resetMessage}</div>
+                  <button type="button" className="btn btn-primary w-100" style={{ backgroundColor: '#0a2d6d' }} onClick={closeResetModal}>
+                    Back to login
                   </button>
                 </div>
-              </form>
+              )}
             </div>
           </div>
         </div>

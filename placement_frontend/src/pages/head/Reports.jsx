@@ -72,7 +72,9 @@ const Reports = ({ leader, department, students = [] }) => {
         formData.append('student_id', String(Number(studentId)));
       }
       if (reportFile) formData.append('report_file', reportFile);
-      const response = await api.post('api/head/send_head_message.php', formData);
+      const response = await api.post('api/head/send_head_message.php', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to send message.');
       setMessage('');
       setStudentId('');

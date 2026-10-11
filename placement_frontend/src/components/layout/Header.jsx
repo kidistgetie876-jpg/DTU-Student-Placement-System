@@ -116,20 +116,22 @@ function Header() {
         <div className="container position-relative">
           
           {/* Mobile Toggle */}
-          <button
-            className="navbar-toggler"
-            type="button"
-            aria-controls="dtuNavbar"
-            aria-expanded={isMenuOpen}
-            aria-label="Toggle navigation"
-            onClick={() => setIsMenuOpen((open) => !open)}
-          >
-            <span className="navbar-toggler-icon"></span>
-          </button>
+          {!isDashboardRoute && (
+            <button
+              className="navbar-toggler"
+              type="button"
+              aria-controls="dtuNavbar"
+              aria-expanded={isMenuOpen}
+              aria-label="Toggle navigation"
+              onClick={() => setIsMenuOpen((open) => !open)}
+            >
+              <span className="navbar-toggler-icon"></span>
+            </button>
+          )}
 
-          <div className={`collapse navbar-collapse ${isMenuOpen ? 'show' : ''}`} id="dtuNavbar">
+          <div className={`collapse navbar-collapse ${isDashboardRoute || isMenuOpen ? 'show' : ''}`} id="dtuNavbar">
             {/* Center Links (Home, Services, Contact) */}
-            {!isAdminRoute && (
+            {!isDashboardRoute && (
               <ul className="navbar-nav mx-auto mb-2 mb-lg-0">
                 {publicLinks.filter((link) => link.enabled === true).map((link) => (
                   <li className="nav-item" key={link.id}>
