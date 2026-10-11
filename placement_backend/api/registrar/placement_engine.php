@@ -7,6 +7,15 @@
 include __DIR__ . '/../../config/db_config.php';
 header('Content-Type: application/json');
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (!isset($_SESSION['user_id']) || !in_array(strtolower((string) ($_SESSION['role'] ?? '')), ['registrar', 'admin'], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Registrar access is required']);
+    exit;
+}
+
 $db = getDbConnection();
 $input = json_decode(file_get_contents('php://input'), true);
 
@@ -179,7 +188,7 @@ try {
     $studentEntries = $input['students'] ?? [];
     if (!is_array($studentEntries) || empty($studentEntries)) {
         // STRICT REQUIREMENT: Only students who have submitted choices in student_choices table
-        $studentSql = "SELECT DISTINCT sd.user_id AS id, COALESCE(NULLIF(sd.id_number, ''), u.id_number) AS id_number, CONCAT(sd.first_name, ' ', sd.last_name) AS name, sd.email, sd.gender, sd.disability, sd.minority, sd.gpa, sd.grade_12_result AS grade12, sd.coc_result AS coc, sd.cumulative_avg AS cumulative_score
+        $studentSql = "SELECT DISTINCT sd.user_id AS id, COALESCE(NULLIF(sd.id_number, ''), u.id_number) AS id_number, CONCAT(sd.first_name, ' ', sd.last_name) AS name, sd.email, sd.gender, sd.stream, sd.disability, sd.minority, sd.gpa, sd.grade_12_result AS grade12, sd.coc_result AS coc, sd.cumulative_avg AS cumulative_score
             FROM student_data sd
             INNER JOIN student_choices sc ON sc.student_id = sd.user_id
             LEFT JOIN users u ON u.id = sd.user_id AND LOWER(u.role) = 'student'
@@ -195,6 +204,7 @@ try {
                     'name' => $row['name'] ?? '',
                     'email' => $row['email'] ?? '',
                     'gender' => $row['gender'] ?? '',
+                    'stream' => $row['stream'] ?? '',
                     'hasDisability' => $row['disability'] ?? false,
                     'minority' => $row['minority'] ?? false,
                     'cgpa' => $row['gpa'] ?? 0,
@@ -282,6 +292,8 @@ try {
             'name' => (string) ($student['name'] ?? $student['fullname'] ?? 'Student'),
             'email' => (string) ($student['email'] ?? ''),
             'gender' => (string) ($student['gender'] ?? ''),
+            'stream' => trim((string) ($student['stream'] ?? '')),
+            'college_name' => trim((string) ($student['college_name'] ?? $student['college'] ?? '')),
             'disability' => $student['disability'] ?? $student['hasDisability'] ?? false,
             'minority' => $student['minority'] ?? $student['is_minority'] ?? false,
             'cumulative_score' => $cumulativeScore,
@@ -399,6 +411,17 @@ try {
         $existingSql->close();
 
         if ($existingPlacement) {
+            $clearUnassignedSql = $db->prepare('DELETE FROM unassigned_students WHERE student_id = ?');
+            if (!$clearUnassignedSql) {
+                throw new Exception('Unable to prepare unassigned student cleanup');
+            }
+            $clearUnassignedSql->bind_param('i', $student['id']);
+            if (!$clearUnassignedSql->execute()) {
+                $clearUnassignedSql->close();
+                throw new Exception('Unable to clean up assigned student record');
+            }
+            $clearUnassignedSql->close();
+
             $alreadyPlacedCount++;
             $placements[] = [
                 'studentId' => (int) $student['id'],
@@ -406,7 +429,7 @@ try {
                 'studentName' => $student['name'],
                 'department' => $existingPlacement['dept_name'],
                 'college' => $existingPlacement['college_name'],
-                'stream' => $existingPlacement['stream'],
+                'stream' => $existingPlacement['stream'] ?: $student['stream'],
                 'score' => $existingPlacement['final_score'],
                 'choiceRank' => $existingPlacement['choice_rank'],
                 'status' => 'already_placed',
@@ -457,6 +480,17 @@ try {
                 'status' => 'placed',
             ];
 
+            $clearUnassignedSql = $db->prepare('DELETE FROM unassigned_students WHERE student_id = ?');
+            if (!$clearUnassignedSql) {
+                throw new Exception('Unable to prepare unassigned student cleanup');
+            }
+            $clearUnassignedSql->bind_param('i', $student['id']);
+            if (!$clearUnassignedSql->execute()) {
+                $clearUnassignedSql->close();
+                throw new Exception('Unable to clean up assigned student record');
+            }
+            $clearUnassignedSql->close();
+
             if ($db) {
                 $insertSql = $db->prepare('INSERT INTO placement_results (student_id, id_number, dept_id, dept_name, stream, college_name, final_score, choice_rank, status, placed_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, "Pending", NOW() WHERE NOT EXISTS (SELECT 1 FROM placement_results WHERE student_id = ?)');
                 if (!$insertSql) {
@@ -496,13 +530,56 @@ try {
 
         if (!$placed) {
             $unassignedCount++;
+            $firstPreference = $student['preferences'][0] ?? [];
+            $unassignedStream = $student['stream'] !== ''
+                ? $student['stream']
+                : trim((string) ($firstPreference['stream'] ?? ''));
+            $unassignedCollege = $student['college_name'] !== ''
+                ? $student['college_name']
+                : trim((string) ($firstPreference['college_name'] ?? ''));
+            $saveUnassignedSql = $db->prepare(
+                "INSERT INTO unassigned_students (student_id, id_number, full_name, email, stream, college_name, status, placement_run_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 'Not assigned', NOW())
+                 ON DUPLICATE KEY UPDATE id_number = VALUES(id_number), full_name = VALUES(full_name),
+                    email = VALUES(email), stream = VALUES(stream), college_name = VALUES(college_name),
+                    status = 'Not assigned', placement_run_at = NOW()"
+            );
+            if (!$saveUnassignedSql) {
+                throw new Exception('Unable to prepare unassigned student record');
+            }
+            $saveUnassignedSql->bind_param(
+                'isssss',
+                $student['id'],
+                $student['id_number'],
+                $student['name'],
+                $student['email'],
+                $unassignedStream,
+                $unassignedCollege
+            );
+            if (!$saveUnassignedSql->execute()) {
+                $saveUnassignedSql->close();
+                throw new Exception('Unable to save unassigned student record');
+            }
+            $saveUnassignedSql->close();
+
+            $markUnassignedSql = $db->prepare('UPDATE student_data SET status = "Not assigned", department = "Not assigned" WHERE user_id = ?');
+            if (!$markUnassignedSql) {
+                throw new Exception('Unable to prepare unassigned student status update');
+            }
+            $markUnassignedSql->bind_param('i', $student['id']);
+            if (!$markUnassignedSql->execute()) {
+                $markUnassignedSql->close();
+                throw new Exception('Unable to update unassigned student status');
+            }
+            $markUnassignedSql->close();
+
             $placements[] = [
                 'studentId' => (int) $student['id'],
                 'id_number' => $student['id_number'],
                 'studentName' => $student['name'],
                 'department' => null,
-                'college' => null,
-                'stream' => null,
+                'college' => $unassignedCollege,
+                'stream' => $unassignedStream,
                 'score' => $student['final_merit_score'],
                 'choiceRank' => null,
                 'status' => 'unassigned',

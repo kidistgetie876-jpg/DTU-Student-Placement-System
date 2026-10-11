@@ -22,10 +22,10 @@ function importResponse(array $payload, int $status = 200): void
 }
 
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-$adminId = (int) ($_SESSION['user_id'] ?? 0);
+$userId = (int) ($_SESSION['user_id'] ?? 0);
 $role = strtolower((string) ($_SESSION['role'] ?? ''));
-if ($adminId <= 0 || $role !== 'admin') {
-    importResponse(['success' => false, 'message' => 'Only administrators can import student data.'], 403);
+if ($userId <= 0 || !in_array($role, ['admin', 'registrar'], true)) {
+    importResponse(['success' => false, 'message' => 'Only administrators and registrars can import student data.'], 403);
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
@@ -42,7 +42,27 @@ $defaultPassword = password_hash('123456', PASSWORD_DEFAULT);
 try {
     $db->begin_transaction();
 
-    $findUser = $db->prepare('SELECT id, role, id_number FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
+    $findUser = $db->prepare(
+        'SELECT u.id, u.role, COALESCE(NULLIF(u.id_number, \'\'), NULLIF(sd.id_number, \'\')) AS id_number, u.username, u.email
+         FROM users u
+         LEFT JOIN student_data sd ON sd.user_id = u.id
+         WHERE LOWER(u.email) = LOWER(?)
+         LIMIT 1'
+    );
+    $findUserByIdNumber = $db->prepare(
+        'SELECT u.id, u.role, COALESCE(NULLIF(u.id_number, \'\'), NULLIF(sd.id_number, \'\')) AS id_number, u.username, u.email
+         FROM users u
+         LEFT JOIN student_data sd ON sd.user_id = u.id
+         WHERE u.id_number = ? OR sd.id_number = ?
+         LIMIT 2'
+    );
+    $findUserByUsername = $db->prepare(
+        'SELECT u.id, u.role, COALESCE(NULLIF(u.id_number, \'\'), NULLIF(sd.id_number, \'\')) AS id_number, u.username, u.email
+         FROM users u
+         LEFT JOIN student_data sd ON sd.user_id = u.id
+         WHERE LOWER(u.username) = LOWER(?) AND LOWER(u.role) = \'student\'
+         LIMIT 2'
+    );
     $insertUser = $db->prepare('INSERT INTO users (id_number, username, email, password, role, phone_number) VALUES (?, ?, ?, ?, \'student\', ?)');
     $updateUser = $db->prepare('UPDATE users SET id_number = ?, username = ?, phone_number = ? WHERE id = ? AND role = \'student\'');
     $findStudent = $db->prepare('SELECT user_id FROM student_data WHERE user_id = ? LIMIT 1');
@@ -57,24 +77,70 @@ try {
          WHERE user_id = ?'
     );
 
-    if (!$findUser || !$insertUser || !$updateUser || !$findStudent || !$insertStudent || !$updateStudent) {
+    if (!$findUser || !$findUserByIdNumber || !$findUserByUsername || !$insertUser || !$updateUser || !$findStudent || !$insertStudent || !$updateStudent) {
         throw new Exception('Unable to prepare student import statements.');
     }
 
     foreach ($data['students'] as $index => $student) {
         $email = trim((string) ($student['email'] ?? ''));
         $username = trim((string) ($student['username'] ?? ''));
+        $requestedIdNumber = trim((string) ($student['id_number'] ?? $student['student_id'] ?? ''));
         $firstName = trim((string) ($student['first_name'] ?? ''));
         $lastName = trim((string) ($student['last_name'] ?? ''));
         $phone = trim((string) ($student['phone'] ?? ''));
-        $emailValid = filter_var($email, FILTER_VALIDATE_EMAIL);
+        $emailValid = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
 
-        if (!$emailValid || ($firstName === '' && $lastName === '' && $username === '')) {
-            $skipped[] = ['row' => $index + 2, 'reason' => 'Missing valid email or student name.'];
+        if ($firstName === '' && $lastName === '' && $username === '' && $requestedIdNumber === '') {
+            $skipped[] = ['row' => $index + 2, 'reason' => 'Missing student name, username, or ID number.'];
             continue;
         }
 
-        $username = $username !== '' ? $username : strstr($email, '@', true);
+        $existingUser = null;
+        if ($requestedIdNumber !== '') {
+            $findUserByIdNumber->bind_param('ss', $requestedIdNumber, $requestedIdNumber);
+            $findUserByIdNumber->execute();
+            $matches = $findUserByIdNumber->get_result();
+            if ($matches->num_rows > 1) {
+                $skipped[] = ['row' => $index + 2, 'id_number' => $requestedIdNumber, 'reason' => 'Student ID matches multiple accounts.'];
+                continue;
+            }
+            $existingUser = $matches->fetch_assoc() ?: null;
+        }
+
+        if (!$existingUser && $username !== '') {
+            $findUserByUsername->bind_param('s', $username);
+            $findUserByUsername->execute();
+            $matches = $findUserByUsername->get_result();
+            if ($matches->num_rows > 1) {
+                $skipped[] = ['row' => $index + 2, 'username' => $username, 'reason' => 'Username matches multiple student accounts.'];
+                continue;
+            }
+            $existingUser = $matches->fetch_assoc() ?: null;
+        }
+
+        if (!$existingUser && $emailValid) {
+            $findUser->bind_param('s', $email);
+            $findUser->execute();
+            $existingUser = $findUser->get_result()->fetch_assoc() ?: null;
+        }
+
+        if ($existingUser && strtolower((string) $existingUser['role']) !== 'student') {
+            $skipped[] = ['row' => $index + 2, 'email' => $email, 'reason' => 'Student ID belongs to a non-student account.'];
+            continue;
+        }
+        if (!$existingUser && !$emailValid) {
+            $skipped[] = ['row' => $index + 2, 'reason' => 'A valid email is required to create a new student account.'];
+            continue;
+        }
+
+        if (!$emailValid && $existingUser) {
+            $email = trim((string) $existingUser['email']);
+        }
+        $username = $username !== ''
+            ? $username
+            : ($existingUser
+                ? trim((string) $existingUser['username'])
+                : strstr($email, '@', true));
         $gpa = (float) ($student['gpa'] ?? 0);
         $grade12 = (float) ($student['grade_12_result'] ?? 0);
         $coc = (float) ($student['coc_result'] ?? 0);
@@ -83,16 +149,9 @@ try {
         $disability = trim((string) ($student['disability'] ?? 'No')) ?: 'No';
         $minority = trim((string) ($student['minority'] ?? 'No')) ?: 'No';
 
-        $findUser->bind_param('s', $email);
-        $findUser->execute();
-        $existingUser = $findUser->get_result()->fetch_assoc();
-
-        if ($existingUser && strtolower((string) $existingUser['role']) !== 'student') {
-            $skipped[] = ['row' => $index + 2, 'email' => $email, 'reason' => 'Email belongs to a non-student account.'];
-            continue;
-        }
-
-        $idNumber = trim((string) ($student['id_number'] ?? ($existingUser['id_number'] ?? '')));
+        $idNumber = $existingUser
+            ? trim((string) ($existingUser['id_number'] ?? ''))
+            : $requestedIdNumber;
         if ($idNumber === '') {
             $idNumber = getNextRoleIdNumber($db, 'student');
         }

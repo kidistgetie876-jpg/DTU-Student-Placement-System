@@ -74,22 +74,31 @@ try {
     }
 
     if (isset($input['action']) && $input['action'] === 'delete') {
-        $registrarId = (int) ($_SESSION['user_id'] ?? 0);
-        $registrarRole = strtolower((string) ($_SESSION['role'] ?? ''));
-        if ($registrarId <= 0 || $registrarRole !== 'registrar') {
-            respond(['success' => false, 'message' => 'Only registrars can delete appeals.'], 403);
-        }
-
         $appealId = (int) ($input['appeal_id'] ?? 0);
         if ($appealId <= 0) {
             respond(['success' => false, 'message' => 'A valid appeal ID is required.'], 400);
         }
 
-        $statement = $db->prepare('DELETE FROM student_appeals WHERE id = ?');
-        if (!$statement) {
-            throw new Exception('Unable to prepare appeal deletion.');
+        $userId = (int) ($_SESSION['user_id'] ?? 0);
+        $role = strtolower((string) ($_SESSION['role'] ?? ''));
+        if ($userId <= 0 || !in_array($role, ['student', 'registrar'], true)) {
+            respond(['success' => false, 'message' => 'You must be logged in to delete an appeal.'], 403);
         }
-        $statement->bind_param('i', $appealId);
+
+        if ($role === 'student') {
+            $statement = $db->prepare("DELETE FROM student_appeals WHERE id = ? AND student_id = ? AND status = 'Received'");
+            if (!$statement) {
+                throw new Exception('Unable to prepare appeal deletion.');
+            }
+            $statement->bind_param('ii', $appealId, $userId);
+        } else {
+            $statement = $db->prepare('DELETE FROM student_appeals WHERE id = ?');
+            if (!$statement) {
+                throw new Exception('Unable to prepare appeal deletion.');
+            }
+            $statement->bind_param('i', $appealId);
+        }
+
         if (!$statement->execute()) {
             $statement->close();
             throw new Exception('Unable to delete appeal.');
@@ -98,7 +107,11 @@ try {
         $statement->close();
 
         if ($deleted === 0) {
-            respond(['success' => false, 'message' => 'Appeal not found.'], 404);
+            $status = $role === 'student' ? 403 : 404;
+            $message = $role === 'student'
+                ? 'Only your own appeals with Received status can be deleted.'
+                : 'Appeal not found.';
+            respond(['success' => false, 'message' => $message], $status);
         }
 
         respond(['success' => true, 'message' => 'Appeal deleted successfully.', 'deleted' => $deleted]);

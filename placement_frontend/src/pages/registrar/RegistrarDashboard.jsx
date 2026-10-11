@@ -3080,6 +3080,8 @@ const RegistrarDashboard = () => {
                                 .map((pref, index) => ({
                                   priority: Number(pref?.priority ?? pref?.rank ?? index + 1),
                                   department: pref?.department || pref?.name || pref?.dept_name || pref?.college || pref?.stream || '',
+                                  college_name: pref?.college_name || pref?.collegeName || pref?.college || '',
+                                  stream: pref?.stream || '',
                                 }))
                                 .filter((pref) => pref.department)
                                 .sort((a, b) => a.priority - b.priority);
@@ -3093,6 +3095,7 @@ const RegistrarDashboard = () => {
                                 id_number: record.id_number,
                                 name: record.name,
                                 email: record.email,
+                                stream: record.stream || '',
                                 cgpa: Number(record.cgpa || 0),
                                 grade12: Number(record.g12 === 'N/A' ? 0 : record.g12 || 0),
                                 coc: record.coc === null || record.coc === undefined || record.coc === 'N/A' ? 0 : Number(record.coc),

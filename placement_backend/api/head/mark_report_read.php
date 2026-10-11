@@ -32,7 +32,7 @@ $db = getDbConnection();
 try {
     $statement = $db->prepare(
         'UPDATE notifications
-         SET is_read = 1, read_at = CURRENT_TIMESTAMP
+         SET is_read = 1
          WHERE id = ? AND (
              recipient_id = ?
              OR (recipient_role = ? AND department_id IS NULL)

@@ -4,6 +4,7 @@ header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/student_notification_reads.php';
 $db = getDbConnection();
 
 // Get the recipient user ID from the request
@@ -15,16 +16,26 @@ if ($student_id <= 0) {
 }
 
 try {
+    ensureStudentNotificationReadsTable($db);
+
     // 1. Fetch notifications for this specific student
     // 2. Join with any other relevant info if needed
     // 3. Order by newest first
-    $query = "SELECT id, sender_role, title, message, file_path, is_read, created_at 
-              FROM notifications 
-              WHERE recipient_id = ? OR (recipient_role = 'student' AND recipient_id IS NULL)
+    $query = "SELECT n.id, n.sender_role, n.title, n.message, n.file_path,
+                     CASE WHEN notification_reads.notification_id IS NOT NULL THEN 1 ELSE n.is_read END AS is_read,
+                     n.created_at
+              FROM notifications n
+              LEFT JOIN student_notification_reads notification_reads
+                ON notification_reads.notification_id = n.id AND notification_reads.student_id = ?
+              WHERE (n.recipient_id = ? AND n.recipient_role = 'student')
+                 OR (n.recipient_role = 'student' AND n.recipient_id IS NULL)
               ORDER BY created_at DESC";
               
     $stmt = $db->prepare($query);
-    $stmt->bind_param("i", $student_id);
+    if (!$stmt) {
+        throw new Exception('Unable to prepare student notifications query.');
+    }
+    $stmt->bind_param("ii", $student_id, $student_id);
     $stmt->execute();
     $result = $stmt->get_result();
     
@@ -52,9 +63,10 @@ try {
         'notifications' => $notifications
     ]);
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    error_log('Student notifications request failed: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Unable to load student notifications.']);
 }
 
 $db->close();
