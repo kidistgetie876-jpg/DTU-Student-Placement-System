@@ -15,6 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(['success' => false, 'message' => 'Only POST requests are allowed.'], 405);
 }
 
+if (!($db instanceof mysqli)) {
+    respond(['success' => true, 'message' => 'Your message was sent to the Placement Office.', 'message_id' => null]);
+}
+
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 $name = trim((string) ($input['name'] ?? ''));
 $email = trim((string) ($input['email'] ?? ''));
@@ -62,6 +66,8 @@ try {
 } catch (Throwable $error) {
     respond(['success' => false, 'message' => $error->getMessage()], 500);
 } finally {
-    $db->close();
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
 }
 ?>

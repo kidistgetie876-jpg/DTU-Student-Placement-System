@@ -21,6 +21,12 @@ function settingsResponse(array $payload, int $status = 200): void
     exit;
 }
 
+function getDefaultSettingsResponse(): array
+{
+    $settings = defaultSystemSettings();
+    return ['success' => true, 'settings' => $settings, 'data' => $settings['homepage'] ?? []];
+}
+
 function defaultSystemSettings(): array
 {
     return [
@@ -179,6 +185,14 @@ function mergeSystemSettings(array $current, array $incoming): array
 }
 
 try {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if (!($db instanceof mysqli)) {
+        if ($method === 'GET') {
+            settingsResponse(getDefaultSettingsResponse());
+        }
+        settingsResponse(['success' => false, 'message' => 'Database connection is unavailable.'], 503);
+    }
+
     $createTable = $db->query(
         "CREATE TABLE IF NOT EXISTS system_settings (
             setting_key VARCHAR(100) PRIMARY KEY,
@@ -207,7 +221,6 @@ try {
         }
     }
 
-    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     if ($method === 'GET') {
         settingsResponse(['success' => true, 'settings' => $settings, 'data' => $settings['homepage'] ?? []]);
     }
@@ -270,6 +283,8 @@ try {
     error_log('System settings API error: ' . $error->getMessage());
     settingsResponse(['success' => false, 'message' => 'Unable to process system settings: ' . $error->getMessage()], 500);
 } finally {
-    $db->close();
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
 }
 ?>

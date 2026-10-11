@@ -73,40 +73,29 @@ if ($db_port === null || $db_port === '') {
 }
 $db_port = filter_var($db_port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
 
+$mysqli = null;
 if ($db_host === '' || $db_user === '' || $db_name === '' || $db_port === false) {
-    header('Content-Type: application/json');
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Database configuration is incomplete. Configure DB_HOST/DB_NAME/DB_USER/DB_PASSWORD/DB_PORT or use Render/MySQL variables such as MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE/MYSQLPORT.',
-    ]);
-    exit;
-}
+    error_log('Database configuration is incomplete. Falling back to default public-page responses.');
+} else {
+    try {
+        $mysqli = new mysqli($db_host, $db_user, $db_pass, $db_name, (int) $db_port);
+        if ($mysqli->connect_error) {
+            throw new RuntimeException($mysqli->connect_error);
+        }
 
-try {
-    $mysqli = new mysqli($db_host, $db_user, $db_pass, $db_name, (int) $db_port);
-    if ($mysqli->connect_error) {
-        throw new RuntimeException($mysqli->connect_error);
+        if (!$mysqli->set_charset('utf8mb4')) {
+            throw new RuntimeException($mysqli->error);
+        }
+    } catch (Throwable $error) {
+        error_log('Database connection failed: ' . $error->getMessage());
+        $mysqli = null;
     }
-
-    if (!$mysqli->set_charset('utf8mb4')) {
-        throw new RuntimeException($mysqli->error);
-    }
-} catch (Throwable $error) {
-    error_log('Database connection failed: ' . $error->getMessage());
-    header('Content-Type: application/json; charset=UTF-8');
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Unable to connect to the database. Verify the hosted database settings and availability.',
-    ]);
-    exit;
 }
 
 /**
- * በሌሎች የ API ፋይሎች ላይ (ለምሳሌ login.php) ዳታቤዙን ለመጥራት የምንጠቀመው ፋንክሽን
+ * በሌሎች የ API ፋይሎች ላይ (ለምሳሌ login.php) ዳቤዙን ለመጥራት የምንጠቀመው ፋንክሽን
  */
-function getDbConnection(): mysqli {
+function getDbConnection(): ?mysqli {
     global $mysqli;
     return $mysqli;
 }

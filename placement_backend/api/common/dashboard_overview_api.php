@@ -49,6 +49,21 @@ try {
     require_once __DIR__ . '/../../config/db_config.php';
      $db = getDbConnection();
 
+    if (!($db instanceof mysqli)) {
+        respond([
+            'success' => true,
+            'data' => [
+                'departments' => 0,
+                'activeStudents' => 0,
+                'placementsCompleted' => 0,
+                'unplacedStudents' => 0,
+                'pendingApprovals' => 0,
+                'timestamp' => date('c'),
+            ],
+            'message' => 'Dashboard overview data unavailable; returning default values.',
+        ]);
+    }
+
     // 1. Count total departments
     $departments = countQuery($db, 'SELECT COUNT(*) AS total FROM departments');
 

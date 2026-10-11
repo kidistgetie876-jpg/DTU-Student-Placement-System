@@ -20,6 +20,10 @@ function sendJson(array $payload, int $code = 200): void
     exit;
 }
 
+if (!($db instanceof mysqli)) {
+    sendJson(['success' => true, 'departments' => []]);
+}
+
 function getDepartmentColumns(mysqli $db): array
 {
     $columns = [];
