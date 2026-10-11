@@ -16,25 +16,69 @@ header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 
 // 3. ለ OPTIONS (Preflight) ጥያቄ ምላሽ መስጠት - ለሪአክት ግንኙነት በጣም አስፈላጊ ነው
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+$requestMethod = $_SERVER['REQUEST_METHOD'] ?? '';
+if ($requestMethod === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
-// Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME in hosted environments.
+function getDatabaseEnvValue(string ...$keys): ?string
+{
+    foreach ($keys as $key) {
+        $value = getenv($key);
+        if ($value !== false) {
+            return (string) $value;
+        }
+    }
+
+    return null;
+}
+
+function parseDatabaseUrl(string $databaseUrl): array
+{
+    $parsed = parse_url($databaseUrl);
+    if ($parsed === false || empty($parsed['host'])) {
+        return [];
+    }
+
+    $databaseName = '';
+    if (isset($parsed['path'])) {
+        $databaseName = ltrim((string) $parsed['path'], '/');
+    }
+
+    return [
+        'host' => (string) $parsed['host'],
+        'port' => isset($parsed['port']) ? (string) $parsed['port'] : '3306',
+        'user' => isset($parsed['user']) ? rawurldecode((string) $parsed['user']) : '',
+        'password' => isset($parsed['pass']) ? rawurldecode((string) $parsed['pass']) : '',
+        'name' => $databaseName,
+    ];
+}
+
+// Support standard DB_* variables as well as common hosting aliases such as Render's MYSQL* variables.
 $isHosted = strtolower((string) (getenv('RENDER') ?: '')) === 'true';
-$db_host = getenv('DB_HOST') ?: ($isHosted ? '' : 'localhost');
-$db_user = getenv('DB_USER') ?: ($isHosted ? '' : 'root');
-$db_pass = getenv('DB_PASSWORD') !== false ? (string) getenv('DB_PASSWORD') : '';
-$db_name = getenv('DB_NAME') ?: ($isHosted ? '' : 'placement_db');
-$db_port = filter_var(getenv('DB_PORT') ?: '3306', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+$databaseUrl = getDatabaseEnvValue('DATABASE_URL', 'CLEARDB_DATABASE_URL', 'JAWSDB_URL', 'MYSQL_URL');
+$databaseUrlConfig = $databaseUrl !== null ? parseDatabaseUrl($databaseUrl) : [];
+
+$db_host = getDatabaseEnvValue('DB_HOST', 'MYSQLHOST', 'MYSQL_HOST', 'DATABASE_HOST') ?: ($databaseUrlConfig['host'] ?? ($isHosted ? '' : 'localhost'));
+$db_user = getDatabaseEnvValue('DB_USER', 'MYSQLUSER', 'MYSQL_USER', 'DATABASE_USER') ?: ($databaseUrlConfig['user'] ?? ($isHosted ? '' : 'root'));
+$db_pass = getDatabaseEnvValue('DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD', 'DATABASE_PASSWORD');
+if ($db_pass === null || $db_pass === '') {
+    $db_pass = $databaseUrlConfig['password'] ?? '';
+}
+$db_name = getDatabaseEnvValue('DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE', 'DATABASE_NAME') ?: ($databaseUrlConfig['name'] ?? ($isHosted ? '' : 'placement_db'));
+$db_port = getDatabaseEnvValue('DB_PORT', 'MYSQLPORT', 'MYSQL_PORT', 'DATABASE_PORT');
+if ($db_port === null || $db_port === '') {
+    $db_port = $databaseUrlConfig['port'] ?? '3306';
+}
+$db_port = filter_var($db_port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
 
 if ($db_host === '' || $db_user === '' || $db_name === '' || $db_port === false) {
     header('Content-Type: application/json');
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Database configuration is incomplete. Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME.',
+        'message' => 'Database configuration is incomplete. Configure DB_HOST/DB_NAME/DB_USER/DB_PASSWORD/DB_PORT or use Render/MySQL variables such as MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE/MYSQLPORT.',
     ]);
     exit;
 }
