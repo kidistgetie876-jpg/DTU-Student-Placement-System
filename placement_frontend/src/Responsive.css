@@ -6,9 +6,10 @@ img, video, canvas { max-width: 100%; height: auto; }
 button, input, select, textarea { max-width: 100%; }
 .app-main:not(.dashboard-main) { padding-top: 190px; }
 .app-main.assign-head-main { padding-top: 190px !important; }
-.responsive-sidebar { color: #fff; background: #212529; }
-.sidebar-nav-item { width: 100%; color: rgba(255,255,255,.85); background: rgba(255,255,255,.05); border: 1px solid transparent; }
-.sidebar-nav-item:hover, .sidebar-nav-item.active { color: #1b2b56; background: #fff; }
+.responsive-sidebar { color: #fff; background: linear-gradient(145deg, #061c47 0%, #0a2d6d 58%, #123880 100%); border-right: 1px solid rgba(244, 201, 93, .28); }
+.sidebar-nav-item { width: 100%; color: rgba(255,255,255,.88); background: rgba(255,255,255,.05); border: 1px solid transparent; transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease; }
+.sidebar-nav-item:hover { color: #fff; background: rgba(255,255,255,.12); border-color: rgba(244, 201, 93, .3); transform: translateX(2px); }
+.sidebar-nav-item.active { color: #fff; background: linear-gradient(135deg, rgba(21,66,148,.95), rgba(10,45,109,.9)); border-color: rgba(244, 201, 93, .55); box-shadow: 0 8px 20px rgba(2, 6, 23, .2); }
 .table-responsive { -webkit-overflow-scrolling: touch; }
 
 @media (max-width: 991.98px) {

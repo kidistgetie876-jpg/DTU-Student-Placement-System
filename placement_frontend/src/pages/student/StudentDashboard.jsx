@@ -286,6 +286,7 @@ const StudentDashboard = () => {
     try {
       const response = await api.post('api/student/mark_notification_read.php', {
         notification_id: notification.id,
+        ...(notification.notification_type === 'meeting' ? { notification_type: 'meeting' } : {}),
       });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to mark notification as read.');
@@ -787,7 +788,25 @@ const StudentDashboard = () => {
                       return (
                         <div className={`list-group-item ${isUnread ? 'fw-semibold' : ''}`} key={notification.id || index}>
                           <div className="d-flex justify-content-between align-items-start gap-3">
-                            <span>{notification.message || notification.title || 'New notification'}</span>
+                            <div className="flex-grow-1">
+                              {notification.title && (
+                                <div className="fw-semibold mb-1">{notification.title}</div>
+                              )}
+                              <div className="text-break">{notification.message || 'New notification'}</div>
+                              {notification.notification_type === 'meeting' && (
+                                <div className="small text-muted mt-2 d-flex flex-wrap gap-3">
+                                  {notification.meeting_date && (
+                                    <span><strong>Date:</strong> {notification.meeting_date}</span>
+                                  )}
+                                  {notification.meeting_time && (
+                                    <span><strong>Time:</strong> {notification.meeting_time}</span>
+                                  )}
+                                  {notification.location && (
+                                    <span><strong>Location:</strong> {notification.location}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <div className="d-flex align-items-center gap-2">
                               {notification.created_at && (
                                 <small className="text-muted text-nowrap">{notification.created_at}</small>
@@ -804,9 +823,6 @@ const StudentDashboard = () => {
                               )}
                             </div>
                           </div>
-                          {notification.title && notification.message && (
-                            <div className="text-muted small mt-1">{notification.title}</div>
-                          )}
                           {notification.file_url && (
                             <a
                               className="btn btn-sm btn-outline-primary mt-2"

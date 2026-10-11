@@ -1,0 +1,100 @@
+.login-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  overflow-y: auto;
+  background: transparent;
+  backdrop-filter: none;
+  animation: login-backdrop-in 180ms ease-out both;
+}
+
+.login-modal-backdrop.is-closing {
+  animation: login-backdrop-out 220ms ease-in both;
+}
+
+.login-modal-dialog {
+  position: relative;
+  width: min(100%, 440px);
+  margin: auto;
+  animation: login-dialog-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.login-modal-backdrop.is-closing .login-modal-dialog {
+  animation: login-dialog-out 220ms ease-in both;
+}
+
+.login-modal-dialog .container-fluid {
+  width: 100%;
+}
+
+.login-modal-card {
+  overflow: hidden;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(4, 19, 48, 0.34);
+}
+
+.login-modal-close {
+  position: absolute;
+  z-index: 2;
+  top: 0.85rem;
+  right: 0.85rem;
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  place-items: center;
+  border: 1px solid rgba(10, 45, 109, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: #334155;
+  font-size: 1.65rem;
+  line-height: 1;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.login-modal-close:hover {
+  transform: rotate(90deg);
+  background: #0a2d6d;
+  color: #fff;
+}
+
+.login-modal-close:focus-visible {
+  outline: 3px solid #f4c95d;
+  outline-offset: 2px;
+}
+
+@keyframes login-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes login-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes login-dialog-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes login-dialog-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-modal-backdrop,
+  .login-modal-dialog,
+  .login-modal-backdrop.is-closing .login-modal-dialog {
+    animation-duration: 1ms;
+  }
+
+  .login-modal-close {
+    transition: none;
+  }
+}

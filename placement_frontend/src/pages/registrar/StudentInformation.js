@@ -28,11 +28,19 @@ const needsAcademicScores = (student) => {
   return isMissing(gpa) || isMissing(g12) || isMissing(coc);
 };
 
+const normalizeStream = (value) => {
+  const stream = String(value ?? '').trim().toLowerCase().replace(/[^a-z]/g, '');
+  if (stream === 'natural' || stream === 'naturalscience') return 'naturalscience';
+  if (stream === 'social' || stream === 'socialscience') return 'socialscience';
+  return stream;
+};
+
 const StudentInformation = ({ students: initialStudents = [] }) => {
   const navigate = useNavigate();
   const [students, setStudents] = useState(initialStudents);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [streamFilter, setStreamFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState(null);
 
   const loadStudents = async () => {
@@ -63,9 +71,8 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) return students;
-
     return students.filter((student) => {
+      const stream = student?.stream ?? student?.department_stream;
       const fields = [
         student?.id,
         student?.user_id,
@@ -75,13 +82,16 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
         student?.department,
         student?.gender,
         student?.status,
+        stream,
       ]
         .filter(Boolean)
         .map((value) => String(value).toLowerCase());
 
-      return fields.some((value) => value.includes(query));
+      const matchesSearch = !query || fields.some((value) => value.includes(query));
+      const matchesStream = streamFilter === 'all' || normalizeStream(stream) === streamFilter;
+      return matchesSearch && matchesStream;
     });
-  }, [students, search]);
+  }, [students, search, streamFilter]);
 
   const refreshStudents = async () => {
     await loadStudents();
@@ -98,7 +108,19 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
             <h4 className="mb-0 fw-bold">Student Information</h4>
           </div>
 
-          <div className="d-flex gap-2 align-items-center">
+          <div className="d-flex gap-2 align-items-center flex-wrap justify-content-end">
+            <select
+              className="form-select form-select-sm"
+              aria-label="Filter by stream"
+              value={streamFilter}
+              onChange={(e) => setStreamFilter(e.target.value)}
+              style={{ minWidth: '180px' }}
+            >
+              <option value="all">All Streams</option>
+              <option value="naturalscience">Natural Science</option>
+              <option value="socialscience">Social Science</option>
+            </select>
+
             <input
               type="text"
               className="form-control form-control-sm"
@@ -126,11 +148,12 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
             <div className="p-4 text-center text-muted">No student records found.</div>
           ) : (
             <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0" style={{ minWidth: '1200px' }}>
+              <table className="table table-hover align-middle mb-0" style={{ minWidth: '1300px' }}>
                 <thead className="table-light">
                   <tr>
                     <th>ID</th>
                     <th>Name</th>
+                    <th>Stream</th>
                     <th>Email</th>
                     <th>GPA</th>
                     <th>CGPA</th>
@@ -158,6 +181,8 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
                         <td>
                           <div className="fw-semibold">{student.name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Unknown Student'}</div>
                         </td>
+
+                        <td>{student.stream || student.department_stream || '—'}</td>
 
                         <td className="text-center text-muted small">
                           {student.email || student.username || '—'}

@@ -8,10 +8,6 @@ jest.mock('./services/api.js', () => ({
   default: { get: jest.fn() },
 }));
 
-jest.mock('./components/layout/Header.jsx', () => ({
-  __esModule: true,
-  default: () => <header>Site header</header>,
-}));
 jest.mock('./components/layout/Footer.jsx', () => ({
   __esModule: true,
   default: () => <footer>Site footer</footer>,

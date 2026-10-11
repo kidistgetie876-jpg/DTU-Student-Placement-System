@@ -84,4 +84,41 @@ describe('parseStudentImportGrid', () => {
       ],
     });
   });
+
+  it('imports the stream column as supplied in the standard CSV', () => {
+    const result = parseStudentImportGrid([
+      ['First Name', 'Last Name', 'Email', 'Stream'],
+      ['Aster', 'Mekonnen', 'aster@example.com', 'Natural Science'],
+    ]);
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        first_name: 'Aster',
+        last_name: 'Mekonnen',
+        email: 'aster@example.com',
+        stream: 'Natural Science',
+      }),
+    ]);
+  });
+
+  it('maps score aliases and leaves blank scores empty for safe updates', () => {
+    const result = parseStudentImportGrid([
+      ['Student ID', 'First Name', 'Last Name', 'GPA (4.0)', 'Grade 12', 'COC Score', 'Stream'],
+      ['DTU16R1004', 'Marta', 'Tadesse', '3.6', '82', '27', 'Natural Science'],
+      ['DTU16R1005', 'Dawit', 'Girma', '', '', '', 'Social Science'],
+    ]);
+
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      gpa: '3.6',
+      grade_12_result: '82',
+      coc_result: '27',
+      stream: 'Natural Science',
+    }));
+    expect(result.rows[1]).toEqual(expect.objectContaining({
+      gpa: '',
+      grade_12_result: '',
+      coc_result: '',
+      stream: 'Social Science',
+    }));
+  });
 });

@@ -8,17 +8,17 @@
   min-height:calc(100vh - 160px);
   overflow-y:auto;
   overflow-x:hidden;
-  background:var(--dtu-primary);
-  border-right:1px solid rgba(255,255,255,0.08);
+  background:linear-gradient(145deg,#061c47 0%,#0a2d6d 58%,#123880 100%);
+  border-right:1px solid rgba(244,201,93,.28);
   color:#ffffff;
   z-index:1020;
 }
 .head-dashboard .sidebar-brand h5{font-size:1.05rem;margin-bottom:.5rem;color:#fff}
 .head-dashboard .sidebar-brand p{color:rgba(255,255,255,.8)}
 .head-dashboard .sidebar-nav{margin-top:1rem}
-.head-dashboard .nav-button{width:100%;text-align:left;padding:.85rem 1rem;border:none;border-radius:1rem;background:rgba(255,255,255,0.08);color:#f4f7fb;font-weight:600;transition:transform .18s ease,background .18s ease}
-.head-dashboard .nav-button:hover{background:rgba(255,255,255,0.14);transform:translateX(2px)}
-.head-dashboard .nav-button.active{background:#ffffff;color:#1b2b56;box-shadow:0 16px 30px rgba(15,23,42,0.08)}
+.head-dashboard .nav-button{width:100%;text-align:left;padding:.85rem 1rem;border:1px solid transparent;border-radius:1rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,.88);font-weight:600;transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease}
+.head-dashboard .nav-button:hover{background:rgba(255,255,255,0.12);border-color:rgba(244,201,93,.3);transform:translateX(2px)}
+.head-dashboard .nav-button.active{background:linear-gradient(135deg,rgba(21,66,148,.95),rgba(10,45,109,.9));border-color:rgba(244,201,93,.55);color:#fff;box-shadow:0 8px 20px rgba(2,6,23,.2)}
 .head-dashboard .main-section{
   margin-left:16.666667%;
   width:calc(100% - 16.666667%);

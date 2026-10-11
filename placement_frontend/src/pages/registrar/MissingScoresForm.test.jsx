@@ -33,6 +33,7 @@ describe('MissingScoresForm', () => {
               last_name: 'Kebede',
               username: 'marta',
               email: 'marta@example.com',
+              stream: 'Social Science',
               gpa: '3.20',
               g12: 85,
               coc: 24,
@@ -54,6 +55,7 @@ describe('MissingScoresForm', () => {
     );
 
     expect(screen.getByLabelText('GPA (4.0)')).toHaveValue(3.2);
+    expect(screen.getByLabelText('Stream')).toHaveValue('Social');
     expect(screen.getByLabelText('Grade 12 Result')).toHaveValue(85);
     expect(screen.getByLabelText('COC Result')).toHaveValue(24);
     expect(screen.getByLabelText('Gender')).toHaveValue('Female');
@@ -71,6 +73,7 @@ describe('MissingScoresForm', () => {
         last_name: 'Kebede',
         username: 'marta',
         email: 'marta@example.com',
+        stream: 'Social',
         gpa: '3.5',
         grade_12_result: 85,
         coc_result: 24,

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import Header from './components/layout/Header.jsx';
 import Login from './pages/public/Login.jsx';
 import StudentRegistration from './pages/registrar/StudentRegistration.jsx';
@@ -17,6 +17,11 @@ jest.mock('./services/api', () => ({
     post: jest.fn(),
   },
 }));
+
+const CurrentRoute = () => {
+  const location = useLocation();
+  return <output data-testid="current-route">{location.pathname}</output>;
+};
 
 describe('Login', () => {
   beforeEach(() => {
@@ -149,7 +154,60 @@ describe('Login', () => {
     expect(await screen.findByText('Please enter the correct email or username.')).toBeInTheDocument();
   });
 
-  test('shows login when no user is stored', () => {
+  test('completes the forgot-password flow inside the login modal', async () => {
+    api.post
+      .mockResolvedValueOnce({ data: { message: 'Reset code sent.' } })
+      .mockResolvedValueOnce({ data: { success: true, message: 'Password updated.' } });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+    expect(screen.getByRole('heading', { name: 'Forgot Password' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'marta@dtu.edu' } });
+    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }));
+
+    expect(await screen.findByLabelText('Six-digit verification code')).toBeInTheDocument();
+    expect(api.post).toHaveBeenNthCalledWith(1, 'auth/forgot_password.php', { email: 'marta@dtu.edu' });
+    fireEvent.change(screen.getByLabelText('Six-digit verification code'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'updated123' } });
+    fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'updated123' } });
+    fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    expect(await screen.findByText('Password updated.')).toBeInTheDocument();
+    expect(api.post).toHaveBeenNthCalledWith(2, 'auth/reset_password.php', {
+      email: 'marta@dtu.edu',
+      code: '123456',
+      newPassword: 'updated123',
+    });
+  });
+
+  test('keeps the Contact header link when navigation settings omit it', async () => {
+    api.get.mockResolvedValueOnce({
+      data: {
+        settings: {
+          navigation: [{ id: 'home', label: 'Home', enabled: true }],
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <>
+          <Header />
+          <CurrentRoute />
+        </>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Contact' }));
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/contact');
+  });
+
+  test('opens the login modal when no user is stored', async () => {
     localStorage.setItem('darkMode', 'true');
 
     render(
@@ -158,7 +216,14 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('link', { name: /login/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
+    expect(screen.getByRole('dialog', { name: /portal login/i })).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
+    });
+    expect(document.body.style.overflow).toBe('');
     expect(localStorage.getItem('darkMode')).toBe('true');
   });
 
@@ -168,17 +233,21 @@ describe('Login', () => {
 
     render(
       <MemoryRouter initialEntries={["/admin-dashboard"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Header />
+        <>
+          <Header />
+          <CurrentRoute />
+        </>
       </MemoryRouter>
     );
 
     fireEvent.click(screen.getByRole('button', { name: /logout/i }));
 
-    await waitFor(() => {
-      expect(localStorage.getItem('user')).toBeNull();
-    });
+    expect(localStorage.getItem('user')).toBeNull();
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/');
+    expect(api.post).toHaveBeenCalledWith('auth/logout.php');
     expect(localStorage.getItem('darkMode')).toBe('true');
-    expect(screen.getByRole('link', { name: /login/i })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^login$/i })).toBeInTheDocument();
   });
 
   test('treats Yes and No strings as booleans instead of truthy strings', () => {

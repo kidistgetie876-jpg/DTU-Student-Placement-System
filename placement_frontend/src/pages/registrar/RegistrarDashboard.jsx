@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import StudentRegistration from './StudentRegistration';
+import UnassignedStudents from './UnassignedStudents.jsx';
 import DataImport from '../admin/DataImport.jsx';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
@@ -204,7 +205,7 @@ const downloadPdf = async (filename, title, headers, rows) => {
 };
 
 export const exportStudentInformation = (students, format = 'csv') => {
-  const headers = [' Student ID', 'First Name', 'Last Name', 'Username', 'GPA', 'G12 Result', 'COC', 'Gender', 'Disability', 'Minority', 'Cumulative Score', 'Department', 'Status'];
+  const headers = [' Student ID', 'First Name', 'Last Name', 'Username', 'GPA', 'G12 Result', 'COC', 'Gender', 'Disability', 'Minority', 'Stream', 'Cumulative Score', 'Department', 'Status'];
   const rows = students.map((student) => ({
     ID: student.id_number || student.id,
     'First Name': student.first_name || '',
@@ -216,6 +217,7 @@ export const exportStudentInformation = (students, format = 'csv') => {
     Gender: student.gender || '',
     Disability: parseYesNo(student.hasDisability ?? student.disability ?? student.specialSupport) ? 'Yes' : 'No',
     Minority: parseYesNo(student.minority ?? student.isMinority ?? student.minorityStatus) ? 'Yes' : 'No',
+    Stream: student.stream || '',
     'Cumulative Score': student.cumulativeScore ?? '',
     Department: student.department || '',
     Status: student.status || '',
@@ -237,11 +239,12 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
     ? Math.max(...students.map((student) => Math.max(student.prioritySlots?.length || 0, student.choices?.length || 0)), 1)
     : 5;
   const choiceHeaders = Array.from({ length: maxChoicesCount }, (_, index) => `Choice ${index + 1}`);
-  const headers = ['Student ID', 'Student Name', 'Status', ...choiceHeaders];
+  const headers = ['Student ID', 'Student Name', 'Stream', 'Status', ...choiceHeaders];
   const rows = students.map((student) => {
     const row = {
       'Student ID': student.id_number || student.id || '',
       'Student Name': student.name || '',
+      Stream: student.stream || '',
       Status: student.status || '',
     };
     choiceHeaders.forEach((header, index) => {
@@ -312,6 +315,14 @@ const getDepartmentStream = (department) => {
   return 'Natural Science';
 };
 
+const formatStudentStream = (value) => {
+  const stream = String(value ?? '').trim();
+  const normalized = stream.toLowerCase().replace(/[^a-z]/g, '');
+  if (normalized === 'natural' || normalized === 'naturalscience') return 'Natural Science';
+  if (normalized === 'social' || normalized === 'socialscience') return 'Social Science';
+  return stream;
+};
+
 const normalizeDepartmentPayload = (payload) => {
   const list = Array.isArray(payload)
     ? payload
@@ -380,6 +391,7 @@ const RegistrarDashboard = () => {
   const [deadlineSuccess, setDeadlineSuccess] = useState('');
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
+  const [unassignedStudentsRefreshToken, setUnassignedStudentsRefreshToken] = useState(0);
   const [pendingResults, setPendingResults] = useState([]);
   const [pendingApprovalRows, setPendingApprovalRows] = useState([]);
   const [pendingApprovalLoading, setPendingApprovalLoading] = useState(false);
@@ -437,6 +449,7 @@ const RegistrarDashboard = () => {
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [choiceMatrixSearch, setChoiceMatrixSearch] = useState('');
+  const [choiceMatrixSelectedStream, setChoiceMatrixSelectedStream] = useState('All');
   const [choiceMatrixPage, setChoiceMatrixPage] = useState(1);
   const [choiceDetailsStudent, setChoiceDetailsStudent] = useState(null);
   const [selectedStream, setSelectedStream] = useState('all');
@@ -1130,12 +1143,16 @@ const RegistrarDashboard = () => {
 
         const records = await Promise.all(
           studentUsers.map(async (user) => {
+            const studentId = user?.id ?? user?.student_id;
             const email = user?.email || '';
             let profile = {};
 
-            if (email) {
+            if (studentId || email) {
               try {
-                const profileResponse = await api.get(`api/student/student_profile.php?email=${encodeURIComponent(email)}`);
+                const lookup = studentId
+                  ? `student_id=${encodeURIComponent(studentId)}`
+                  : `email=${encodeURIComponent(email)}`;
+                const profileResponse = await api.get(`api/student/student_profile.php?${lookup}`);
                 profile = profileResponse.data?.student || profileResponse.data?.data || {};
               } catch (error) {
                 profile = {};
@@ -1171,10 +1188,10 @@ const RegistrarDashboard = () => {
 
             // ===== FETCH STUDENT PREFERENCES =====
             let choices = [];
-            const studentId = user?.id ?? user?.student_id ?? profile?.student_id ?? profile?.id ?? null;
-            if (studentId) {
+            const preferenceStudentId = studentId ?? profile?.student_id ?? profile?.id ?? null;
+            if (preferenceStudentId) {
               try {
-                const preferencesResponse = await api.get(`api/student/student_preferences.php?student_id=${encodeURIComponent(studentId)}`);
+                const preferencesResponse = await api.get(`api/student/student_preferences.php?student_id=${encodeURIComponent(preferenceStudentId)}`);
                 const preferencesPayload = preferencesResponse.data || {};
                 const preferences = Array.isArray(preferencesPayload.choices)
                   ? preferencesPayload.choices
@@ -1214,7 +1231,7 @@ const RegistrarDashboard = () => {
               phone: profile?.phone || profile?.phone_number || profile?.contact || user?.phone_number || '',
               gpa: numericCgpa.toFixed(2),
               cgpa: numericCgpa.toFixed(2),
-              stream: profile?.stream || user?.stream || 'Natural',
+              stream: formatStudentStream(user?.stream || profile?.stream || profile?.department_stream),
               g12: g12,
               coc: cocValue,
               gender,
@@ -1300,20 +1317,21 @@ const RegistrarDashboard = () => {
     })
     .filter((student) => {
       const term = choiceMatrixSearch.trim().toLowerCase();
-      if (!term) return true;
-
       const searchableText = [
         student.name,
+        student.id_number,
+        student.id,
         student.email,
-        student.department,
-        student.status,
-        ...student.prioritySlots,
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
 
-      return searchableText.includes(term);
+      const matchesSearch = !term || searchableText.includes(term);
+      const matchesStream = choiceMatrixSelectedStream === 'All'
+        || formatStudentStream(student.stream) === choiceMatrixSelectedStream;
+
+      return matchesSearch && matchesStream;
     });
   const choiceMatrixTotalPages = Math.max(1, Math.ceil(choiceMatrixRows.length / PAGE_SIZE));
   const paginatedChoiceMatrixRows = choiceMatrixRows.slice(
@@ -1340,6 +1358,7 @@ const RegistrarDashboard = () => {
         student.status,
         student.id,
         student.gender,
+        student.stream,
       ]
         .filter(Boolean)
         .join(' ')
@@ -1554,7 +1573,7 @@ const RegistrarDashboard = () => {
 
   useEffect(() => {
     setChoiceMatrixPage(1);
-  }, [studentRecords.length, choiceMatrixSearch]);
+  }, [studentRecords.length, choiceMatrixSearch, choiceMatrixSelectedStream]);
 
   useEffect(() => {
     setCapacityPage(1);
@@ -1656,6 +1675,12 @@ const RegistrarDashboard = () => {
               onClick={() => setTab('approve-results')}
             >
               Approve & Publish Results
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'unassigned-students' ? 'active' : ''}`}
+              onClick={() => setTab('unassigned-students')}
+            >
+              Unassigned Students
             </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'appeals' ? 'active' : ''}`}
@@ -2125,6 +2150,7 @@ const RegistrarDashboard = () => {
                             <th>Gender</th>
                             <th>Disability</th>
                             <th>Minority</th>
+                            <th>STREAM</th>
                             <th title="Computed from GPA, G12, and other factors">Cumulative Score</th>
                             <th>Department</th>
                             <th>Action</th>
@@ -2203,6 +2229,9 @@ const RegistrarDashboard = () => {
                                   <span className="badge bg-secondary text-white px-3 py-2">No</span>
                                 )}
                               </td>
+
+                              {/* Stream */}
+                              <td>{student.stream || 'N/A'}</td>
 
                               {/* Cumulative Score (from cumulative_avg column) */}
                               <td className="text-center">
@@ -2311,16 +2340,28 @@ const RegistrarDashboard = () => {
                 </div>
 
                 <div className="row g-3 mb-3">
-                  <div className="col-md-7">
+                  <div className="col-md-5">
                     <input
                       type="text"
                       className="form-control"
-                      placeholder="Search by student name, email, department, or ranking..."
+                      placeholder="Search by student name, ID, or email..."
                       value={choiceMatrixSearch}
                       onChange={(e) => setChoiceMatrixSearch(e.target.value)}
                     />
                   </div>
-                  <div className="col-md-5">
+                  <div className="col-md-3">
+                    <select
+                      className="form-select"
+                      aria-label="Filter students by stream"
+                      value={choiceMatrixSelectedStream}
+                      onChange={(e) => setChoiceMatrixSelectedStream(e.target.value)}
+                    >
+                      <option value="All">All Streams</option>
+                      <option value="Natural Science">Natural Science</option>
+                      <option value="Social Science">Social Science</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
                     <div className="alert alert-light border mb-0 py-2 px-3">
                       <strong>{Object.keys(departmentPreferenceCounts).length}</strong> departments with preference entries
                     </div>
@@ -2333,6 +2374,7 @@ const RegistrarDashboard = () => {
                       <tr>
                         <th>STUDENT ID</th>
                         <th>STUDENT NAME</th>
+                        <th>STREAM</th>
                         <th>Status</th>
                         {Array.from({ length: maxChoicesCount }, (_, index) => (
                           <th key={index}>CHOICE {index + 1}</th>
@@ -2343,8 +2385,10 @@ const RegistrarDashboard = () => {
                     <tbody>
                       {choiceMatrixRows.length === 0 ? (
                         <tr>
-                          <td colSpan={maxChoicesCount + 4} className="text-center text-muted py-4">
-                            No student choice data available yet.
+                          <td colSpan={maxChoicesCount + 5} className="text-center text-muted py-4">
+                            {studentRecords.length === 0
+                              ? 'No student choice data available yet.'
+                              : 'No students match the selected search and stream filters.'}
                           </td>
                         </tr>
                       ) : (
@@ -2356,6 +2400,7 @@ const RegistrarDashboard = () => {
                               </span>
                             </td>
                             <td className="fw-semibold">{student.name}</td>
+                            <td>{student.stream || 'N/A'}</td>
                             <td>{student.status || '—'}</td>
                             {student.prioritySlots.map((department, index) => (
                               <td key={`${student.id}-priority-${index}`}>
@@ -2423,7 +2468,9 @@ const RegistrarDashboard = () => {
                       <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
                         <div>
                           <h5 id="choice-details-title" className="fw-bold mb-1">Ranked choices</h5>
-                          <div className="text-muted small">{choiceDetailsStudent.name} · {choiceDetailsStudent.email}</div>
+                          <div className="text-muted small">
+                            {choiceDetailsStudent.name} · {choiceDetailsStudent.email} · Stream: {choiceDetailsStudent.stream || 'N/A'}
+                          </div>
                         </div>
                         <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setChoiceDetailsStudent(null)}>
                           Close
@@ -3151,6 +3198,7 @@ const RegistrarDashboard = () => {
                         const outcome = { assigned, unassigned, alreadyPlaced, total: students.length };
 
                         setRunResult(outcome);
+                        setUnassignedStudentsRefreshToken((token) => token + 1);
                         setPlacementBatch((prev) => prev || 'DTU-2026/1');
                         localStorage.setItem('dtuPlacementBatch', placementBatch || 'DTU-2026/1');
                         setPendingResults((prev) => [{ id: Date.now(), summary: outcome, placements: result.placements || [], createdAt: new Date().toISOString() }, ...prev]);
@@ -3202,6 +3250,15 @@ const RegistrarDashboard = () => {
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
                     )}
                     {runResult.error && <div className="text-danger">{runResult.error}</div>}
+                    {!runResult.error && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm mt-2"
+                        onClick={() => setTab('unassigned-students')}
+                      >
+                        View Unassigned Students Report
+                      </button>
+                    )}
 
                     {latestPlacementRun?.placements?.length > 0 && (
                       <div className="mt-4">
@@ -3360,6 +3417,8 @@ const RegistrarDashboard = () => {
                 )}
               </div>
             </div>
+          ) : tab === 'unassigned-students' ? (
+            <UnassignedStudents refreshToken={unassignedStudentsRefreshToken} />
           ) : tab === 'announcements' ? (
             <div className="card shadow-sm">
               <div className="card-body">
@@ -3811,12 +3870,16 @@ const RegistrarDashboard = () => {
 
                 const records = await Promise.all(
                   studentUsers.map(async (user) => {
+                    const studentId = user?.id ?? user?.student_id;
                     const email = user?.email || '';
                     let profile = {};
 
-                    if (email) {
+                    if (studentId || email) {
                       try {
-                        const profileResponse = await api.get(`api/student/student_profile.php?email=${encodeURIComponent(email)}`);
+                        const lookup = studentId
+                          ? `student_id=${encodeURIComponent(studentId)}`
+                          : `email=${encodeURIComponent(email)}`;
+                        const profileResponse = await api.get(`api/student/student_profile.php?${lookup}`);
                         profile = profileResponse.data?.student || profileResponse.data?.data || {};
                       } catch (error) {
                         profile = {};
@@ -3852,6 +3915,7 @@ const RegistrarDashboard = () => {
                       email: profile?.email || user?.email || '',
                       phone: profile?.phone || profile?.phoneNumber || profile?.contact || profile?.mobile || '',
                       cgpa: numericCgpa.toFixed(2),
+                      stream: formatStudentStream(user?.stream || profile?.stream || profile?.department_stream),
                       g12: g12 ?? 'N/A',
                       coc: cocValue,
                       gender,

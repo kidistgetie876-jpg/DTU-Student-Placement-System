@@ -1,7 +1,4 @@
 <?php
-use PHPMailer\PHPMailer\Exception as MailException;
-use PHPMailer\PHPMailer\PHPMailer;
-
 require_once __DIR__ . '/../../config/db_config.php';
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -10,6 +7,53 @@ function unassignedRespond(array $payload, int $statusCode = 200): void
     http_response_code($statusCode);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function refreshUnassignedStudentRoster(mysqli $db): void
+{
+    $result = $db->query(
+        "INSERT INTO unassigned_students
+            (student_id, id_number, full_name, email, stream, college_name, status, placement_run_at)
+         SELECT sd.user_id,
+                COALESCE(NULLIF(sd.id_number, ''), u.id_number, ''),
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', sd.first_name, sd.last_name)), ''), u.username, 'Student'),
+                COALESCE(NULLIF(sd.email, ''), u.email, ''),
+                COALESCE(NULLIF(sd.stream, ''), (
+                    SELECT sc.stream
+                    FROM student_choices sc
+                    WHERE sc.student_id = sd.user_id
+                    ORDER BY sc.priority ASC
+                    LIMIT 1
+                ), ''),
+                COALESCE((
+                    SELECT sc.college_name
+                    FROM student_choices sc
+                    WHERE sc.student_id = sd.user_id
+                    ORDER BY sc.priority ASC
+                    LIMIT 1
+                ), ''),
+                'Not assigned',
+                NOW()
+         FROM student_data sd
+         INNER JOIN users u ON u.id = sd.user_id AND LOWER(u.role) = 'student'
+         WHERE LOWER(TRIM(COALESCE(sd.status, ''))) = 'not assigned'
+           AND NOT EXISTS (
+               SELECT 1
+               FROM placement_results pr
+               WHERE pr.student_id = sd.user_id
+                 AND (pr.status IS NULL OR pr.status NOT IN ('Rejected', 'Cancelled'))
+           )
+         ON DUPLICATE KEY UPDATE
+            id_number = VALUES(id_number),
+            full_name = VALUES(full_name),
+            email = VALUES(email),
+            stream = VALUES(stream),
+            college_name = VALUES(college_name),
+            status = 'Not assigned'"
+    );
+    if (!$result) {
+        throw new RuntimeException('Unable to synchronize unassigned students: ' . $db->error);
+    }
 }
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -24,6 +68,8 @@ $method = $_SERVER['REQUEST_METHOD'] ?? '';
 
 try {
     if ($method === 'GET') {
+        refreshUnassignedStudentRoster($db);
+
         $result = $db->query(
             "SELECT student_id, id_number, full_name, email, stream, college_name, status, placement_run_at
              FROM unassigned_students
@@ -93,10 +139,19 @@ try {
         unassignedRespond(['success' => false, 'message' => 'Request body must be valid JSON'], 400);
     }
 
-    $meetingDateInput = trim((string) ($input['meetingDate'] ?? ''));
-    $meetingTime = trim((string) ($input['meetingTime'] ?? ''));
-    $meetingLocation = trim((string) ($input['meetingLocation'] ?? ''));
+    $targetType = strtolower(trim((string) ($input['target_type'] ?? 'all')));
+    $studentId = filter_var($input['student_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $meetingDateInput = trim((string) ($input['meeting_date'] ?? $input['meetingDate'] ?? ''));
+    $meetingTime = trim((string) ($input['meeting_time'] ?? $input['meetingTime'] ?? ''));
+    $meetingLocation = trim((string) ($input['location'] ?? $input['meetingLocation'] ?? ''));
     $additionalMessage = trim((string) ($input['message'] ?? ''));
+    if (!in_array($targetType, ['all', 'individual'], true)) {
+        unassignedRespond(['success' => false, 'message' => 'Choose a valid notification target'], 400);
+    }
+    if ($targetType === 'individual' && $studentId === false) {
+        unassignedRespond(['success' => false, 'message' => 'Select a valid unassigned student'], 400);
+    }
+
     $meetingDate = DateTimeImmutable::createFromFormat('!Y-m-d', $meetingDateInput);
     $dateErrors = DateTimeImmutable::getLastErrors();
     if (!$meetingDate || ($dateErrors && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))
@@ -111,102 +166,109 @@ try {
         unassignedRespond(['success' => false, 'message' => 'Enter a meeting location and keep the optional message under 2,000 characters'], 400);
     }
 
-    $studentsResult = $db->query(
-        "SELECT full_name, email
-         FROM unassigned_students
-         WHERE status = 'Not assigned'
-         ORDER BY full_name ASC"
-    );
-    if (!$studentsResult) {
-        throw new RuntimeException('Unable to load unassigned student email recipients: ' . $db->error);
-    }
-    $students = [];
-    while ($row = $studentsResult->fetch_assoc()) {
-        $students[] = $row;
-    }
-    if (!$students) {
-        unassignedRespond(['success' => false, 'message' => 'There are no unassigned students to notify'], 422);
+    refreshUnassignedStudentRoster($db);
+
+    $title = 'Unassigned student meeting';
+    $message = $additionalMessage !== ''
+        ? $additionalMessage
+        : 'You are invited to discuss grade remediation and/or college reassignment options.';
+
+    if (!$db->begin_transaction()) {
+        throw new RuntimeException('Unable to start the notification transaction: ' . $db->error);
     }
 
-    require_once dirname(__DIR__, 3) . '/vendor/autoload.php';
-    $smtpUsername = getenv('SMTP_USERNAME');
-    $smtpPassword = getenv('SMTP_PASSWORD');
-    if (!is_string($smtpUsername) || $smtpUsername === '' || !is_string($smtpPassword) || $smtpPassword === '') {
-        throw new RuntimeException('SMTP email credentials are not configured');
-    }
+    $studentName = '';
+    if ($targetType === 'individual') {
+        $studentLookup = $db->prepare(
+            "SELECT full_name
+             FROM unassigned_students
+             WHERE student_id = ? AND status = 'Not assigned'
+             FOR UPDATE"
+        );
+        if (!$studentLookup) {
+            throw new RuntimeException('Unable to prepare unassigned student lookup: ' . $db->error);
+        }
+        $studentLookup->bind_param('i', $studentId);
+        if (!$studentLookup->execute()) {
+            $lookupError = $studentLookup->error;
+            $studentLookup->close();
+            throw new RuntimeException('Unable to load the selected unassigned student: ' . $lookupError);
+        }
+        $selectedStudent = $studentLookup->get_result()->fetch_assoc();
+        $studentLookup->close();
+        if (!$selectedStudent) {
+            $db->rollback();
+            unassignedRespond(['success' => false, 'message' => 'The selected student is not currently unassigned'], 422);
+        }
+        $studentName = trim((string) $selectedStudent['full_name']) ?: 'Selected student';
 
-    $meetingDateLabel = $meetingDate->format('F j, Y');
-    $meetingTimeLabel = DateTimeImmutable::createFromFormat('!H:i', $meetingTime)->format('g:i A');
-    $safeLocation = htmlspecialchars($meetingLocation, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $safeMessage = nl2br(htmlspecialchars($additionalMessage, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
-    $sentCount = 0;
-    $failedCount = 0;
-    $mail = new PHPMailer(true);
-    $mail->isSMTP();
-    $mail->Host = 'smtp.gmail.com';
-    $mail->SMTPAuth = true;
-    $mail->Username = $smtpUsername;
-    $mail->Password = $smtpPassword;
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = 587;
-    $mail->CharSet = 'UTF-8';
-    $mail->setFrom($smtpUsername, 'DTU Placement Portal');
-    $mail->isHTML(true);
-
-    foreach ($students as $student) {
-        $email = trim((string) $student['email']);
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $failedCount++;
-            continue;
+        $insert = $db->prepare(
+            "INSERT INTO student_notifications (student_id, title, message, meeting_date, meeting_time, location, is_read)
+             SELECT student_id, ?, ?, ?, ?, ?, 0
+             FROM unassigned_students
+             WHERE student_id = ? AND status = 'Not assigned'"
+        );
+        if (!$insert) {
+            throw new RuntimeException('Unable to prepare internal notification creation: ' . $db->error);
+        }
+        $insert->bind_param('sssssi', $title, $message, $meetingDateInput, $meetingTime, $meetingLocation, $studentId);
+    } else {
+        $studentsResult = $db->query(
+            "SELECT COUNT(*) AS total
+             FROM unassigned_students
+             WHERE status = 'Not assigned'"
+        );
+        if (!$studentsResult) {
+            throw new RuntimeException('Unable to load unassigned students: ' . $db->error);
+        }
+        $unassignedCount = (int) ($studentsResult->fetch_assoc()['total'] ?? 0);
+        if ($unassignedCount === 0) {
+            $db->rollback();
+            unassignedRespond(['success' => false, 'message' => 'There are no unassigned students to notify'], 422);
         }
 
-        $safeName = htmlspecialchars((string) $student['full_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $mail->clearAddresses();
-        $mail->addAddress($email, (string) $student['full_name']);
-        $mail->Subject = 'DTU placement follow-up meeting';
-        $mail->Body = '<p>Dear ' . $safeName . ',</p>'
-            . '<p>You are invited to an upcoming meeting for students who have not yet been assigned to a department. '
-            . 'The meeting will discuss grade remediation and/or college reassignment options.</p>'
-            . '<p><strong>Date:</strong> ' . htmlspecialchars($meetingDateLabel, ENT_QUOTES, 'UTF-8') . '<br>'
-            . '<strong>Time:</strong> ' . htmlspecialchars($meetingTimeLabel, ENT_QUOTES, 'UTF-8') . '<br>'
-            . '<strong>Location:</strong> ' . $safeLocation . '</p>'
-            . ($safeMessage !== '' ? '<p>' . $safeMessage . '</p>' : '')
-            . '<p>Please attend or contact the Office of the University Registrar if you need assistance.</p>'
-            . '<p>Office of the University Registrar<br>Debre Tabor University</p>';
-        $mail->AltBody = "Dear {$student['full_name']},\n\n"
-            . "You are invited to an upcoming meeting for students who have not yet been assigned to a department. "
-            . "The meeting will discuss grade remediation and/or college reassignment options.\n\n"
-            . "Date: {$meetingDateLabel}\nTime: {$meetingTimeLabel}\nLocation: {$meetingLocation}\n"
-            . ($additionalMessage !== '' ? "\n{$additionalMessage}\n" : '')
-            . "\nOffice of the University Registrar\nDebre Tabor University";
-
-        try {
-            $mail->send();
-            $sentCount++;
-        } catch (MailException $error) {
-            error_log('Unassigned student meeting email delivery failed: ' . $mail->ErrorInfo);
-            $failedCount++;
+        $insert = $db->prepare(
+            "INSERT INTO student_notifications (student_id, title, message, meeting_date, meeting_time, location, is_read)
+             SELECT student_id, ?, ?, ?, ?, ?, 0
+             FROM unassigned_students
+             WHERE status = 'Not assigned'"
+        );
+        if (!$insert) {
+            throw new RuntimeException('Unable to prepare internal notification creation: ' . $db->error);
         }
+        $insert->bind_param('sssss', $title, $message, $meetingDateInput, $meetingTime, $meetingLocation);
     }
 
-    if ($sentCount === 0) {
-        unassignedRespond([
-            'success' => false,
-            'message' => 'No meeting notification emails could be sent',
-            'sent' => 0,
-            'failed' => $failedCount,
-        ], 502);
+    if (!$insert->execute()) {
+        $insertError = $insert->error;
+        $insert->close();
+        throw new RuntimeException('Unable to create internal student notifications: ' . $insertError);
+    }
+    $createdCount = $insert->affected_rows;
+    $insert->close();
+    if ($createdCount === 0 || ($targetType === 'individual' && $createdCount !== 1)) {
+        $db->rollback();
+        $message = $targetType === 'individual'
+            ? 'The selected student is no longer unassigned'
+            : 'There are no unassigned students to notify';
+        unassignedRespond(['success' => false, 'message' => $message], 422);
+    }
+    if (!$db->commit()) {
+        throw new RuntimeException('Unable to save the student notifications: ' . $db->error);
     }
 
+    $successMessage = $targetType === 'all'
+        ? "Notification successfully sent to All {$createdCount} Unassigned Students"
+        : "Notification successfully sent to {$studentName}";
     unassignedRespond([
         'success' => true,
-        'message' => $failedCount === 0
-            ? "Meeting notification emails sent to {$sentCount} students."
-            : "Meeting notification emails sent to {$sentCount} students; {$failedCount} could not be sent.",
-        'sent' => $sentCount,
-        'failed' => $failedCount,
+        'message' => $successMessage,
+        'created' => $createdCount,
     ]);
 } catch (Throwable $error) {
+    if (isset($db) && $db instanceof mysqli && $db->connect_errno === 0) {
+        $db->rollback();
+    }
     error_log('Unassigned students API failed: ' . $error->getMessage());
     unassignedRespond(['success' => false, 'message' => 'Unable to process the unassigned students request'], 500);
 } finally {

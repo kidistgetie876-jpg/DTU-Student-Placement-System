@@ -86,7 +86,13 @@ $genderValue = trim((string) ($data['gender'] ?? 'Not specified'));
 $gender = strtolower($genderValue) === 'female'
     ? 'Female'
     : (strtolower($genderValue) === 'male' ? 'Male' : ($genderValue !== '' ? $genderValue : 'Not specified'));
-$stream = trim((string) ($data['stream'] ?? ''));
+$requestedStream = strtolower(trim((string) ($data['stream'] ?? '')));
+$normalizedStream = preg_replace('/[^a-z]/', '', $requestedStream);
+$stream = match ($normalizedStream) {
+    'natural', 'naturalscience' => 'Natural',
+    'social', 'socialscience' => 'Social',
+    default => '',
+};
 $disability = trim((string) ($data['disability'] ?? 'No'));
 $minority = trim((string) ($data['minority'] ?? 'No'));
 $status = trim((string) ($data['status'] ?? 'Pending')) ?: 'Pending';
@@ -118,6 +124,9 @@ if ($userId <= 0 || $email === '' || $username === '' || $firstName === '' || $l
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     respond(['success' => false, 'message' => 'Invalid email format.'], 400);
+}
+if ($stream === '') {
+    respond(['success' => false, 'message' => 'Select Natural Science or Social Science before saving.'], 400);
 }
 if ($gpa < 0 || $gpa > 4 || $grade12 < 0 || $grade12 > 100 || ($coc !== null && ($coc < 0 || $coc > 30))) {
     respond(['success' => false, 'message' => 'Scores are outside their allowed ranges.'], 400);
@@ -184,19 +193,20 @@ $statement->close();
 
 $studentDataUpdate = $db->prepare(
     'UPDATE student_data
-     SET gender = ?, gpa = ?, grade_12_result = ?, coc_result = ?, cumulative_avg = ?, disability = ?, minority = ?
+     SET gender = ?, gpa = ?, grade_12_result = ?, coc_result = ?, cumulative_avg = ?, stream = ?, disability = ?, minority = ?
      WHERE user_id = ? OR LOWER(email) = ?'
 );
 if (!$studentDataUpdate) {
     respond(['success' => false, 'message' => 'Could not prepare student score update: ' . $db->error], 500);
 }
 $studentDataUpdate->bind_param(
-    'sddddssis',
+    'sddddsssis',
     $gender,
     $gpa,
     $grade12,
     $coc,
     $cumulativeAvg,
+    $stream,
     $disability,
     $minority,
     $userId,

@@ -166,10 +166,11 @@ try {
     if (empty($scopedDepartments)) {
         throw new Exception('No active departments found for the selected college');
     }
-    foreach ($scopedDepartments as $department) {
-        if ((int) ($department['capacity'] ?? 0) <= 0) {
-            throw new Exception('Every active department in the selected college must have capacity greater than zero');
-        }
+    $departmentsWithCapacity = array_filter($scopedDepartments, function ($department) {
+        return (int) ($department['capacity'] ?? 0) > 0;
+    });
+    if (empty($departmentsWithCapacity)) {
+        throw new Exception('No active departments with capacity greater than zero were found for the selected college');
     }
 
     $departmentMap = [];
@@ -587,7 +588,9 @@ try {
         }
     }
 
-    $db->commit();
+    if (!$db->commit()) {
+        throw new Exception('Unable to commit placement results');
+    }
 
     echo json_encode([
         'success' => true,

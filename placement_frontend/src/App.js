@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import "./App.css";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import api from './services/api.js';
 import Header from "./components/layout/Header.jsx";
 import Footer from "./components/layout/Footer.jsx";
@@ -9,7 +9,6 @@ import Services from "./pages/public/Services.jsx";
 import PlacementInfo from "./pages/public/PlacementInfo.jsx";
 import Announcements from "./pages/public/Announcements.jsx";
 import Contact from "./pages/public/Contact.jsx";
-import Login from "./pages/public/Login.jsx";
 import AdminDashboard from "./pages/admin/Admin_Dashboard.jsx";
 import RegistrarDashboard from "./pages/registrar/RegistrarDashboard.jsx";
 import EditUser from "./pages/admin/EditUser.jsx";
@@ -86,7 +85,7 @@ function AppRoutes() {
   }
 
   const isAdminUser = String(user?.role || '').trim().toLowerCase() === 'admin';
-  const isLoginRoute = location.pathname === '/login';
+  const isLoginRoute = location.pathname === '/login' || location.state?.openLogin === true;
   if (maintenance.enabled && !isAdminUser && !isLoginRoute) {
     return <Maintenance settings={maintenance} />;
   }
@@ -104,7 +103,7 @@ function AppRoutes() {
           <Route path="/placement-info" element={<PlacementInfo />} />
           <Route path="/announcements" element={<Announcements />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<Navigate to="/" replace state={{ openLogin: true }} />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
           <Route path="/student-registration" element={<StudentRegistration />} />

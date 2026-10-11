@@ -48,6 +48,19 @@ try {
     $markedRead = $statement->affected_rows;
     $statement->close();
 
+    $meetingStatement = $db->prepare(
+        'UPDATE student_notifications SET is_read = 1 WHERE student_id = ? AND is_read = 0'
+    );
+    if (!$meetingStatement) {
+        throw new Exception('Unable to prepare meeting notification read updates.');
+    }
+    $meetingStatement->bind_param('i', $studentId);
+    if (!$meetingStatement->execute()) {
+        throw new Exception('Unable to mark meeting notifications as read.');
+    }
+    $markedRead += $meetingStatement->affected_rows;
+    $meetingStatement->close();
+
     markAllStudentNotificationsResponse([
         'success' => true,
         'message' => 'All notifications marked as read.',

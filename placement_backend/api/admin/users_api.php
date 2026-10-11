@@ -91,7 +91,7 @@ try {
                 COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
                 COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
                 users.username, users.email, users.phone_number,
-                users.id_number,
+                users.id_number, student_data.stream AS stream,
                 users.role, users.created_at
                 FROM users
                 LEFT JOIN student_data ON student_data.user_id = users.id
@@ -113,7 +113,7 @@ try {
                 COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
                 COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
                 users.username, users.email, users.phone_number,
-                users.id_number,
+                users.id_number, student_data.stream AS stream,
                 users.role, users.created_at
                 FROM users
                 LEFT JOIN student_data ON student_data.user_id = users.id

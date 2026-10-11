@@ -1,19 +1,28 @@
 import React, { useEffect, useState } from 'react';
+import {
+  FiArrowUpRight,
+  FiClock,
+  FiGlobe,
+  FiMail,
+  FiMapPin,
+  FiPhone,
+  FiRefreshCw,
+  FiSend,
+} from 'react-icons/fi';
 import api from '../../services/api.js';
-import { FiMail as Mail, FiPhone as Phone, FiMapPin as MapPin, FiClock as Clock, FiSend as Send, FiRefreshCcw as RefreshCcw, FiGlobe as Globe } from 'react-icons/fi';
+import './Contact.css';
+
+const defaultContactInfo = {
+  location: 'Registrar Office, Ground Floor, Main Campus, Debre Tabor, Ethiopia',
+  phone1: '+251 988024266',
+  phone2: '+251 995015403',
+  supportEmail: 'placement@dtu.edu.et',
+  officeHours: 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)',
+};
 
 const Contact = () => {
-  const [contactInfo, setContactInfo] = useState({
-    location: 'Registrar Office, Ground Floor, Main Campus, Debre Tabor, Ethiopia',
-    phone1: '+251 988024266',
-    phone2: '+251 995015403',
-    supportEmail: 'placement@dtu.edu.et',
-    officeHours: 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)',
-  });
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  const [contactInfo, setContactInfo] = useState(defaultContactInfo);
+  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [sending, setSending] = useState(false);
 
@@ -25,199 +34,230 @@ const Contact = () => {
         if (isMounted && response.data?.settings?.contact) {
           setContactInfo((current) => ({ ...current, ...response.data.settings.contact }));
         }
-      } catch {
+      } catch (error) {
+        if (isMounted) {
+          console.error('Unable to load contact settings; using the default contact information.', error);
+        }
       }
     };
 
     loadContactSettings();
     window.addEventListener('system-settings-updated', loadContactSettings);
-
     return () => {
       isMounted = false;
       window.removeEventListener('system-settings-updated', loadContactSettings);
     };
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus({ type: '', message: '' });
-    
-    if (!name || !email || !message) {
-      setStatus({ type: 'error', message: 'Please fill all required fields.' });
-      return;
-    }
+  const updateField = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    if (status.message) setStatus({ type: '', message: '' });
+  };
 
+  const resetForm = () => {
+    setForm({ name: '', email: '', subject: '', message: '' });
+    setStatus({ type: '', message: '' });
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setStatus({ type: '', message: '' });
     setSending(true);
-    const payload = { name, email, subject, message, date: new Date().toISOString() };
 
     try {
-      await api.post('api/common/contact_api.php', payload);
-      setStatus({ type: 'success', message: 'Thank you! Your message has been sent to the Placement Office.' });
-      setName(''); setEmail(''); setSubject(''); setMessage('');
-    } catch (err) {
-      try {
-        const stored = JSON.parse(localStorage.getItem('contact_messages') || '[]');
-        stored.push(payload);
-        localStorage.setItem('contact_messages', JSON.stringify(stored));
-        setStatus({ type: 'success', message: 'Message saved locally. It will be sent once the server is back online.' });
-        setName(''); setEmail(''); setSubject(''); setMessage('');
-      } catch (saveErr) {
-        setStatus({ type: 'error', message: 'Something went wrong. Please try again later.' });
+      const response = await api.post('api/common/contact_api.php', {
+        ...form,
+        name: form.name.trim(),
+        email: form.email.trim(),
+        subject: form.subject.trim(),
+        message: form.message.trim(),
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to send your message. Please try again.');
       }
+
+      setStatus({
+        type: 'success',
+        message: response.data.message || 'Thank you! Your message has been sent to the Placement Office.',
+      });
+      setForm({ name: '', email: '', subject: '', message: '' });
+    } catch (error) {
+      setStatus({
+        type: 'error',
+        message: error.response?.data?.message || error.message || 'Unable to send your message. Please try again.',
+      });
     } finally {
       setSending(false);
     }
   };
 
+  const phones = [contactInfo.phone1, contactInfo.phone2].filter(Boolean);
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contactInfo.location)}`;
+
+  const contactCards = [
+    {
+      icon: FiMapPin,
+      label: 'Visit our office',
+      content: contactInfo.location,
+      href: mapUrl,
+    },
+    {
+      icon: FiMail,
+      label: 'Email support',
+      content: contactInfo.supportEmail,
+      href: `mailto:${contactInfo.supportEmail}`,
+    },
+    {
+      icon: FiPhone,
+      label: 'Call the office',
+      content: phones.join(' / '),
+      href: phones[0] ? `tel:${phones[0].replace(/[^\d+]/g, '')}` : undefined,
+    },
+    {
+      icon: FiClock,
+      label: 'Office hours',
+      content: contactInfo.officeHours || defaultContactInfo.officeHours,
+    },
+  ];
+
   return (
-    <div className="container py-5">
-      <div className="text-center mb-5">
-        <h2 className="fw-bold text-primary">Get In Touch</h2>
-        <p className="text-muted mx-auto" style={{ maxWidth: '600px' }}>
-          Have questions about the student placement process? Our team is here to help you with technical support and inquiries.
-        </p>
-      </div>
+    <main className="contact-page">
+      <div className="contact-shell">
+        <section className="contact-intro" aria-labelledby="contact-heading">
+          <div className="contact-eyebrow"><FiGlobe aria-hidden="true" /> Debre Tabor University</div>
+          <h1 id="contact-heading">Let’s talk about your next step.</h1>
+          <p>
+            Questions about department placement? Send a message to the Placement Office and our team will help you find the right answer.
+          </p>
+        </section>
 
-      <div className="row g-0 shadow-lg border-0" style={{ borderRadius: '20px', overflow: 'hidden' }}>
-        {/* Left Side: Contact Information */}
-        <div className="col-lg-5 bg-primary p-5 text-white d-flex flex-column justify-content-between">
-          <div>
-            <h3 className="fw-bold mb-4">Contact Information</h3>
-            <p className="text-white-50 mb-5">Fill out the form and our team will get back to you within 24 hours.</p>
+        <div className="contact-layout">
+          <aside className="contact-sidebar" aria-labelledby="contact-info-heading">
+            <div>
+              <span className="contact-section-kicker">We’re here to help</span>
+              <h2 id="contact-info-heading">Contact information</h2>
+              <p className="contact-sidebar-copy">
+                Reach out to the Registrar and Placement Office using any of the options below.
+              </p>
 
-            <div className="d-flex align-items-start mb-4">
-              <div className="bg-white bg-opacity-25 p-3 rounded-3 me-3">
-                <MapPin size={24} />
-              </div>
-              <div>
-                <div className="fw-bold">Location</div>
-                <div className="small text-white-50">{contactInfo.location}</div>
+              <div className="contact-info-list">
+                {contactCards.map(({ icon: Icon, label, content, href }) => (
+                  <div className="contact-info-item" key={label}>
+                    <span className="contact-info-icon"><Icon aria-hidden="true" /></span>
+                    <div className="contact-info-text">
+                      <span className="contact-info-label">{label}</span>
+                      {href ? (
+                        <a href={href} target={href.startsWith('https://') ? '_blank' : undefined} rel={href.startsWith('https://') ? 'noreferrer' : undefined}>
+                          {content}
+                        </a>
+                      ) : (
+                        <span>{content || 'Contact details are not available'}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="d-flex align-items-start mb-4">
-              <div className="bg-white bg-opacity-25 p-3 rounded-3 me-3">
-                <Phone size={24} />
-              </div>
-              <div>
-                <div className="fw-bold">Phone</div>
-                <div className="small text-white-50">{[contactInfo.phone1, contactInfo.phone2].filter(Boolean).join(' / ')}</div>
-              </div>
+            <a className="contact-directions" href={mapUrl} target="_blank" rel="noreferrer">
+              <span className="contact-directions-icon"><FiMapPin aria-hidden="true" /></span>
+              <span>
+                <strong>Find us on the map</strong>
+                <small>Open directions to the university</small>
+              </span>
+              <FiArrowUpRight className="contact-directions-arrow" aria-hidden="true" />
+            </a>
+          </aside>
+
+          <section className="contact-form-panel" aria-labelledby="contact-form-heading">
+            <div className="contact-form-heading">
+              <span className="contact-section-kicker">Send us a message</span>
+              <h2 id="contact-form-heading">How can we help?</h2>
+              <p>Complete the form and your message will go directly to the Placement Office.</p>
             </div>
 
-            <div className="d-flex align-items-start mb-4">
-              <div className="bg-white bg-opacity-25 p-3 rounded-3 me-3">
-                <Mail size={24} />
+            {status.message && (
+              <div className={`contact-status contact-status-${status.type}`} role={status.type === 'error' ? 'alert' : 'status'}>
+                <span className="contact-status-mark" aria-hidden="true">{status.type === 'success' ? '✓' : '!'}</span>
+                <span>{status.message}</span>
               </div>
-              <div>
-                <div className="fw-bold">Email</div>
-                <a className="small text-white-50" href={`mailto:${contactInfo.supportEmail}`}>{contactInfo.supportEmail}</a>
-              </div>
-            </div>
+            )}
 
-            <div className="d-flex align-items-start mb-4">
-              <div className="bg-white bg-opacity-25 p-3 rounded-3 me-3">
-                <Clock size={24} />
+            <form onSubmit={handleSubmit}>
+              <div className="contact-form-grid">
+                <div className="contact-field">
+                  <label htmlFor="contact-name">Full name <span aria-hidden="true">*</span></label>
+                  <input
+                    id="contact-name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    maxLength={255}
+                    placeholder="Your name"
+                    value={form.name}
+                    onChange={updateField}
+                    required
+                  />
+                </div>
+                <div className="contact-field">
+                  <label htmlFor="contact-email">Email address <span aria-hidden="true">*</span></label>
+                  <input
+                    id="contact-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    maxLength={255}
+                    placeholder="you@example.com"
+                    value={form.email}
+                    onChange={updateField}
+                    required
+                  />
+                </div>
+                <div className="contact-field contact-field-wide">
+                  <label htmlFor="contact-subject">Subject</label>
+                  <input
+                    id="contact-subject"
+                    name="subject"
+                    type="text"
+                    maxLength={255}
+                    placeholder="What is your message about?"
+                    value={form.subject}
+                    onChange={updateField}
+                  />
+                </div>
+                <div className="contact-field contact-field-wide">
+                  <label htmlFor="contact-message">Message <span aria-hidden="true">*</span></label>
+                  <textarea
+                    id="contact-message"
+                    name="message"
+                    rows={5}
+                    placeholder="Tell us how we can help..."
+                    value={form.message}
+                    onChange={updateField}
+                    required
+                  />
+                </div>
               </div>
-              <div>
-                <div className="fw-bold">Office Hours</div>
-                <div className="small text-white-50">{contactInfo.officeHours || 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)'}</div>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-5">
-            <div className="d-flex gap-3">
-               <a href="https://www.dtu.edu.et" target="_blank" rel="noreferrer" className="text-white text-decoration-none small d-flex align-items-center">
-                 <Globe size={16} className="me-1"/> www.dtu.edu.et
-               </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Side: Form */}
-        <div className="col-lg-7 bg-white p-5">
-          <h4 className="fw-bold mb-4 text-dark">Send a Message</h4>
-          
-          {status.message && (
-            <div className={`alert ${status.type === 'success' ? 'alert-success border-0' : 'alert-danger border-0'} fade show shadow-sm d-flex align-items-center`} role="alert">
-              <div className="me-2">{status.type === 'success' ? '✅' : '❌'}</div>
-              {status.message}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="mt-4">
-            <div className="row g-4">
-              <div className="col-md-6">
-                <label className="form-label fw-semibold small">Full Name</label>
-                <input 
-                  className="form-control form-control-lg bg-light border-0 fs-6" 
-                  placeholder="Enter your name"
-                  value={name} 
-                  onChange={e => setName(e.target.value)} 
-                  required 
-                />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label fw-semibold small">Email Address</label>
-                <input 
-                  type="email" 
-                  className="form-control form-control-lg bg-light border-0 fs-6" 
-                  placeholder="yourname@example.com"
-                  value={email} 
-                  onChange={e => setEmail(e.target.value)} 
-                  required 
-                />
-              </div>
-              <div className="col-12">
-                <label className="form-label fw-semibold small">Subject</label>
-                <input 
-                  className="form-control form-control-lg bg-light border-0 fs-6" 
-                  placeholder="e.g. Placement Appeal Support"
-                  value={subject} 
-                  onChange={e => setSubject(e.target.value)} 
-                />
-              </div>
-              <div className="col-12">
-                <label className="form-label fw-semibold small">How can we help?</label>
-                <textarea 
-                  className="form-control form-control-lg bg-light border-0 fs-6" 
-                  rows={5} 
-                  placeholder="Write your message here..."
-                  value={message} 
-                  onChange={e => setMessage(e.target.value)} 
-                  required 
-                />
-              </div>
-              <div className="col-12 d-flex justify-content-between align-items-center mt-4">
-                <button 
-                  className="btn btn-link text-muted text-decoration-none d-flex align-items-center p-0" 
-                  type="reset" 
-                  onClick={() => { setName(''); setEmail(''); setSubject(''); setMessage(''); setStatus({ type:'', message:'' }); }}
-                >
-                  <RefreshCcw size={16} className="me-2"/> Reset Form
+              <div className="contact-form-actions">
+                <button className="contact-reset-button" type="button" onClick={resetForm} disabled={sending}>
+                  <FiRefreshCw aria-hidden="true" /> Clear form
                 </button>
-                <button 
-                  className="btn btn-primary btn-lg px-5 py-3 rounded-pill shadow-sm d-flex align-items-center" 
-                  disabled={sending}
-                >
-                  {sending ? 'Sending...' : (
-                    <>
-                      Send Message <Send size={18} className="ms-2" />
-                    </>
-                  )}
+                <button className="contact-submit-button" type="submit" disabled={sending}>
+                  {sending ? 'Sending message…' : 'Send message'}
+                  {!sending && <FiSend aria-hidden="true" />}
                 </button>
               </div>
-            </div>
-          </form>
+            </form>
+          </section>
         </div>
+
+        <footer className="contact-page-footer">
+          © {new Date().getFullYear()} Debre Tabor University · Student Department Placement System
+        </footer>
       </div>
-      
-      {/* Footer Info */}
-      <div className="mt-5 text-center text-muted small">
-        <p>© {new Date().getFullYear()} Debre Tabor University - Student Department Placement System</p>
-      </div>
-    </div>
+    </main>
   );
 };
 

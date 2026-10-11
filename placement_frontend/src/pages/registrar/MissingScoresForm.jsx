@@ -9,6 +9,7 @@ const emptyForm = {
   email: '',
   first_name: '',
   last_name: '',
+  stream: '',
   gender: 'Male',
   gpa: '',
   grade_12_result: '',
@@ -26,6 +27,13 @@ const yesNo = (value) => {
     : 'No';
 };
 
+const normalizeStreamValue = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase().replace(/[^a-z]/g, '');
+  if (normalized === 'natural' || normalized === 'naturalscience') return 'Natural';
+  if (normalized === 'social' || normalized === 'socialscience') return 'Social';
+  return '';
+};
+
 const toFormValues = (student, fallbackId = '') => ({
   ...emptyForm,
   user_id: student.user_id ?? student.id ?? fallbackId,
@@ -33,6 +41,7 @@ const toFormValues = (student, fallbackId = '') => ({
   email: student.email || '',
   first_name: student.first_name || '',
   last_name: student.last_name || '',
+  stream: normalizeStreamValue(student.stream ?? student.department_stream),
   gender: String(student.gender || '').toLowerCase() === 'female' ? 'Female' : 'Male',
   gpa: student.gpa ?? student.cgpa ?? '',
   grade_12_result: student.grade_12_result ?? student.g12 ?? '',
@@ -187,6 +196,14 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
                 <div className="col-md-6">
                   <label className="form-label fw-bold" htmlFor="student-email">Email (Read Only)</label>
                   <input id="student-email" type="email" className="form-control bg-light" name="email" value={form.email} readOnly />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fw-bold" htmlFor="student-stream">Stream</label>
+                  <select id="student-stream" className="form-select" name="stream" value={form.stream} onChange={handleChange} required>
+                    <option value="" disabled>Select a stream</option>
+                    <option value="Natural">Natural Science</option>
+                    <option value="Social">Social Science</option>
+                  </select>
                 </div>
                 <div className="col-md-3">
                   <label className="form-label fw-bold" htmlFor="student-gpa">GPA (4.0)</label>

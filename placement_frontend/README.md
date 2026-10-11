@@ -97,6 +97,27 @@ curl -X POST \
 - `POST /api/common/departments_api.php` — create department
 - `DELETE /api/common/departments_api.php?id={id}` — delete department
 
+### Unassigned students
+
+Before using the registrar's Unassigned Students tab, apply
+`../placement_backend/database/migrations/20261011_create_unassigned_students.sql`
+to the placement database. Successful placement runs keep the latest unassigned
+student records in this table; students who later receive a placement are removed.
+The list and notification endpoints also synchronize students whose current
+`student_data.status` is `Not assigned`, so they appear even if a prior run did
+not populate the report table.
+
+- `GET /api/registrar/unassigned_students_api.php` — list unassigned students as JSON
+- `GET /api/registrar/unassigned_students_api.php?format=csv` — download `unassigned_students_report.csv`
+- `POST /api/registrar/unassigned_students_api.php` — post meeting notifications to the current unassigned students' portals
+
+The meeting notification request accepts `meetingDate` (`YYYY-MM-DD`), `meetingTime` (`HH:MM`),
+`meetingLocation`, and an optional `message`. Meeting notifications are stored
+in `student_notifications` and appear in each student's portal Notifications tab.
+Apply `../placement_backend/database/migrations/20261011_create_student_notifications.sql`
+to enable this feature. The registrar routes require an authenticated registrar
+or admin session.
+
 ## Learn More
 
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).

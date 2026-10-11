@@ -109,6 +109,79 @@ describe('StudentDashboard', () => {
     expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument();
   });
 
+  it('shows registrar meeting notifications with their date, time, and location', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{
+              id: 21,
+              notification_type: 'meeting',
+              title: 'Unassigned student meeting',
+              message: 'Please attend to discuss remediation options.',
+              meeting_date: '2026-10-20',
+              meeting_time: '09:30:00',
+              location: 'Registrar Office',
+              is_read: 0,
+            }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+
+    expect(await screen.findByText('Unassigned student meeting')).toBeInTheDocument();
+    expect(screen.getByText('Please attend to discuss remediation options.')).toBeInTheDocument();
+    expect(screen.getByText('2026-10-20')).toBeInTheDocument();
+    expect(screen.getByText('09:30:00')).toBeInTheDocument();
+    expect(screen.getByText('Registrar Office')).toBeInTheDocument();
+  });
+
+  it('marks a registrar meeting notification as read using its notification type', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{
+              id: 22,
+              notification_type: 'meeting',
+              title: 'Unassigned student meeting',
+              message: 'Please attend.',
+              meeting_date: '2026-10-20',
+              meeting_time: '09:30:00',
+              location: 'Registrar Office',
+              is_read: 0,
+            }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true, message: 'Notification marked as read.' } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark as read' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/mark_notification_read.php',
+      { notification_id: 22, notification_type: 'meeting' }
+    ));
+  });
+
   it('hides Pending placement details until the Registrar publishes the result', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });

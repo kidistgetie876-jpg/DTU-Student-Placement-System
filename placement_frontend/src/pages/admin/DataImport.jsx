@@ -12,11 +12,11 @@ const studentImportHeaders = {
   fullName: ['fullname', 'studentname', 'name'],
   username: ['username', 'loginname'],
   phone: ['phone', 'phonenumber', 'mobilenumber', 'mobile'],
-  gpa: ['gpa', 'cgpa', 'cumulativegpa'],
+  gpa: ['gpa', 'gpa40', 'cgpa', 'cumulativegpa'],
   stream: ['stream'],
   gender: ['gender'],
-  grade12: ['grade12result', 'grade12', 'g12result', 'g12'],
-  coc: ['cocresult', 'coc', 'competencyexamresult'],
+  grade12: ['grade12result', 'grade12', 'grade12score', 'g12result', 'g12score', 'g12'],
+  coc: ['cocresult', 'cocscore', 'coc', 'competencyexamresult'],
   disability: ['disability', 'hasdisability'],
   minority: ['minority', 'isminority'],
 };
@@ -69,11 +69,11 @@ export const parseStudentImportGrid = (grid) => {
       username,
       email,
       phone: getCell(row, studentImportHeaders.phone),
-      gpa: getCell(row, studentImportHeaders.gpa) || '0',
+      gpa: getCell(row, studentImportHeaders.gpa),
       stream: getCell(row, studentImportHeaders.stream),
       gender: getCell(row, studentImportHeaders.gender) || 'Not specified',
-      grade_12_result: getCell(row, studentImportHeaders.grade12) || '0',
-      coc_result: getCell(row, studentImportHeaders.coc) || '0',
+      grade_12_result: getCell(row, studentImportHeaders.grade12),
+      coc_result: getCell(row, studentImportHeaders.coc),
       disability: getCell(row, studentImportHeaders.disability) || 'No',
       minority: getCell(row, studentImportHeaders.minority) || 'No',
     };
@@ -157,11 +157,11 @@ const DataImport = ({ onImportSuccess }) => {
         id_number: row.id_number || '',
         email: row.email || '',
         phone: row.phone || '',
-        gpa: row.gpa || '0',
+        gpa: row.gpa || '',
         stream: row.stream || '',
         gender: row.gender || 'Not specified',
-        grade_12_result: row.grade_12_result || '0',
-        coc_result: row.coc_result || '0',
+        grade_12_result: row.grade_12_result || '',
+        coc_result: row.coc_result || '',
         disability: row.disability || 'No',
         minority: row.minority || 'No',
       }));
@@ -187,7 +187,15 @@ const DataImport = ({ onImportSuccess }) => {
         const insertedCount = Number(responseData.inserted_count ?? importedCount);
         const updatedCount = Number(responseData.updated_count ?? 0);
         const skippedCount = Number(responseData.skipped_count ?? 0);
-        setStatusMessage(responseData.message || `Import complete: ${insertedCount} new, ${updatedCount} updated, ${skippedCount} skipped.`);
+        const skippedDetails = Array.isArray(responseData.skipped)
+          ? responseData.skipped
+            .map((item) => `Row ${item.row}: ${item.reason}`)
+            .join(' ')
+          : '';
+        setStatusMessage([
+          responseData.message || `Import complete: ${insertedCount} new, ${updatedCount} updated, ${skippedCount} skipped.`,
+          skippedDetails,
+        ].filter(Boolean).join(' '));
         setPreviewRows([]);
         setPreviewReady(false);
         setSelectedFile(null);
@@ -199,7 +207,12 @@ const DataImport = ({ onImportSuccess }) => {
       }
     } catch (error) {
       setStatusType('error');
-      setStatusMessage(error.response?.data?.message || 'Server connection error. Please check XAMPP.');
+      setStatusMessage(
+        error.response?.data?.message
+          || (error.response
+            ? `Import request failed with HTTP ${error.response.status}.`
+            : 'Server connection error. Please check XAMPP.'),
+      );
     } finally {
       setSubmitting(false);
     }
