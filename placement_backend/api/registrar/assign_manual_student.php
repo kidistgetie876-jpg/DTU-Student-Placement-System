@@ -9,9 +9,17 @@ function manualAssignmentRespond(array $payload, int $statusCode = 200): void
     exit;
 }
 
+function normalizeStreamKey(string $stream): string
+{
+    $normalized = strtolower(trim((string) $stream));
+    $normalized = preg_replace('/[^a-z]/i', '', $normalized) ?? '';
+    $normalized = preg_replace('/sciences$/', 'science', $normalized) ?? $normalized;
+    return $normalized;
+}
+
 function getStudentStreamCategory(string $stream): ?string
 {
-    $normalized = strtolower(preg_replace('/[^a-z]/i', '', trim($stream)));
+    $normalized = normalizeStreamKey($stream);
     if (in_array($normalized, ['natural', 'naturalscience'], true)) {
         return 'natural';
     }
@@ -23,7 +31,7 @@ function getStudentStreamCategory(string $stream): ?string
 
 function getDepartmentStreamCategory(array $department): ?string
 {
-    $stream = strtolower(trim((string) ($department['stream'] ?? '')));
+    $stream = normalizeStreamKey($department['stream'] ?? '');
     if (strpos($stream, 'natural') !== false) {
         return 'natural';
     }

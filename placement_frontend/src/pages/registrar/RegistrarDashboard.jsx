@@ -318,8 +318,9 @@ const getDepartmentStream = (department) => {
 const formatStudentStream = (value) => {
   const stream = String(value ?? '').trim();
   const normalized = stream.toLowerCase().replace(/[^a-z]/g, '');
-  if (normalized === 'natural' || normalized === 'naturalscience') return 'Natural Science';
-  if (normalized === 'social' || normalized === 'socialscience') return 'Social Science';
+  const singularStream = normalized.replace(/sciences$/, 'science');
+  if (singularStream === 'natural' || singularStream === 'naturalscience') return 'Natural Science';
+  if (singularStream === 'social' || singularStream === 'socialscience') return 'Social Science';
   return stream;
 };
 

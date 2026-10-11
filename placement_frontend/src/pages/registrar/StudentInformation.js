@@ -30,8 +30,9 @@ const needsAcademicScores = (student) => {
 
 const normalizeStream = (value) => {
   const stream = String(value ?? '').trim().toLowerCase().replace(/[^a-z]/g, '');
-  if (stream === 'natural' || stream === 'naturalscience') return 'naturalscience';
-  if (stream === 'social' || stream === 'socialscience') return 'socialscience';
+  const singularized = stream.replace(/sciences$/, 'science');
+  if (singularized === 'natural' || singularized === 'naturalscience') return 'naturalscience';
+  if (singularized === 'social' || singularized === 'socialscience') return 'socialscience';
   return stream;
 };
 

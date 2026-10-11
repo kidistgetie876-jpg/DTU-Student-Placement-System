@@ -268,6 +268,27 @@ describe('StudentDashboard', () => {
     expect(screen.getAllByRole('combobox')[0]).toBeDisabled();
   });
 
+  it('accepts plural stream labels like Natural Sciences and Social Sciences', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Sciences', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: { success: true, choices: [] } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    expect(screen.getAllByRole('combobox')[0]).toHaveValue('Natural');
+    expect(screen.getAllByRole('combobox')[0]).toBeDisabled();
+  });
+
   it('renders and submits a preference slot for every department in the selected college', async () => {
     const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
     const departments = Array.from({ length: 10 }, (_, index) => ({

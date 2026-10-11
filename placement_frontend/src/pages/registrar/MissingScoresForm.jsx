@@ -29,8 +29,9 @@ const yesNo = (value) => {
 
 const normalizeStreamValue = (value) => {
   const normalized = String(value ?? '').trim().toLowerCase().replace(/[^a-z]/g, '');
-  if (normalized === 'natural' || normalized === 'naturalscience') return 'Natural';
-  if (normalized === 'social' || normalized === 'socialscience') return 'Social';
+  const singularized = normalized.replace(/sciences$/, 'science');
+  if (singularized === 'natural' || singularized === 'naturalscience') return 'Natural';
+  if (singularized === 'social' || singularized === 'socialscience') return 'Social';
   return '';
 };
 

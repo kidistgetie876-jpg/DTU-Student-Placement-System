@@ -33,8 +33,9 @@ const isActiveDepartment = (department) => String(department?.status || '').trim
 
 const normalizeStream = (value) => {
   const stream = String(value || '').trim();
-  if (/^social( science)?$/i.test(stream)) return 'Social';
-  if (/^natural( science)?$/i.test(stream)) return 'Natural';
+  const normalized = stream.toLowerCase().replace(/[^a-z]/g, '');
+  if (/^(social|socialscience|socialsciences)$/i.test(normalized)) return 'Social';
+  if (/^(natural|naturalscience|naturalsciences)$/i.test(normalized)) return 'Natural';
   return stream;
 };
 

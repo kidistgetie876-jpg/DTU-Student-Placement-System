@@ -58,7 +58,8 @@ function normalizeImportedStream(string $stream): ?string
         return '';
     }
 
-    $normalized = preg_replace('/[^a-z]/', '', $normalized);
+    $normalized = preg_replace('/[^a-z]/', '', $normalized) ?? '';
+    $normalized = preg_replace('/sciences$/', 'science', $normalized) ?? $normalized;
     if (in_array($normalized, ['natural', 'naturalscience'], true)) {
         return 'Natural';
     }

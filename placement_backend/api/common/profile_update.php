@@ -87,7 +87,8 @@ $gender = strtolower($genderValue) === 'female'
     ? 'Female'
     : (strtolower($genderValue) === 'male' ? 'Male' : ($genderValue !== '' ? $genderValue : 'Not specified'));
 $requestedStream = strtolower(trim((string) ($data['stream'] ?? '')));
-$normalizedStream = preg_replace('/[^a-z]/', '', $requestedStream);
+$normalizedStream = preg_replace('/[^a-z]/', '', $requestedStream) ?? '';
+$normalizedStream = preg_replace('/sciences$/', 'science', $normalizedStream) ?? $normalizedStream;
 $stream = match ($normalizedStream) {
     'natural', 'naturalscience' => 'Natural',
     'social', 'socialscience' => 'Social',
