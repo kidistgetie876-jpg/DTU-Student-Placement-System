@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api.js';
 import StudentRegistration from './StudentRegistration';
 import UnassignedStudents from './UnassignedStudents.jsx';
@@ -95,6 +95,24 @@ const placementDateFields = [
   ['resultsDate', 'Results Announcement Date'],
   ['appealStart', 'Appeal Window Start Date'],
   ['appealEnd', 'Appeal Window End Date'],
+];
+const registrarTabs = [
+  'overview',
+  'student-info',
+  'data-import',
+  'choice-matrix',
+  'capacity',
+  'department-status',
+  'placement-rules',
+  'deadlines',
+  'placements',
+  'run-placement',
+  'approve-results',
+  'unassigned-students',
+  'appeals',
+  'reports',
+  'announcements',
+  'student-registration',
 ];
 
 const downloadCsv = (filename, headers, rows) => {
@@ -349,17 +367,25 @@ const normalizeDepartmentPayload = (payload) => {
 const RegistrarDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { tab: routeTab } = useParams();
   const [registrar, setRegistrar] = useState(null);
   const [studentRecordsRefreshToken, setStudentRecordsRefreshToken] = useState(0);
-  const [tab, setActiveTab] = useState(() => {
-    if (location.state?.activeTab) return location.state.activeTab;
-    const savedTab = sessionStorage.getItem('registrarActiveTab');
-    return savedTab || 'overview';
-  });
+  const tab = registrarTabs.includes(routeTab) ? routeTab : 'overview';
   const setTab = (nextTab) => {
-    setActiveTab(nextTab);
-    sessionStorage.setItem('registrarActiveTab', nextTab);
+    navigate(nextTab === 'overview'
+      ? '/registrar-dashboard/overview'
+      : `/registrar-dashboard/${nextTab}`);
   };
+  useEffect(() => {
+    if (routeTab && !registrarTabs.includes(routeTab)) {
+      navigate('/registrar-dashboard/overview', { replace: true });
+    }
+  }, [navigate, routeTab]);
+  useEffect(() => {
+    if (!routeTab && location.state?.activeTab && registrarTabs.includes(location.state.activeTab)) {
+      navigate(`/registrar-dashboard/${location.state.activeTab}`, { replace: true, state: null });
+    }
+  }, [location.state, navigate, routeTab]);
   const [summary, setSummary] = useState({
     departments: 0,
     activeStudents: 0,

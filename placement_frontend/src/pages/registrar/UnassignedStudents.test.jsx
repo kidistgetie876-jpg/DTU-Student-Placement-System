@@ -27,6 +27,9 @@ describe('UnassignedStudents', () => {
           stream: 'Natural Science',
           college: 'College of Technology',
           status: 'Not assigned',
+          reasonCode: 'CAPACITY_FULL',
+          reasonDetails: { departments: ['Computer Science', 'Information Technology'] },
+          totalScore: 74.25,
         }],
       },
     });
@@ -39,6 +42,51 @@ describe('UnassignedStudents', () => {
     expect(screen.getByText('Natural Science')).toBeInTheDocument();
     expect(screen.getByText('College of Technology')).toBeInTheDocument();
     expect(screen.getByText('Not assigned')).toBeInTheDocument();
+    expect(screen.getByText('Department Capacity Full')).toBeInTheDocument();
+    expect(screen.getByText('Full selected departments: Computer Science, Information Technology')).toBeInTheDocument();
+    expect(screen.getByText('Merit score: 74.25')).toBeInTheDocument();
+    expect(screen.getByText('Department Capacity Full')).toHaveClass('bg-warning', 'text-dark');
+  });
+
+  test('compares the total placement score with the cut-off when score is the reason', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        students: [{
+          studentId: 5,
+          fullName: 'Birtukan Desta',
+          reasonCode: 'LOW_SCORE',
+          reasonDetails: {},
+          totalScore: 61.5,
+          cutoffScore: 65,
+        }],
+      },
+    });
+
+    render(<UnassignedStudents />);
+
+    expect(await screen.findByText('Low Total Placement Score')).toBeInTheDocument();
+    expect(screen.getByText('Total score: 61.5 / Cut-off: 65')).toBeInTheDocument();
+    expect(screen.getByText('Low Total Placement Score')).toHaveClass('bg-danger');
+  });
+
+  test('maps a backend reason string when no reason code is present', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        students: [{
+          studentId: 6,
+          fullName: 'Saba Worku',
+          reason: 'Capacity Full',
+          reasonDetails: { departments: ['Law'] },
+        }],
+      },
+    });
+
+    render(<UnassignedStudents />);
+
+    expect(await screen.findByText('Capacity Full')).toHaveClass('bg-warning', 'text-dark');
+    expect(screen.getByText('Full selected departments: Law')).toBeInTheDocument();
   });
 
   test('submits meeting details and shows the success response', async () => {

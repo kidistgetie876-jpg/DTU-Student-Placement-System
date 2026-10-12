@@ -538,24 +538,65 @@ try {
             $unassignedCollege = $student['college_name'] !== ''
                 ? $student['college_name']
                 : trim((string) ($firstPreference['college_name'] ?? ''));
+            $matchingDepartments = [];
+            $fullDepartments = [];
+            foreach ($student['preferences'] as $preference) {
+                $deptKey = normalizeDepartmentName($preference['department'] ?? '');
+                if (!isset($departmentMap[$deptKey])) {
+                    continue;
+                }
+
+                $department = $departmentMap[$deptKey];
+                if ($selectedDepartment !== '' && $selectedDepartment !== 'all'
+                    && normalizeDepartmentName($department['name']) !== normalizeDepartmentName($selectedDepartment)) {
+                    continue;
+                }
+                if ($selectedCollege !== '' && $selectedCollege !== 'all'
+                    && normalizeDepartmentName($department['college_name']) !== normalizeDepartmentName($selectedCollege)) {
+                    continue;
+                }
+
+                $matchingDepartments[$deptKey] = $department['name'];
+                if (($capacityMap[$deptKey] ?? 0) <= 0) {
+                    $fullDepartments[$deptKey] = $department['name'];
+                }
+            }
+
+            if (!empty($matchingDepartments) && count($matchingDepartments) === count($fullDepartments)) {
+                $reasonCode = 'CAPACITY_FULL';
+                $reasonDetails = ['departments' => array_values($fullDepartments)];
+            } elseif (empty($student['preferences'])) {
+                $reasonCode = 'NO_CHOICES';
+                $reasonDetails = ['message' => 'No department choices were submitted for this placement run.'];
+            } else {
+                $reasonCode = 'NO_ELIGIBLE_DEPARTMENT';
+                $reasonDetails = ['message' => 'No active department matching the submitted choices was available in this placement run scope.'];
+            }
+
+            $encodedReasonDetails = json_encode($reasonDetails, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
             $saveUnassignedSql = $db->prepare(
-                "INSERT INTO unassigned_students (student_id, id_number, full_name, email, stream, college_name, status, placement_run_at)
-                 VALUES (?, ?, ?, ?, ?, ?, 'Not assigned', NOW())
+                "INSERT INTO unassigned_students
+                    (student_id, id_number, full_name, email, stream, college_name, status, reason_code, reason_details, total_score, placement_run_at)
+                 VALUES (?, ?, ?, ?, ?, ?, 'Not assigned', ?, ?, ?, NOW())
                  ON DUPLICATE KEY UPDATE id_number = VALUES(id_number), full_name = VALUES(full_name),
                     email = VALUES(email), stream = VALUES(stream), college_name = VALUES(college_name),
-                    status = 'Not assigned', placement_run_at = NOW()"
+                    status = 'Not assigned', reason_code = VALUES(reason_code),
+                    reason_details = VALUES(reason_details), total_score = VALUES(total_score), placement_run_at = NOW()"
             );
             if (!$saveUnassignedSql) {
                 throw new Exception('Unable to prepare unassigned student record');
             }
             $saveUnassignedSql->bind_param(
-                'isssss',
+                'isssssssd',
                 $student['id'],
                 $student['id_number'],
                 $student['name'],
                 $student['email'],
                 $unassignedStream,
-                $unassignedCollege
+                $unassignedCollege,
+                $reasonCode,
+                $encodedReasonDetails,
+                $student['final_merit_score']
             );
             if (!$saveUnassignedSql->execute()) {
                 $saveUnassignedSql->close();

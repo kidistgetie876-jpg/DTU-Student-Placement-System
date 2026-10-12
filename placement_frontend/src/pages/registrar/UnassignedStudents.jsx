@@ -4,6 +4,71 @@ import api from '../../services/api.js';
 const endpoint = 'api/registrar/unassigned_students_api.php';
 const manualAssignmentEndpoint = 'api/registrar/assign_manual_student.php';
 
+const getReasonCode = (student) => {
+  if (student.reasonCode && student.reasonCode !== 'UNKNOWN') return student.reasonCode;
+
+  const reasonText = String(student.reason || '').toLowerCase();
+  if (reasonText.includes('capacity') || reasonText.includes('full')) return 'CAPACITY_FULL';
+  if (reasonText.includes('score') || reasonText.includes('cut-off') || reasonText.includes('cutoff')) return 'LOW_SCORE';
+  return '';
+};
+
+const getUnassignmentReason = (student) => {
+  const details = student.reasonDetails || {};
+
+  switch (getReasonCode(student)) {
+    case 'CAPACITY_FULL':
+      return {
+        label: student.reason || 'Department Capacity Full',
+        badgeClass: 'bg-warning text-dark',
+        detail: Array.isArray(details.departments) && details.departments.length > 0
+          ? `Full selected departments: ${details.departments.join(', ')}`
+          : 'All matching selected departments were full.',
+      };
+    case 'LOW_SCORE': {
+      const hasScore = student.totalScore !== null && student.totalScore !== undefined;
+      const hasCutoff = student.cutoffScore !== null && student.cutoffScore !== undefined;
+      return {
+        label: student.reason || 'Low Total Placement Score',
+        badgeClass: 'bg-danger',
+        detail: hasScore && hasCutoff
+          ? `Total score: ${student.totalScore} / Cut-off: ${student.cutoffScore}`
+          : 'The total placement score did not meet the department cut-off.',
+      };
+    }
+    case 'UNMET_PREREQUISITES':
+      return {
+        label: 'Unmet Prerequisites',
+        badgeClass: 'bg-warning text-dark',
+        detail: details.message || 'One or more department prerequisites were not met.',
+      };
+    case 'NO_CHOICES':
+      return {
+        label: 'No Department Choices',
+        badgeClass: 'bg-secondary',
+        detail: details.message || 'No department choices were submitted for this placement run.',
+      };
+    case 'NO_ELIGIBLE_DEPARTMENT':
+      return {
+        label: student.reason || 'No Eligible Selected Department',
+        badgeClass: 'bg-warning text-dark',
+        detail: details.message || 'No active selected department matched this placement run.',
+      };
+    case 'PLACEMENT_NOT_COMPLETED':
+      return {
+        label: student.reason || 'Placement Not Completed',
+        badgeClass: 'bg-secondary',
+        detail: details.message || 'The placement run did not record a specific failure reason.',
+      };
+    default:
+      return {
+        label: student.reason || 'Placement reason unavailable',
+        badgeClass: 'bg-secondary',
+        detail: details.message || 'The available placement data does not identify a more specific reason.',
+      };
+  }
+};
+
 const getToday = () => {
   const today = new Date();
   const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
@@ -202,29 +267,40 @@ const UnassignedStudents = ({ refreshToken = 0 }) => {
                   <th scope="col">Stream</th>
                   <th scope="col">College</th>
                   <th scope="col">Status</th>
+                  <th scope="col">Reason for Unassignment</th>
                   <th scope="col">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {students.map((student) => (
-                  <tr key={student.studentId}>
-                    <td className="fw-semibold text-primary">{student.idNumber || student.studentId}</td>
-                    <td>{student.fullName || '—'}</td>
-                    <td>{student.email || '—'}</td>
-                    <td>{student.stream || '—'}</td>
-                    <td>{student.college || '—'}</td>
-                    <td><span className="badge bg-warning-subtle text-dark">{student.status || 'Not assigned'}</span></td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() => openManualAssignment(student)}
-                      >
-                        Manually Assign
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {students.map((student) => {
+                  const reason = getUnassignmentReason(student);
+                  return (
+                    <tr key={student.studentId}>
+                      <td className="fw-semibold text-primary">{student.idNumber || student.studentId}</td>
+                      <td>{student.fullName || '—'}</td>
+                      <td>{student.email || '—'}</td>
+                      <td>{student.stream || '—'}</td>
+                      <td>{student.college || '—'}</td>
+                      <td><span className="badge bg-warning-subtle text-dark">{student.status || 'Not assigned'}</span></td>
+                      <td>
+                        <span className={`badge ${reason.badgeClass}`}>{reason.label}</span>
+                        <div className="small text-muted mt-1">{reason.detail}</div>
+                        {student.totalScore !== null && student.totalScore !== undefined && getReasonCode(student) !== 'LOW_SCORE' && (
+                          <div className="small text-muted">Merit score: {student.totalScore}</div>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => openManualAssignment(student)}
+                        >
+                          Manually Assign
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

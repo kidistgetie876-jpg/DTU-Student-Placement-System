@@ -106,6 +106,7 @@ function AppRoutes() {
           <Route path="/login" element={<Navigate to="/" replace state={{ openLogin: true }} />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
+          <Route path="/registrar-dashboard/:tab" element={<RegistrarDashboard />} />
           <Route path="/student-registration" element={<StudentRegistration />} />
           <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
           <Route path="/head-dashboard" element={<HeadDashboard />} />

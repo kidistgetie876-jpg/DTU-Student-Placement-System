@@ -7,14 +7,25 @@ header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Content-Type: application/json");
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+require_once __DIR__ . '/../config/db_config.php';
+require_once __DIR__ . '/../config/logger.php';
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
-include __DIR__ . '/../config/db_config.php';
-require_once __DIR__ . '/../config/logger.php';
 $db = getDbConnection();
+if (!isset($db) || !($db instanceof mysqli) || $db->connect_errno !== 0) {
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Database connection failed'
+    ]);
+    exit;
+}
+
 $auditPdo = null;
 try {
     $auditPdo = getAuditPdo();
@@ -33,19 +44,39 @@ if ($identifier === '' || $credential === '') {
     exit;
 }
 
-$loginSql = $db->prepare('SELECT id, id_number, username, email, password, role FROM users WHERE username = ? OR id_number = ? OR LOWER(email) = LOWER(?) LIMIT 1');
-if (!$loginSql) {
-    error_log('Login query prepare failed: ' . $db->error);
+$loginSql = null;
+try {
+    $loginSql = $db->prepare('SELECT id, id_number, username, email, password, role FROM users WHERE username = ? OR id_number = ? OR LOWER(email) = LOWER(?) LIMIT 1');
+    if (!$loginSql) {
+        throw new RuntimeException('Login query prepare failed: ' . $db->error);
+    }
+    if (!$loginSql->bind_param('sss', $identifier, $identifier, $identifier)) {
+        throw new RuntimeException('Login query parameter binding failed: ' . $loginSql->error);
+    }
+    if (!$loginSql->execute()) {
+        throw new RuntimeException('Login query execution failed: ' . $loginSql->error);
+    }
+    $result = $loginSql->get_result();
+    if (!$result) {
+        throw new RuntimeException('Login query result retrieval failed: ' . $loginSql->error);
+    }
+    $user = $result->fetch_assoc();
+} catch (Throwable $error) {
+    error_log('Login query failed: ' . $error->getMessage());
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => 'Unable to process login.']);
-    $db->close();
+    echo json_encode([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Unable to process login.'
+    ]);
+    if ($loginSql instanceof mysqli_stmt) {
+        $loginSql->close();
+    }
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
     exit;
 }
-$loginSql->bind_param('sss', $identifier, $identifier, $identifier);
-
-$loginSql->execute();
-$result = $loginSql->get_result();
-$user = $result ? $result->fetch_assoc() : null;
 $isStudent = $user && strtolower((string) $user['role']) === 'student';
 $isPasswordValid = $user && password_verify($credential, (string) $user['password']);
 

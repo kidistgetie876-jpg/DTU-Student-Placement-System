@@ -75,6 +75,34 @@ describe('Login', () => {
     });
   });
 
+  test('routes a registrar to the overview after login', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        status: 'success',
+        user: { id: 9, username: 'registrar', email: 'registrar@dtu.edu', role: 'registrar' },
+      },
+    });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+        <CurrentRoute />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
+      target: { value: 'registrar' },
+    });
+    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+      target: { value: 'secret123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-route')).toHaveTextContent('/registrar-dashboard/overview');
+    });
+  });
+
   test('rejects an invalid email before sending the login request', async () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

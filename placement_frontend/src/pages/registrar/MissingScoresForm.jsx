@@ -61,6 +61,7 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
     ? location.state.returnTo
     : '/registrar-dashboard';
   const returnTab = location.state?.returnTab || 'student-info';
+  const returnPath = `${returnTo}/${returnTab}`;
   const isEmbedded = typeof onClose === 'function';
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
@@ -123,7 +124,7 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
     if (onClose) {
       onClose();
     } else {
-      navigate(returnTo, { state: { activeTab: returnTab } });
+      navigate(returnPath);
     }
   };
 
@@ -146,13 +147,7 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
       if (onSaved) {
         await onSaved(response.data);
       } else {
-        navigate(returnTo, {
-          replace: true,
-          state: {
-            activeTab: returnTab,
-            savedStudentId: form.user_id || studentId,
-          },
-        });
+        navigate(returnPath, { replace: true });
       }
     } catch (saveError) {
       setError(saveError.response?.data?.message || saveError.message || 'Unable to save student scores.');

@@ -106,7 +106,7 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
         const role = normalizeRole(response.data.user.role);
         const routeMap = { 
           admin: '/admin-dashboard', 
-          registrar: '/registrar-dashboard', 
+          registrar: '/registrar-dashboard/overview',
           student: '/student-dashboard', 
           head: '/head-dashboard' 
         };

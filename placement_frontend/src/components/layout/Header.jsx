@@ -102,6 +102,7 @@ function Header() {
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    sessionStorage.removeItem('registrarActiveTab');
     ['token', 'accessToken', 'authToken'].forEach((key) => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);

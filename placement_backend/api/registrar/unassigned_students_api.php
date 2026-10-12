@@ -56,6 +56,101 @@ function refreshUnassignedStudentRoster(mysqli $db): void
     }
 }
 
+function resolveUnassignedReason(mysqli $db, int $studentId): array
+{
+    $statement = $db->prepare(
+        "SELECT sc.dept_name AS selected_department, d.name AS department_name,
+                d.status AS department_status, d.capacity,
+                (SELECT COUNT(*)
+                 FROM placement_results pr
+                 WHERE (pr.dept_id = d.id OR (pr.dept_id IS NULL AND LOWER(TRIM(pr.dept_name)) = LOWER(TRIM(d.name))))
+                   AND (pr.status IS NULL OR pr.status NOT IN ('Rejected', 'Cancelled'))) AS occupied
+         FROM student_choices sc
+         LEFT JOIN departments d
+           ON d.id = sc.dept_id
+           OR ((sc.dept_id IS NULL OR sc.dept_id = 0) AND LOWER(TRIM(d.name)) = LOWER(TRIM(sc.dept_name)))
+         WHERE sc.student_id = ?
+         ORDER BY sc.priority ASC"
+    );
+    if (!$statement) {
+        throw new RuntimeException('Unable to prepare unassigned student reason lookup: ' . $db->error);
+    }
+
+    $statement->bind_param('i', $studentId);
+    if (!$statement->execute()) {
+        $error = $statement->error;
+        $statement->close();
+        throw new RuntimeException('Unable to load selected departments for unassigned student: ' . $error);
+    }
+
+    $choices = $statement->get_result();
+    $hasChoices = false;
+    $eligibleDepartments = [];
+    $fullDepartments = [];
+    $unavailableChoices = [];
+    while ($choice = $choices->fetch_assoc()) {
+        $hasChoices = true;
+        $selectedName = trim((string) ($choice['selected_department'] ?? ''));
+        $departmentName = trim((string) ($choice['department_name'] ?? ''));
+        if ($departmentName === '' || strtolower((string) ($choice['department_status'] ?? '')) !== 'active') {
+            if ($selectedName !== '') {
+                $unavailableChoices[] = $selectedName;
+            }
+            continue;
+        }
+
+        $availableSeats = max(0, (int) $choice['capacity'] - (int) $choice['occupied']);
+        $eligibleDepartments[$departmentName] = $availableSeats;
+        if ($availableSeats === 0) {
+            $fullDepartments[$departmentName] = $departmentName;
+        }
+    }
+    $statement->close();
+
+    if (!$hasChoices) {
+        return [
+            'reasonCode' => 'NO_CHOICES',
+            'reasonDetails' => ['message' => 'No department choices were submitted.'],
+        ];
+    }
+    if (!empty($eligibleDepartments) && count($eligibleDepartments) === count($fullDepartments)) {
+        return [
+            'reasonCode' => 'CAPACITY_FULL',
+            'reasonDetails' => ['departments' => array_values($fullDepartments)],
+        ];
+    }
+    if (empty($eligibleDepartments)) {
+        return [
+            'reasonCode' => 'NO_ELIGIBLE_DEPARTMENT',
+            'reasonDetails' => [
+                'message' => 'No selected department is currently active.',
+                'departments' => array_values(array_unique($unavailableChoices)),
+            ],
+        ];
+    }
+
+    return [
+        'reasonCode' => 'PLACEMENT_NOT_COMPLETED',
+        'reasonDetails' => [
+            'message' => 'At least one selected department currently has available capacity; no score cutoff or prerequisite failure was recorded for this student.',
+        ],
+    ];
+}
+
+function unassignedReasonLabel(string $reasonCode): string
+{
+    $labels = [
+        'CAPACITY_FULL' => 'Capacity Full',
+        'LOW_SCORE' => 'Low Score / Cut-off not met',
+        'UNMET_PREREQUISITES' => 'Unmet Prerequisites',
+        'NO_CHOICES' => 'No Department Choices',
+        'NO_ELIGIBLE_DEPARTMENT' => 'No Eligible Selected Department',
+        'PLACEMENT_NOT_COMPLETED' => 'Placement Not Completed',
+    ];
+
+    return $labels[$reasonCode] ?? 'Placement reason unavailable';
+}
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -71,7 +166,8 @@ try {
         refreshUnassignedStudentRoster($db);
 
         $result = $db->query(
-            "SELECT student_id, id_number, full_name, email, stream, college_name, status, placement_run_at
+            "SELECT student_id, id_number, full_name, email, stream, college_name, status,
+                    reason_code, reason_details, total_score, placement_run_at
              FROM unassigned_students
              WHERE status = 'Not assigned'
              ORDER BY placement_run_at DESC, full_name ASC"
@@ -82,6 +178,20 @@ try {
 
         $students = [];
         while ($row = $result->fetch_assoc()) {
+            $reasonCode = (string) ($row['reason_code'] ?? 'UNKNOWN');
+            $reasonDetails = [];
+            if (!empty($row['reason_details'])) {
+                $decodedDetails = json_decode((string) $row['reason_details'], true);
+                if (!is_array($decodedDetails)) {
+                    throw new RuntimeException('Invalid saved unassignment reason details for student ' . (int) $row['student_id']);
+                }
+                $reasonDetails = $decodedDetails;
+            }
+            if ($reasonCode === '' || $reasonCode === 'UNKNOWN') {
+                $resolvedReason = resolveUnassignedReason($db, (int) $row['student_id']);
+                $reasonCode = $resolvedReason['reasonCode'];
+                $reasonDetails = $resolvedReason['reasonDetails'];
+            }
             $students[] = [
                 'studentId' => (int) $row['student_id'],
                 'idNumber' => (string) $row['id_number'],
@@ -90,6 +200,13 @@ try {
                 'stream' => (string) $row['stream'],
                 'college' => (string) $row['college_name'],
                 'status' => (string) $row['status'],
+                'reasonCode' => $reasonCode,
+                'reason' => unassignedReasonLabel($reasonCode),
+                'reasonDetails' => $reasonDetails,
+                'totalScore' => $row['total_score'] !== null ? (float) $row['total_score'] : null,
+                'cutoffScore' => isset($reasonDetails['cutoffScore']) && is_numeric($reasonDetails['cutoffScore'])
+                    ? (float) $reasonDetails['cutoffScore']
+                    : null,
                 'placementRunAt' => (string) $row['placement_run_at'],
             ];
         }
@@ -103,8 +220,14 @@ try {
                 throw new RuntimeException('Unable to create the unassigned student report');
             }
             fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, ['Student ID', 'Full Name', 'Email', 'Stream', 'College', 'Status']);
+            fputcsv($output, ['Student ID', 'Full Name', 'Email', 'Stream', 'College', 'Status', 'Reason for Unassignment', 'Reason Details', 'Total Score']);
             foreach ($students as $student) {
+                $reasonDetails = $student['reasonDetails']['departments'] ?? null;
+                if (is_array($reasonDetails)) {
+                    $reasonDetails = implode(', ', $reasonDetails);
+                } else {
+                    $reasonDetails = $student['reasonDetails']['message'] ?? '';
+                }
                 $values = [
                     $student['idNumber'] !== '' ? $student['idNumber'] : $student['studentId'],
                     $student['fullName'],
@@ -112,6 +235,9 @@ try {
                     $student['stream'],
                     $student['college'],
                     $student['status'],
+                    $student['reason'],
+                    $reasonDetails,
+                    $student['totalScore'] ?? '',
                 ];
                 foreach ($values as &$value) {
                     if (preg_match('/^[\x00-\x20]*[=+\-@]/', (string) $value)) {

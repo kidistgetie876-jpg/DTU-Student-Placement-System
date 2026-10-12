@@ -49,7 +49,7 @@ describe('MissingScoresForm', () => {
       >
         <Routes>
           <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
-          <Route path="/registrar-dashboard" element={<h1>Returned to registrar dashboard</h1>} />
+          <Route path="/registrar-dashboard/:tab" element={<h1>Returned to registrar dashboard</h1>} />
         </Routes>
       </MemoryRouter>
     );
