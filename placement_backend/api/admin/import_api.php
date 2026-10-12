@@ -101,6 +101,28 @@ function parseImportNumber(?string $value, string $field, int $row): ?float
     return (float) $normalized;
 }
 
+function importValuesMatch($existing, $incoming, bool $numeric = false, bool $caseInsensitive = false): bool
+{
+    if ($existing === null || $existing === '') {
+        $existing = '';
+    }
+    if ($incoming === null || $incoming === '') {
+        $incoming = '';
+    }
+
+    if ($numeric) {
+        return (float) $existing === (float) $incoming;
+    }
+
+    $existing = trim((string) $existing);
+    $incoming = trim((string) $incoming);
+    if ($caseInsensitive) {
+        return strtolower($existing) === strtolower($incoming);
+    }
+
+    return $existing === $incoming;
+}
+
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 $role = strtolower((string) ($_SESSION['role'] ?? ''));
@@ -342,8 +364,6 @@ try {
 
         if ($existingUser) {
             $userId = (int) $existingUser['id'];
-            $updateUser->bind_param('sssi', $idNumber, $username, $phone, $userId);
-            if (!$updateUser->execute()) throw new Exception('Unable to update existing student account.');
         } else {
             $insertUser->bind_param('sssss', $idNumber, $username, $email, $defaultPassword, $phone);
             if (!$insertUser->execute()) throw new Exception('Unable to create student account.');
@@ -356,10 +376,42 @@ try {
 
         if ($studentExists) {
             $updateTypes = 'ssssssd' . 's' . 'ddd' . 'sss' . 'i';
+            $unchanged = importValuesMatch($existingUser['id_number'] ?? '', $idNumber)
+                && importValuesMatch($existingUser['username'] ?? '', $username)
+                && importValuesMatch($existingUser['email'] ?? '', $email, false, true)
+                && importValuesMatch($existingUser['phone'] ?? '', $phone)
+                && importValuesMatch($existingUser['first_name'] ?? '', $firstName)
+                && importValuesMatch($existingUser['last_name'] ?? '', $lastName)
+                && importValuesMatch($existingUser['gpa'] ?? 0, $gpa, true)
+                && importValuesMatch($existingUser['stream'] ?? '', $stream)
+                && importValuesMatch($existingUser['grade_12_result'] ?? 0, $grade12, true)
+                && importValuesMatch($existingUser['coc_result'] ?? 0, $coc, true)
+                && importValuesMatch($existingUser['cumulative_avg'] ?? 0, $cumulativeAvg, true)
+                && importValuesMatch($existingUser['gender'] ?? '', $gender, false, true)
+                && importValuesMatch($existingUser['disability'] ?? '', $disability, false, true)
+                && importValuesMatch($existingUser['minority'] ?? '', $minority, false, true);
+            if ($unchanged) {
+                $skipped[] = [
+                    'row' => $rowNumber,
+                    'id_number' => $idNumber,
+                    'email' => $email,
+                    'reason' => 'Already exists; imported values are unchanged.',
+                    'unchanged' => true,
+                ];
+                continue;
+            }
+
+            $updateUser->bind_param('sssi', $idNumber, $username, $phone, $userId);
+            if (!$updateUser->execute()) throw new Exception('Unable to update existing student account.');
             $updateStudent->bind_param($updateTypes, $idNumber, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $cumulativeAvg, $gender, $disability, $minority, $userId);
             if (!$updateStudent->execute()) throw new Exception('Unable to update existing student data.');
             $updated++;
         } else {
+            if ($existingUser) {
+                $userId = (int) $existingUser['id'];
+                $updateUser->bind_param('sssi', $idNumber, $username, $phone, $userId);
+                if (!$updateUser->execute()) throw new Exception('Unable to update existing student account.');
+            }
             $insertStudent->bind_param('issssssdsdddsss', $userId, $idNumber, $firstName, $lastName, $username, $email, $phone, $gpa, $stream, $grade12, $coc, $cumulativeAvg, $gender, $disability, $minority);
             if (!$insertStudent->execute()) throw new Exception('Unable to insert student data.');
             $inserted++;
@@ -368,7 +420,15 @@ try {
 
     $db->commit();
     $total = $inserted + $updated;
-    $message = "Import complete: {$inserted} new, {$updated} updated, " . count($skipped) . ' skipped.';
+    $unchangedCount = count(array_filter($skipped, static function ($item) {
+        return !empty($item['unchanged']);
+    }));
+    $skippedCount = count($skipped);
+    $message = "Import complete: {$inserted} new, {$updated} updated, {$skippedCount} skipped";
+    if ($unchangedCount > 0) {
+        $message .= " ({$unchangedCount} already exist, unchanged)";
+    }
+    $message .= '.';
     importResponse([
         'success' => true,
         'message' => $message,
@@ -376,7 +436,8 @@ try {
         'imported_count' => $total,
         'inserted_count' => $inserted,
         'updated_count' => $updated,
-        'skipped_count' => count($skipped),
+        'skipped_count' => $skippedCount,
+        'unchanged_count' => $unchangedCount,
         'skipped' => $skipped,
     ]);
 } catch (Throwable $error) {

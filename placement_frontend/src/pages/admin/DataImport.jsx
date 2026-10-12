@@ -21,7 +21,70 @@ const studentImportHeaders = {
   minority: ['minority', 'isminority'],
 };
 
+const userImportHeaders = {
+  id: ['userid', 'usernumber', 'useridentifier'],
+  email: ['email', 'emailaddress'],
+  firstName: ['firstname', 'givenname'],
+  lastName: ['lastname', 'surname', 'familyname'],
+  fullName: ['fullname', 'name'],
+  username: ['username', 'loginname'],
+  phone: ['phone', 'phonenumber', 'mobilenumber', 'mobile'],
+  role: ['role', 'userrole', 'accounttype'],
+};
+
 const getHeaderIndex = (headerRow, aliases) => headerRow.findIndex((header) => aliases.includes(normalizeHeader(header)));
+
+export const parseUserImportGrid = (grid) => {
+  const headerRowIndex = grid.slice(0, 10).findIndex((row) => {
+    const hasRole = getHeaderIndex(row, userImportHeaders.role) >= 0;
+    const hasUserId = getHeaderIndex(row, userImportHeaders.id) >= 0;
+    const hasUserNameOrEmail = getHeaderIndex(row, userImportHeaders.username) >= 0
+      || getHeaderIndex(row, userImportHeaders.email) >= 0;
+    const hasStudentFields = [
+      ...studentImportHeaders.idNumber,
+      ...studentImportHeaders.gpa,
+      ...studentImportHeaders.stream,
+      ...studentImportHeaders.grade12,
+      ...studentImportHeaders.coc,
+    ].some((alias) => getHeaderIndex(row, [alias]) >= 0);
+    return hasRole && (hasUserId || (hasUserNameOrEmail && !hasStudentFields));
+  });
+
+  if (headerRowIndex < 0) {
+    return { rows: [], headersFound: false };
+  }
+
+  const headers = grid[headerRowIndex];
+  const getCell = (row, aliases) => {
+    const index = getHeaderIndex(headers, aliases);
+    return index < 0 ? '' : String(row[index] ?? '').trim();
+  };
+  const rows = grid.slice(headerRowIndex + 1).map((row) => {
+    let firstName = getCell(row, userImportHeaders.firstName);
+    let lastName = getCell(row, userImportHeaders.lastName);
+    const fullName = getCell(row, userImportHeaders.fullName);
+    if (!firstName && !lastName && fullName) {
+      const nameParts = fullName.split(/\s+/);
+      firstName = nameParts.shift() || '';
+      lastName = nameParts.join(' ');
+    }
+
+    return {
+      user_id: getCell(row, userImportHeaders.id),
+      first_name: firstName,
+      last_name: lastName,
+      username: getCell(row, userImportHeaders.username),
+      email: getCell(row, userImportHeaders.email),
+      phone: getCell(row, userImportHeaders.phone),
+      role: getCell(row, userImportHeaders.role),
+    };
+  }).filter((row) => (
+    (row.first_name || row.last_name || row.username || row.user_id)
+    && row.role
+  ));
+
+  return { rows, headersFound: true };
+};
 
 export const parseStudentImportGrid = (grid) => {
   const headerRowIndex = grid.slice(0, 10).findIndex((row) => {
@@ -91,6 +154,7 @@ const DataImport = ({ onImportSuccess }) => {
   const [statusType, setStatusType] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [previewRows, setPreviewRows] = useState([]);
+  const [previewType, setPreviewType] = useState('student');
   const [previewReady, setPreviewReady] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -99,6 +163,7 @@ const DataImport = ({ onImportSuccess }) => {
     setSelectedFile(file || null);
     setPreviewReady(false);
     setPreviewRows([]);
+    setPreviewType('student');
     setStatusMessage('');
   };
 
@@ -118,19 +183,24 @@ const DataImport = ({ onImportSuccess }) => {
       if (!firstSheetName) throw new Error('The selected workbook does not contain a worksheet.');
       const firstSheet = workbook.Sheets[firstSheetName];
       const grid = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false });
-      const { rows: normalizedData, headersFound } = parseStudentImportGrid(grid);
+      const userImport = parseUserImportGrid(grid);
+      const importType = userImport.headersFound ? 'user' : 'student';
+      const { rows: normalizedData, headersFound } = importType === 'user'
+        ? userImport
+        : parseStudentImportGrid(grid);
 
       if (normalizedData.length === 0) {
         if (!headersFound) {
-          throw new Error('Could not identify the required columns. Include an Email/Email Address column and a First Name, Last Name, Full Name, Student Name, or Username column.');
+          throw new Error('Could not identify the required columns. Include student fields (such as Student ID, GPA, or Stream) or user fields (such as User ID, Role, Username, and Email).');
         }
-        throw new Error('No valid student rows found. Check that each row has a valid email address and student name or username.');
+        throw new Error(`No valid ${importType === 'user' ? 'user' : 'student'} rows found. Check that rows include a name or username and the required identity fields.`);
       }
 
       setPreviewRows(normalizedData);
+      setPreviewType(importType);
       setPreviewReady(true);
       setStatusType('info');
-      setStatusMessage(`ፕሪቪው ተዘጋጅቷል (${normalizedData.length} ተማሪዎች)።`);
+      setStatusMessage(`Preview ready: ${normalizedData.length} ${importType === 'user' ? 'users' : 'students'}.`);
     } catch (error) {
       setStatusType('error');
       setStatusMessage(error.message || 'ፋይሉን ማንበብ አልተቻለም።');
@@ -150,23 +220,30 @@ const DataImport = ({ onImportSuccess }) => {
     setStatusMessage('');
 
     try {
-      const students = previewRows.map(row => ({
+      const importRows = previewRows.map(row => ({
         first_name: row.first_name || '',
         last_name: row.last_name || '',
-        username: row.username || row.email.split('@')[0],
-        id_number: row.id_number || '',
+        username: row.username || (row.email ? row.email.split('@')[0] : ''),
+        id_number: previewType === 'student' ? row.id_number || '' : undefined,
+        user_id: previewType === 'user' ? row.user_id || '' : undefined,
         email: row.email || '',
         phone: row.phone || '',
-        gpa: row.gpa || '',
-        stream: row.stream || '',
-        gender: row.gender || 'Not specified',
-        grade_12_result: row.grade_12_result || '',
-        coc_result: row.coc_result || '',
-        disability: row.disability || 'No',
-        minority: row.minority || 'No',
+        ...(previewType === 'student' ? {
+          gpa: row.gpa || '',
+          stream: row.stream || '',
+          gender: row.gender || 'Not specified',
+          grade_12_result: row.grade_12_result || '',
+          coc_result: row.coc_result || '',
+          disability: row.disability || 'No',
+          minority: row.minority || 'No',
+        } : { role: row.role || '' }),
       }));
 
-      const response = await api.post('api/admin/import_api.php', { students });
+      const isUserImport = previewType === 'user';
+      const response = await api.post(
+        isUserImport ? 'api/admin/import_users.php' : 'api/admin/import_api.php',
+        isUserImport ? { users: importRows } : { students: importRows },
+      );
       let responseData = response.data || {};
       if (typeof responseData === 'string') {
         try {
@@ -187,23 +264,26 @@ const DataImport = ({ onImportSuccess }) => {
         const insertedCount = Number(responseData.inserted_count ?? importedCount);
         const updatedCount = Number(responseData.updated_count ?? 0);
         const skippedCount = Number(responseData.skipped_count ?? 0);
+        const unchangedCount = Number(responseData.unchanged_count ?? 0);
         const skippedDetails = Array.isArray(responseData.skipped)
           ? responseData.skipped
             .map((item) => `Row ${item.row}: ${item.reason}`)
             .join(' ')
           : '';
+        const summaryMessage = `Import complete: ${insertedCount} new, ${updatedCount} updated, ${skippedCount} skipped${unchangedCount > 0 ? ` (${unchangedCount} already exist, unchanged)` : ''}.`;
         setStatusMessage([
-          responseData.message || `Import complete: ${insertedCount} new, ${updatedCount} updated, ${skippedCount} skipped.`,
+          responseData.message || summaryMessage,
           skippedDetails,
         ].filter(Boolean).join(' '));
         setPreviewRows([]);
+        setPreviewType('student');
         setPreviewReady(false);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         onImportSuccess?.();
       } else {
         setStatusType('error');
-        setStatusMessage(responseData.message || responseData.error || 'No students were imported. Check the backend response.');
+        setStatusMessage(responseData.message || responseData.error || `No ${isUserImport ? 'users' : 'students'} were imported. Check the backend response.`);
       }
     } catch (error) {
       setStatusType('error');
@@ -221,7 +301,7 @@ const DataImport = ({ onImportSuccess }) => {
   return (
     <div className="container mt-4">
       <div className="card p-4 shadow-sm border-0 rounded-4">
-        <h4 className="fw-bold mb-3 text-primary">Student Data Bulk Import</h4>
+        <h4 className="fw-bold mb-3 text-primary">{previewType === 'user' ? 'User/HOD Data Bulk Import' : 'Student Data Bulk Import'}</h4>
         
         {statusMessage && (
           <div className={`alert ${statusType === 'success' ? 'alert-success' : 'alert-danger'} mb-4`}>
@@ -230,7 +310,7 @@ const DataImport = ({ onImportSuccess }) => {
         )}
         
         <p className="text-muted small mb-2">
-          Match existing students by Student ID or username; new accounts require an email address. Common headers such as Student ID, Email Address, Student Name, Given Name, and Surname are supported.
+          Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid email address.
         </p>
         <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx" className="form-control mb-3" onChange={handleFileChange} />
         
@@ -248,20 +328,36 @@ const DataImport = ({ onImportSuccess }) => {
               <table className="table table-sm table-hover mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>Student ID</th><th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
+                    {previewType === 'user' ? (
+                      <>
+                        <th>USER ID</th><th>FIRST NAME</th><th>LAST NAME</th><th>USERNAME</th><th>EMAIL</th><th>PHONE</th><th>ROLE</th>
+                      </>
+                    ) : (
+                      <>
+                        <th>Student ID</th><th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 10).map((row, i) => (
                     <tr key={i}>
-                      <td>{row.id_number}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
-                      <td>{row.stream}</td><td>{row.gender}</td><td>{row.grade_12_result}</td><td>{row.coc_result}</td><td>{row.disability}</td><td>{row.minority}</td>
+                      {previewType === 'user' ? (
+                        <>
+                          <td>{row.user_id}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.role}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{row.id_number}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.gpa}</td>
+                          <td>{row.stream}</td><td>{row.gender}</td><td>{row.grade_12_result}</td><td>{row.coc_result}</td><td>{row.disability}</td><td>{row.minority}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {previewRows.length > 10 && <p className="small text-muted mt-2">... and {previewRows.length - 10} more students.</p>}
+            {previewRows.length > 10 && <p className="small text-muted mt-2">... and {previewRows.length - 10} more {previewType === 'user' ? 'users' : 'students'}.</p>}
           </div>
         )}
       </div>

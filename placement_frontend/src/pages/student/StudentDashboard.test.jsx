@@ -48,6 +48,89 @@ describe('StudentDashboard', () => {
     expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
   });
 
+  it('shows the calculated cumulative score when the student has no published placement yet', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: {
+              id: '1',
+              username: 'Alice',
+              gpa: 3.5,
+              grade_12_result: 76,
+              coc_result: 25,
+              cumulative_avg: '75.20',
+              status: 'Not assigned',
+              department: 'Not assigned',
+            },
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: false,
+            student: { id: 1, status: 'Not assigned', department: 'Not assigned' },
+            placement: null,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findByText('75.20')).toBeInTheDocument();
+  });
+
+  it('fetches and shows the latest final score details when its overview card is clicked', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: {
+              id: '1',
+              id_number: 'DTU16R1001',
+              username: 'Alice',
+              gpa: 3.5,
+              grade_12_result: 76,
+              coc_result: 25,
+              cumulative_avg: '75.20',
+              status: 'Not assigned',
+              department: 'Not assigned',
+              stream: 'Social',
+            },
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: false,
+            student: { id: 1, status: 'Not assigned', department: 'Not assigned' },
+            placement: null,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'View Final Score details' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Final Score Details' });
+    expect(dialog).toHaveTextContent('75.20');
+    expect(dialog).toHaveTextContent('Current cumulative score');
+    expect(dialog).toHaveTextContent('Grade 12 result');
+    expect(api.get.mock.calls.filter(([url]) => url.includes('student_data_api.php'))).toHaveLength(2);
+  });
+
   it('marks all student notifications as read', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });

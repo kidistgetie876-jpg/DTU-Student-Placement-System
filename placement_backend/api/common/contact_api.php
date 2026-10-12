@@ -7,8 +7,17 @@ $db = getDbConnection();
 function respond(array $payload, int $status = 200): void
 {
     http_response_code($status);
-    echo json_encode($payload);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function cleanContactValue($value): string
+{
+    if (!is_string($value) && !is_numeric($value)) {
+        return '';
+    }
+
+    return trim(preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', (string) $value) ?? '');
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -16,22 +25,36 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 if (!($db instanceof mysqli)) {
-    respond(['success' => true, 'message' => 'Your message was sent to the Placement Office.', 'message_id' => null]);
+    error_log('Contact message submission failed: database connection unavailable.');
+    respond(['success' => false, 'message' => 'Unable to send your message right now. Please try again later.'], 500);
 }
 
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
-$name = trim((string) ($input['name'] ?? ''));
-$email = trim((string) ($input['email'] ?? ''));
-$subject = trim((string) ($input['subject'] ?? ''));
-$message = trim((string) ($input['message'] ?? ''));
+$rawInput = file_get_contents('php://input');
+$input = is_string($rawInput) ? json_decode($rawInput, true) : null;
+if (!is_array($input)) {
+    respond(['success' => false, 'message' => 'Please fill in all required fields with a valid email address.'], 400);
+}
 
-if ($name === '' || $email === '' || $message === '') {
-    respond(['success' => false, 'message' => 'Name, email, and message are required.'], 400);
+$name = cleanContactValue($input['full_name'] ?? $input['name'] ?? null);
+$email = cleanContactValue($input['email'] ?? null);
+$subject = cleanContactValue($input['subject'] ?? null);
+$message = cleanContactValue($input['message'] ?? null);
+
+if (
+    $name === ''
+    || $email === ''
+    || $subject === ''
+    || $message === ''
+    || !filter_var($email, FILTER_VALIDATE_EMAIL)
+) {
+    respond(['success' => false, 'message' => 'Please fill in all required fields with a valid email address.'], 400);
 }
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    respond(['success' => false, 'message' => 'Please enter a valid email address.'], 400);
-}
-if (mb_strlen($name) > 255 || mb_strlen($email) > 255 || mb_strlen($subject) > 255) {
+if (
+    mb_strlen($name) > 255
+    || mb_strlen($email) > 255
+    || mb_strlen($subject) > 255
+    || mb_strlen($message) > 10000
+) {
     respond(['success' => false, 'message' => 'Contact details are too long.'], 400);
 }
 
@@ -43,14 +66,28 @@ try {
             email VARCHAR(255) NOT NULL,
             subject VARCHAR(255) NOT NULL DEFAULT '',
             message TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            status VARCHAR(20) NOT NULL DEFAULT 'unread',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     );
     if (!$createTable) {
         throw new Exception('Unable to prepare contact message storage.');
     }
 
-    $statement = $db->prepare('INSERT INTO contact_messages (name, email, subject, message) VALUES (?, ?, ?, ?)');
+    $statusColumn = $db->query("SHOW COLUMNS FROM contact_messages LIKE 'status'");
+    if (!$statusColumn) {
+        throw new Exception('Unable to verify contact message status storage: ' . $db->error);
+    }
+    if ($statusColumn->num_rows === 0 && !$db->query(
+        "ALTER TABLE contact_messages ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'unread' AFTER message"
+    )) {
+        throw new Exception('Unable to add contact message status storage: ' . $db->error);
+    }
+
+    $statement = $db->prepare(
+        "INSERT INTO contact_messages (name, email, subject, message, status, created_at)
+         VALUES (?, ?, ?, ?, 'unread', NOW())"
+    );
     if (!$statement) {
         throw new Exception('Unable to prepare contact message.');
     }
@@ -64,7 +101,8 @@ try {
     $statement->close();
     respond(['success' => true, 'message' => 'Your message was sent to the Placement Office.', 'message_id' => $messageId]);
 } catch (Throwable $error) {
-    respond(['success' => false, 'message' => $error->getMessage()], 500);
+    error_log('Contact message submission failed: ' . $error->getMessage());
+    respond(['success' => false, 'message' => 'Unable to send your message right now. Please try again later.'], 500);
 } finally {
     if ($db instanceof mysqli) {
         $db->close();

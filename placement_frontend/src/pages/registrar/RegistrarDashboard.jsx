@@ -4,6 +4,7 @@ import api from '../../services/api.js';
 import StudentRegistration from './StudentRegistration';
 import UnassignedStudents from './UnassignedStudents.jsx';
 import DataImport from '../admin/DataImport.jsx';
+import ContactMessages from '../admin/ContactMessages.jsx';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
 import * as XLSX from 'xlsx';
@@ -111,6 +112,7 @@ const registrarTabs = [
   'unassigned-students',
   'appeals',
   'reports',
+  'contact-messages',
   'announcements',
   'student-registration',
 ];
@@ -1359,6 +1361,11 @@ const RegistrarDashboard = () => {
         || formatStudentStream(student.stream) === choiceMatrixSelectedStream;
 
       return matchesSearch && matchesStream;
+    })
+    .sort((left, right) => {
+      const leftId = String(left.id_number || left.id || '');
+      const rightId = String(right.id_number || right.id || '');
+      return leftId.localeCompare(rightId, undefined, { numeric: true, sensitivity: 'base' });
     });
   const choiceMatrixTotalPages = Math.max(1, Math.ceil(choiceMatrixRows.length / PAGE_SIZE));
   const paginatedChoiceMatrixRows = choiceMatrixRows.slice(
@@ -1720,6 +1727,12 @@ const RegistrarDashboard = () => {
               onClick={() => setTab('reports')}
             >
               Reports
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'contact-messages' ? 'active' : ''}`}
+              onClick={() => setTab('contact-messages')}
+            >
+              Contact Messages
             </button>
             <button
               className={`btn dashboard-nav-btn text-start ${tab === 'announcements' ? 'active' : ''}`}
@@ -3446,6 +3459,8 @@ const RegistrarDashboard = () => {
             </div>
           ) : tab === 'unassigned-students' ? (
             <UnassignedStudents refreshToken={unassignedStudentsRefreshToken} />
+          ) : tab === 'contact-messages' ? (
+            <ContactMessages />
           ) : tab === 'announcements' ? (
             <div className="card shadow-sm">
               <div className="card-body">

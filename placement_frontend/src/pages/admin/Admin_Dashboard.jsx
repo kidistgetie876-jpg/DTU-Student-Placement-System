@@ -9,6 +9,7 @@ import SystemConfig from './SystemConfig.jsx';
 import AuditLogs from './AuditLogs';
 import AdminAccount from './AdminAccount';
 import AdminReports from './AdminReports';
+import ContactMessages from './ContactMessages.jsx';
 import './AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 
@@ -216,6 +217,12 @@ const AdminDashboard = () => {
               onClick={() => setTab('reports')}
             >
               Reports
+            </button>
+            <button
+              className={`btn dashboard-nav-btn text-start ${tab === 'contact-messages' ? 'active' : ''}`}
+              onClick={() => setTab('contact-messages')}
+            >
+              Contact Messages
             </button>
           
             <button
@@ -503,6 +510,8 @@ const AdminDashboard = () => {
             <ManageDepartments />
           ) : tab === 'reports' ? (
             <AdminReports />
+          ) : tab === 'contact-messages' ? (
+            <ContactMessages />
           ) : tab === 'assign-head' ? (
             <AssignHead />
           ) : tab === 'data-import' ? (

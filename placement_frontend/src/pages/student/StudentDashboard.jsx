@@ -103,6 +103,56 @@ const formatScoreValue = (value) => {
   return Number.isNaN(numericValue) ? String(value) : numericValue.toFixed(2);
 };
 
+const getOverviewDetailRows = (metric, profileData, placementData, minimumGpa) => {
+  const gpa = profileData.gpa ?? profileData.cgpa;
+  const grade12 = profileData.grade_12_result ?? profileData.grade12 ?? profileData.grade_12;
+  const coc = profileData.coc_result ?? profileData.coc;
+  const placement = placementData?.placement;
+  const score = placement?.merit_score
+    ?? placement?.final_score
+    ?? profileData.cumulative_avg
+    ?? profileData.cumulative_score;
+  const assignmentStatus = placementData?.student?.status ?? profileData.status;
+
+  const detailsByMetric = {
+    gpa: [
+      ['Student ID', profileData.id_number],
+      ['GPA', formatScoreValue(gpa)],
+      ['Minimum GPA', formatScoreValue(minimumGpa)],
+      ['Eligibility', Number(gpa || 0) >= minimumGpa ? 'Meets GPA requirement' : 'Below GPA requirement'],
+      ['Academic status', profileData.status],
+    ],
+    grade12: [
+      ['Grade 12 result', formatScoreValue(grade12)],
+      ['GPA', formatScoreValue(gpa)],
+      ['COC result', formatScoreValue(coc)],
+      ['Stream', profileData.stream],
+    ],
+    coc: [
+      ['COC result', formatScoreValue(coc)],
+      ['GPA', formatScoreValue(gpa)],
+      ['Grade 12 result', formatScoreValue(grade12)],
+      ['Stream', profileData.stream],
+    ],
+    stream: [
+      ['Registered stream', profileData.stream],
+      ['Academic status', profileData.status],
+      ['Assigned department', placement?.assigned_department || profileData.department],
+      ['Placement status', assignmentStatus],
+    ],
+    finalScore: [
+      ['Final score', formatScoreValue(score)],
+      ['Score source', placement ? 'Placement result' : 'Current cumulative score'],
+      ['GPA', formatScoreValue(gpa)],
+      ['Grade 12 result', formatScoreValue(grade12)],
+      ['COC result', formatScoreValue(coc)],
+      ['Placement status', assignmentStatus],
+    ],
+  };
+
+  return detailsByMetric[metric] || [];
+};
+
 const hasSubmissionDeadlinePassed = (submissionDeadline, currentTime = new Date()) => {
   if (!submissionDeadline) return false;
   const deadline = new Date(submissionDeadline);
@@ -119,6 +169,9 @@ const StudentDashboard = () => {
   
   const [allDepartments, setAllDepartments] = useState([]); 
   const [profile, setProfile] = useState(null);
+  const [overviewDetail, setOverviewDetail] = useState(null);
+  const [overviewDetailLoading, setOverviewDetailLoading] = useState(false);
+  const [overviewDetailError, setOverviewDetailError] = useState('');
   const [placementRules, setPlacementRules] = useState({ minGpa: 1.75 });
   const [preferences, setPreferences] = useState({ stream: '', college: '', depts: [] });
   const [savedPreferences, setSavedPreferences] = useState({ stream: '', college: '', depts: [] });
@@ -249,6 +302,10 @@ const StudentDashboard = () => {
   const hasPublishedPlacement = Boolean(placementResult?.placement) &&
     placementResult.published !== false &&
     ['assigned', 'approved', 'placed', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
+  const dashboardFinalScore = placementResult?.placement?.merit_score
+    ?? placementResult?.placement?.final_score
+    ?? profile?.cumulative_avg
+    ?? profile?.cumulative_score;
 
   useEffect(() => {
     if (!['overview', 'result'].includes(tab) || !student?.id) return;
@@ -353,6 +410,75 @@ const StudentDashboard = () => {
       setMarkingNotificationId(null);
     }
   };
+
+  const openOverviewDetail = async (metric, title) => {
+    if (!student?.id) {
+      setOverviewDetailError('Your student account could not be identified. Please sign in again.');
+      setOverviewDetail({ metric, title, profile: null, placement: null });
+      return;
+    }
+
+    setOverviewDetail({ metric, title, profile: null, placement: null });
+    setOverviewDetailError('');
+    setOverviewDetailLoading(true);
+    try {
+      const profileResponse = await api.get(
+        `api/student/student_data_api.php?student_id=${encodeURIComponent(student.id)}&email=${encodeURIComponent(student.email || '')}`
+      );
+      const profileData = profileResponse.data?.student
+        || (Array.isArray(profileResponse.data?.students) ? profileResponse.data.students[0] : null);
+      if (!profileResponse.data?.success || !profileData) {
+        throw new Error(profileResponse.data?.message || 'Unable to load your student details.');
+      }
+
+      let placementData = null;
+      if (metric === 'finalScore' || metric === 'stream') {
+        const placementResponse = await api.get(
+          `api/student/get_student_result.php?student_id=${encodeURIComponent(student.id)}`
+        );
+        placementData = placementResponse.data || null;
+      }
+
+      setOverviewDetail({ metric, title, profile: profileData, placement: placementData });
+    } catch (error) {
+      setOverviewDetailError(error.response?.data?.message || error.message || 'Unable to load the requested student details.');
+    } finally {
+      setOverviewDetailLoading(false);
+    }
+  };
+
+  const overviewCards = [
+    {
+      key: 'gpa',
+      title: 'GPA',
+      value: profile ? formatGpaValue(profile.gpa || profile.cgpa) : '0.00',
+      color: 'primary',
+    },
+    {
+      key: 'grade12',
+      title: 'Grade 12 Result',
+      value: profile ? formatScoreValue(profile.grade_12_result ?? profile.grade12 ?? profile.grade_12) : 'N/A',
+      color: 'info',
+    },
+    {
+      key: 'coc',
+      title: 'COC Result',
+      value: profile ? formatScoreValue(profile.coc_result ?? profile.coc) : 'N/A',
+      color: 'secondary',
+    },
+    {
+      key: 'stream',
+      title: 'Stream',
+      value: profile?.stream || 'Natural',
+      color: 'success',
+    },
+    {
+      key: 'finalScore',
+      title: 'Final Score',
+      value: placementResultLoading ? '...' : formatScoreValue(dashboardFinalScore),
+      color: 'warning',
+    },
+  ];
 
   // --- Dynamic Cascading Logic (Purely from allDepartments state) ---
   const streamOptions = ['Natural', 'Social'];
@@ -521,46 +647,21 @@ const StudentDashboard = () => {
 
           {tab === 'overview' && (
             <div className="row g-4">
-              <div className="col-md-4">
-                <div className="card shadow-sm p-4 border-0 border-start border-primary border-5 rounded-4">
-                  <span className="text-muted small fw-bold text-uppercase">GPA</span>
-                  <h2 className="fw-bold m-0 text-primary">{profile ? formatGpaValue(profile.gpa || profile.cgpa) : '0.00'}</h2>
+              {overviewCards.map((card) => (
+                <div className="col-md-4" key={card.key}>
+                  <button
+                    type="button"
+                    className={`card shadow-sm p-4 border-0 border-start border-${card.color} border-5 rounded-4 w-100 text-start`}
+                    aria-label={`View ${card.title} details`}
+                    onClick={() => openOverviewDetail(card.key, card.title)}
+                    disabled={!student?.id}
+                  >
+                    <span className="text-muted small fw-bold text-uppercase">{card.title}</span>
+                    <h2 className={`fw-bold m-0 text-${card.color}`}>{card.value}</h2>
+                    <span className="small text-muted mt-2">Click to view details</span>
+                  </button>
                 </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card shadow-sm p-4 border-0 border-start border-info border-5 rounded-4">
-                  <span className="text-muted small fw-bold text-uppercase">Grade 12 Result</span>
-                  <h2 className="fw-bold m-0 text-info">
-                    {profile ? formatScoreValue(profile.grade_12_result ?? profile.grade12 ?? profile.grade_12) : 'N/A'}
-                  </h2>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card shadow-sm p-4 border-0 border-start border-secondary border-5 rounded-4">
-                  <span className="text-muted small fw-bold text-uppercase">COC Result</span>
-                  <h2 className="fw-bold m-0 text-secondary">
-                    {profile ? formatScoreValue(profile.coc_result ?? profile.coc) : 'N/A'}
-                  </h2>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card shadow-sm p-4 border-0 border-start border-success border-5 rounded-4">
-                  <span className="text-muted small fw-bold text-uppercase">Stream</span>
-                  <h2 className="fw-bold m-0 text-success">{profile?.stream || 'Natural'}</h2>
-                </div>
-              </div>
-              <div className="col-md-4">
-                <div className="card shadow-sm p-4 border-0 border-start border-warning border-5 rounded-4">
-                  <span className="text-muted small fw-bold text-uppercase">Final Score</span>
-                  <h2 className="fw-bold m-0 text-warning">
-                    {placementResultLoading
-                      ? '...'
-                      : hasPublishedPlacement
-                        ? Number(placementResult.placement.merit_score || 0).toFixed(2)
-                        : 'N/A'}
-                  </h2>
-                </div>
-              </div>
+              ))}
             </div>
           )}
 
@@ -894,6 +995,62 @@ const StudentDashboard = () => {
           )}
         </main>
       </div>
+      {overviewDetail && (
+        <>
+          <div className="modal-backdrop show" />
+          <div className="modal show d-block" role="dialog" aria-modal="true" aria-labelledby="overview-detail-title">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title" id="overview-detail-title">{overviewDetail.title} Details</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Close"
+                    onClick={() => {
+                      setOverviewDetail(null);
+                      setOverviewDetailError('');
+                    }}
+                  />
+                </div>
+                <div className="modal-body">
+                  {overviewDetailLoading ? (
+                    <div className="text-center text-muted py-3" role="status">Fetching your latest {overviewDetail.title.toLowerCase()} details...</div>
+                  ) : overviewDetailError ? (
+                    <div className="alert alert-danger mb-0" role="alert">{overviewDetailError}</div>
+                  ) : (
+                    <dl className="row mb-0">
+                      {getOverviewDetailRows(
+                        overviewDetail.metric,
+                        overviewDetail.profile || {},
+                        overviewDetail.placement,
+                        minimumGpa
+                      ).map(([label, value]) => (
+                        <React.Fragment key={label}>
+                          <dt className="col-sm-5">{label}</dt>
+                          <dd className="col-sm-7">{value ?? 'N/A'}</dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => {
+                      setOverviewDetail(null);
+                      setOverviewDetailError('');
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

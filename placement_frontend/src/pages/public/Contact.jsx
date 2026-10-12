@@ -22,7 +22,7 @@ const defaultContactInfo = {
 
 const Contact = () => {
   const [contactInfo, setContactInfo] = useState(defaultContactInfo);
-  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', subject: '', message: '' });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [sending, setSending] = useState(false);
 
@@ -56,7 +56,7 @@ const Contact = () => {
   };
 
   const resetForm = () => {
-    setForm({ name: '', email: '', subject: '', message: '' });
+    setForm({ full_name: '', email: '', subject: '', message: '' });
     setStatus({ type: '', message: '' });
   };
 
@@ -66,12 +66,23 @@ const Contact = () => {
     setSending(true);
 
     try {
+      const fullName = form.full_name.trim();
+      const email = form.email.trim();
+      const subject = form.subject.trim();
+      const message = form.message.trim();
+      if (!fullName || !email || !subject || !message) {
+        setStatus({
+          type: 'error',
+          message: 'Please fill in all required fields with a valid email address.',
+        });
+        return;
+      }
+
       const response = await api.post('api/common/contact_api.php', {
-        ...form,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        subject: form.subject.trim(),
-        message: form.message.trim(),
+        full_name: fullName,
+        email,
+        subject,
+        message,
       });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to send your message. Please try again.');
@@ -81,7 +92,7 @@ const Contact = () => {
         type: 'success',
         message: response.data.message || 'Thank you! Your message has been sent to the Placement Office.',
       });
-      setForm({ name: '', email: '', subject: '', message: '' });
+      setForm({ full_name: '', email: '', subject: '', message: '' });
     } catch (error) {
       setStatus({
         type: 'error',
@@ -190,12 +201,12 @@ const Contact = () => {
                   <label htmlFor="contact-name">Full name <span aria-hidden="true">*</span></label>
                   <input
                     id="contact-name"
-                    name="name"
+                    name="full_name"
                     type="text"
                     autoComplete="name"
                     maxLength={255}
                     placeholder="Your name"
-                    value={form.name}
+                    value={form.full_name}
                     onChange={updateField}
                     required
                   />
@@ -215,7 +226,7 @@ const Contact = () => {
                   />
                 </div>
                 <div className="contact-field contact-field-wide">
-                  <label htmlFor="contact-subject">Subject</label>
+                  <label htmlFor="contact-subject">Subject <span aria-hidden="true">*</span></label>
                   <input
                     id="contact-subject"
                     name="subject"
@@ -224,6 +235,7 @@ const Contact = () => {
                     placeholder="What is your message about?"
                     value={form.subject}
                     onChange={updateField}
+                    required
                   />
                 </div>
                 <div className="contact-field contact-field-wide">
