@@ -27,7 +27,8 @@ require_once __DIR__ . '/../../config/db_config.php';
 $db = getDbConnection();
 
 if (!$db instanceof mysqli) {
-    placementSettingsResponse(['success' => false, 'message' => 'Placement settings are temporarily unavailable.'], 503);
+    error_log('Placement settings API error: database connection unavailable.');
+    placementSettingsResponse(['success' => false, 'message' => 'Database connection error'], 500);
 }
 
 try {

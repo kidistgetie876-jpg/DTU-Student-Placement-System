@@ -69,6 +69,21 @@ const defaultPlacementSettings = {
   scheduleSummary: 'The university follows a structured timeline to allow enough time for student decision-making, processing, and review.',
 };
 
+const getWithServiceUnavailableRetry = async (url, attempts = 3) => {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await api.get(url);
+    } catch (error) {
+      if (error.response?.status !== 503 || attempt === attempts) {
+        throw error;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, attempt * 1000));
+    }
+  }
+
+  throw new Error(`Unable to load ${url} after ${attempts} attempts.`);
+};
+
 const formatPlacementDate = (value) => {
   if (!value) return 'To be announced';
   const date = new Date(`${value}T00:00:00`);
@@ -249,17 +264,24 @@ function PlacementInfo() {
   const [activeTab, setActiveTab] = useState("rules");
   const [placementSettings, setPlacementSettings] = useState(defaultPlacementSettings);
   const [rulesSettings, setRulesSettings] = useState(defaultPlacementSettings);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState('');
   const activeContent = placementGuidance[activeTab];
 
   useEffect(() => {
     let isMounted = true;
     const loadPlacementSettings = async () => {
+      if (isMounted) {
+        setSettingsLoading(true);
+        setSettingsError('');
+      }
       const [portalResult, rulesResult] = await Promise.allSettled([
-        api.get('api/common/system_settings_api.php'),
-        api.get('api/registrar/get_placement_settings.php'),
+        getWithServiceUnavailableRetry('api/common/system_settings_api.php'),
+        getWithServiceUnavailableRetry('api/registrar/get_placement_settings.php'),
       ]);
       if (!isMounted) return;
 
+      const failedRequests = [portalResult, rulesResult].filter((result) => result.status === 'rejected');
       const dates = portalResult.status === 'fulfilled'
         ? portalResult.value.data?.settings?.placement || {}
         : {};
@@ -273,6 +295,10 @@ function PlacementInfo() {
         const value = dates[key] ?? registrarRules[key] ?? current[key];
         return { ...next, [key]: Number.isFinite(Number(value)) ? Number(value) : current[key] };
       }, current));
+      setSettingsError(failedRequests.length > 0
+        ? 'Some placement settings could not be loaded. Default values are shown.'
+        : '');
+      setSettingsLoading(false);
     };
 
     loadPlacementSettings();
@@ -295,6 +321,13 @@ function PlacementInfo() {
           {placementSettings.guideDescription}
         </p>
       </div>
+
+      {settingsLoading && (
+        <div className="alert alert-info" role="status">Connecting to server...</div>
+      )}
+      {!settingsLoading && settingsError && (
+        <div className="alert alert-warning" role="status">{settingsError}</div>
+      )}
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden" style={{ background: "#ffffff" }}>
         <div className="card-header border-0 p-3" style={{ background: "linear-gradient(135deg, #0a2d6d, #123f8a)" }}>
