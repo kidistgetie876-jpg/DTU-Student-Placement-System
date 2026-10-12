@@ -210,6 +210,106 @@ describe('StudentDashboard', () => {
     expect(screen.queryByText(/Congratulations!/i)).not.toBeInTheDocument();
   });
 
+  it('uses the latest placement result when the loaded profile still says unassigned', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: { id: '1', username: 'Alice', gpa: 3, status: 'Not assigned', department: 'Not assigned' },
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: true,
+            student: { id: 1, status: 'Assigned', department: 'Computer Science' },
+            placement: {
+              assigned_department: 'Computer Science',
+              stream: 'Natural',
+              merit_score: 88.5,
+              placement_status: 'Assigned',
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /placement result/i }));
+
+    expect(await screen.findByText(/placement has been assigned successfully/i)).toBeInTheDocument();
+    expect(screen.getByText('Computer Science')).toBeInTheDocument();
+    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    expect(screen.queryByText(/currently unassigned/i)).not.toBeInTheDocument();
+  });
+
+  it('uses the latest placement result when the loaded profile has an older assignment', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: { id: '1', username: 'Alice', gpa: 3, status: 'Assigned', department: 'Computer Science' },
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: false,
+            student: { id: 1, status: 'Not assigned', department: 'Not assigned' },
+            placement: null,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /placement result/i }));
+
+    expect(await screen.findByText(/currently unassigned/i)).toBeInTheDocument();
+    expect(screen.queryByText('Computer Science')).not.toBeInTheDocument();
+  });
+
+  it('treats a null department from the latest placement result as unassigned', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: { id: '1', username: 'Alice', gpa: 3, status: 'Assigned', department: 'Computer Science' },
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            published: false,
+            student: { id: 1, status: 'Assigned', department: null },
+            placement: null,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /placement result/i }));
+
+    expect(await screen.findByText(/currently unassigned/i)).toBeInTheDocument();
+    expect(screen.queryByText('Computer Science')).not.toBeInTheDocument();
+  });
+
   it('shows the official ID number in the header when available', async () => {
     localStorage.setItem('user', JSON.stringify({
       id: '1',

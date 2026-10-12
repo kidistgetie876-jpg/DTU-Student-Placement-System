@@ -79,9 +79,10 @@ const normalizeAssignmentStatus = (value) => {
 
 const isUnassignedAssignment = (status, department) => {
   const hasStatus = status !== null && status !== undefined;
-  const hasDepartment = department !== null && department !== undefined;
+  const hasDepartment = department !== undefined;
 
   if (!hasStatus && !hasDepartment) return false;
+  if (department === null) return true;
 
   const normalizedStatus = hasStatus ? normalizeAssignmentStatus(status) : '';
   const normalizedDepartment = hasDepartment ? String(department ?? '').trim().toLowerCase() : '';
@@ -235,14 +236,16 @@ const StudentDashboard = () => {
     studentStatus === 'NG' ||
     studentStatus === 'DISMISSED' ||
     studentStatus === 'INELIGIBLE';
-  const studentAssignmentStatus = normalizeAssignmentStatus(
-    profile?.status || placementResult?.student?.status || placementResult?.placement?.placement_status || ''
-  ) || 'Pending';
-  const studentDepartment = profile?.department || placementResult?.student?.department || placementResult?.placement?.assigned_department || 'Not available';
-  const isStudentUnassigned = isUnassignedAssignment(
-    profile?.status || placementResult?.student?.status,
-    profile?.department || placementResult?.student?.department || placementResult?.placement?.assigned_department
-  );
+  const hasPlacementStudent = Boolean(placementResult?.student);
+  const assignmentStatus = hasPlacementStudent
+    ? placementResult.student.status ?? placementResult.placement?.placement_status
+    : profile?.status ?? placementResult?.placement?.placement_status;
+  const assignmentDepartment = hasPlacementStudent
+    ? placementResult.student.department
+    : profile?.department ?? placementResult?.placement?.assigned_department;
+  const studentAssignmentStatus = normalizeAssignmentStatus(assignmentStatus) || 'Pending';
+  const studentDepartment = assignmentDepartment || 'Not available';
+  const isStudentUnassigned = isUnassignedAssignment(assignmentStatus, assignmentDepartment);
   const hasPublishedPlacement = Boolean(placementResult?.placement) &&
     placementResult.published !== false &&
     ['assigned', 'approved', 'placed', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
@@ -742,7 +745,7 @@ const StudentDashboard = () => {
                           </tr>
                           <tr>
                             <th>Assigned Department</th>
-                            <td>{placementResult.placement.assigned_department || studentDepartment || 'Not available'}</td>
+                            <td>{studentDepartment !== 'Not available' ? studentDepartment : placementResult.placement.assigned_department || 'Not available'}</td>
                           </tr>
                           <tr>
                             <th>Stream</th>

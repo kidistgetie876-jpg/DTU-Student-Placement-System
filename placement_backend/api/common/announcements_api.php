@@ -28,6 +28,14 @@ function readAnnouncementInput(): array
 }
 
 try {
+    if (!$db instanceof mysqli) {
+        announcementsResponse([
+            'success' => true,
+            'announcements' => [],
+            'message' => 'Announcements are not available at the moment.'
+        ]);
+    }
+
     $createTable = $db->query(
         "CREATE TABLE IF NOT EXISTS placement_announcements (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -151,6 +159,8 @@ try {
     error_log('Announcements API error: ' . $error->getMessage());
     announcementsResponse(['success' => false, 'message' => 'Unable to process announcements.'], 500);
 } finally {
-    $db->close();
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
 }
 ?>

@@ -90,15 +90,6 @@ try {
         || ($rawDepartment === '' || in_array($normalizedDepartment, ['not assigned', 'notassigned', 'unassigned', 'null'], true));
 
     $effectiveStatus = 'Not assigned';
-    if (!$studentIsUnassigned) {
-        if (in_array($normalizedStudentStatus, ['assigned', 'placed'], true)) {
-            $effectiveStatus = 'Assigned';
-        } elseif (in_array($normalizedStudentStatus, ['approved', 'published'], true)) {
-            $effectiveStatus = 'Approved';
-        } elseif ($rawDepartment !== '' && !in_array($normalizedDepartment, ['not assigned', 'notassigned', 'unassigned', 'null'], true)) {
-            $effectiveStatus = 'Assigned';
-        }
-    }
 
     // Fetch placement result by either the internal ID or official student number.
     $placementStmt = $db->prepare("
@@ -142,9 +133,16 @@ try {
     }
 
     $placementStatus = strtolower(trim((string)($placement['status'] ?? '')));
-    if ($placement && in_array($placementStatus, ['approved', 'published'], true)) {
+    if (in_array($normalizedStudentStatus, ['approved', 'published'], true)
+        || in_array($placementStatus, ['approved', 'published'], true)) {
         $effectiveStatus = 'Approved';
-    } elseif ($placement && in_array($placementStatus, ['assigned', 'placed', 'pending'], true)) {
+    } elseif (in_array($normalizedStudentStatus, ['assigned', 'placed'], true)
+        || in_array($placementStatus, ['assigned', 'placed'], true)) {
+        $effectiveStatus = 'Assigned';
+    } elseif (in_array($normalizedStudentStatus, ['pending', 'under review', 'in review'], true)
+        || in_array($placementStatus, ['pending', 'under review', 'in review'], true)) {
+        $effectiveStatus = 'Pending';
+    } elseif ($rawDepartment !== '') {
         $effectiveStatus = 'Assigned';
     }
 
@@ -203,7 +201,9 @@ try {
 
     $preferencesStmt->close();
 
-    $effectiveDepartment = trim((string)($placement['dept_name'] ?? $student['department'] ?? ''));
+    $effectiveDepartment = $rawDepartment !== ''
+        ? $rawDepartment
+        : trim((string)($placement['dept_name'] ?? ''));
     if ($effectiveDepartment === '') {
         $effectiveDepartment = 'N/A';
     }
@@ -222,7 +222,7 @@ try {
             'department' => $rawDepartment ?: $effectiveDepartment
         ],
         'placement' => [
-            'id_number' => $placement['id_number'] ?: ($student['id_number'] ?? null),
+            'id_number' => $placement['id_number'] ?? ($student['id_number'] ?? null),
             'assigned_department' => $effectiveDepartment,
             'college' => $placement['college_name'] ?? '',
             'stream' => $placement['stream'] ?? $student['stream'] ?? 'N/A',
