@@ -80,11 +80,32 @@ try {
         $studentStmt->close();
     }
 
+    // Use the latest student_data assignment state as the source of truth so manual registrar changes
+    // are reflected immediately when the student logs in or refreshes the portal.
+    $rawStudentStatus = trim((string)($student['status'] ?? ''));
+    $rawDepartment = trim((string)($student['department'] ?? ''));
+    $normalizedStudentStatus = strtolower($rawStudentStatus);
+    $normalizedDepartment = strtolower($rawDepartment);
+    $studentIsUnassigned = ($rawStudentStatus === '' || in_array($normalizedStudentStatus, ['not assigned', 'notassigned', 'unassigned', 'null'], true))
+        || ($rawDepartment === '' || in_array($normalizedDepartment, ['not assigned', 'notassigned', 'unassigned', 'null'], true));
+
+    $effectiveStatus = 'Not assigned';
+    if (!$studentIsUnassigned) {
+        if (in_array($normalizedStudentStatus, ['assigned', 'placed'], true)) {
+            $effectiveStatus = 'Assigned';
+        } elseif (in_array($normalizedStudentStatus, ['approved', 'published'], true)) {
+            $effectiveStatus = 'Approved';
+        } elseif ($rawDepartment !== '' && !in_array($normalizedDepartment, ['not assigned', 'notassigned', 'unassigned', 'null'], true)) {
+            $effectiveStatus = 'Assigned';
+        }
+    }
+
     // Fetch placement result by either the internal ID or official student number.
     $placementStmt = $db->prepare("
         SELECT *
         FROM placement_results
         WHERE student_id = ? OR id_number = ?
+        ORDER BY placed_at DESC, id DESC
         LIMIT 1
     ");
 
@@ -100,12 +121,49 @@ try {
     $placement = $placementResult->fetch_assoc() ?: null;
     $placementStmt->close();
 
-    $placementStatus = strtolower(trim((string)($placement['status'] ?? '')));
-    if (!$placement || !in_array($placementStatus, ['approved', 'published'], true)) {
+    if ($studentIsUnassigned) {
         echo json_encode([
-            'success' => false,
+            'success' => true,
             'published' => false,
-            'message' => 'Your placement result is currently under review by the Registrar and has not been officially published yet. Please check back later.'
+            'assigned' => false,
+            'student' => [
+                'id' => (int)($student['user_id'] ?? $studentId),
+                'id_number' => $student['id_number'] ?? null,
+                'name' => $student['name'],
+                'email' => $student['email'],
+                'status' => $rawStudentStatus ?: 'Not assigned',
+                'department' => $rawDepartment ?: 'Not assigned'
+            ],
+            'placement' => null,
+            'is_placed' => false,
+            'message' => 'You are currently unassigned. Please report to the Registrar office in person for remediation and manual assignment.'
+        ]);
+        return;
+    }
+
+    $placementStatus = strtolower(trim((string)($placement['status'] ?? '')));
+    if ($placement && in_array($placementStatus, ['approved', 'published'], true)) {
+        $effectiveStatus = 'Approved';
+    } elseif ($placement && in_array($placementStatus, ['assigned', 'placed', 'pending'], true)) {
+        $effectiveStatus = 'Assigned';
+    }
+
+    if (!$placement && $effectiveStatus === 'Not assigned') {
+        echo json_encode([
+            'success' => true,
+            'published' => false,
+            'assigned' => false,
+            'student' => [
+                'id' => (int)($student['user_id'] ?? $studentId),
+                'id_number' => $student['id_number'] ?? null,
+                'name' => $student['name'],
+                'email' => $student['email'],
+                'status' => $rawStudentStatus ?: 'Not assigned',
+                'department' => $rawDepartment ?: 'Not assigned'
+            ],
+            'placement' => null,
+            'is_placed' => false,
+            'message' => 'You are currently unassigned. Please report to the Registrar office in person for remediation and manual assignment.'
         ]);
         return;
     }
@@ -145,33 +203,41 @@ try {
 
     $preferencesStmt->close();
 
+    $effectiveDepartment = trim((string)($placement['dept_name'] ?? $student['department'] ?? ''));
+    if ($effectiveDepartment === '') {
+        $effectiveDepartment = 'N/A';
+    }
+
     // Build response
     $response = [
         'success' => true,
-        'published' => true,
+        'published' => in_array($effectiveStatus, ['Assigned', 'Approved'], true),
+        'assigned' => in_array($effectiveStatus, ['Assigned', 'Approved'], true),
         'student' => [
-            'id' => (int)$student['user_id'],
+            'id' => (int)($student['user_id'] ?? $studentId),
             'id_number' => $student['id_number'] ?? null,
             'name' => $student['name'],
             'email' => $student['email'],
-            'status' => $student['status'] ?? 'Not Placed'
+            'status' => $effectiveStatus,
+            'department' => $rawDepartment ?: $effectiveDepartment
         ],
-        'placement' => $placement ? [
+        'placement' => [
             'id_number' => $placement['id_number'] ?: ($student['id_number'] ?? null),
-            'assigned_department' => $placement['dept_name'],
-            'college' => $placement['college_name'],
-            'stream' => $placement['stream'] ?? 'N/A',
-            'choice_rank' => (int)$placement['choice_rank'],
-            'merit_score' => (float)$placement['final_score'],
-            'placement_status' => $placement['status'],
+            'assigned_department' => $effectiveDepartment,
+            'college' => $placement['college_name'] ?? '',
+            'stream' => $placement['stream'] ?? $student['stream'] ?? 'N/A',
+            'choice_rank' => (int)($placement['choice_rank'] ?? 0),
+            'merit_score' => (float)($placement['final_score'] ?? $student['cumulative_score'] ?? 0),
+            'placement_status' => $effectiveStatus,
             'placement_date' => $placement['placed_at'] ?? null
-        ] : null,
+        ],
         'is_placed' => true,
         'top_preferences' => $preferences
     ];
 
-    // Add message based on placement status
-    $response['message'] = "Congratulations! You have been placed in " . $placement['dept_name'];
+    $response['message'] = $effectiveStatus === 'Approved'
+        ? 'Congratulations! Your placement has been approved in ' . $effectiveDepartment
+        : 'Congratulations! You have been assigned to ' . $effectiveDepartment;
 
     echo json_encode($response);
 

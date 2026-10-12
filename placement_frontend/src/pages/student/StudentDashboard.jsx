@@ -64,6 +64,38 @@ const formatGpaValue = (value) => {
   return (value === null || value === undefined || Number.isNaN(numericValue)) ? '0.00' : numericValue.toFixed(2);
 };
 
+const normalizeAssignmentStatus = (value) => {
+  const rawStatus = String(value ?? '').trim();
+  if (!rawStatus || rawStatus.toLowerCase() === 'null') return '';
+
+  const normalized = rawStatus.toLowerCase();
+  if (['not assigned', 'notassigned', 'unassigned'].includes(normalized)) return 'Not assigned';
+  if (['assigned', 'placed'].includes(normalized)) return 'Assigned';
+  if (['approved', 'published'].includes(normalized)) return 'Approved';
+  if (['pending', 'under review', 'in review'].includes(normalized)) return 'Pending';
+
+  return rawStatus;
+};
+
+const isUnassignedAssignment = (status, department) => {
+  const hasStatus = status !== null && status !== undefined;
+  const hasDepartment = department !== null && department !== undefined;
+
+  if (!hasStatus && !hasDepartment) return false;
+
+  const normalizedStatus = hasStatus ? normalizeAssignmentStatus(status) : '';
+  const normalizedDepartment = hasDepartment ? String(department ?? '').trim().toLowerCase() : '';
+
+  if (normalizedStatus === 'Not assigned') return true;
+  if (hasDepartment && (
+    normalizedDepartment === '' ||
+    normalizedDepartment === 'null' ||
+    ['not assigned', 'notassigned', 'unassigned'].includes(normalizedDepartment)
+  )) return true;
+
+  return false;
+};
+
 const formatScoreValue = (value) => {
   if (value === null || value === undefined || value === '' || String(value).toUpperCase() === 'N/A') return 'N/A';
   const numericValue = Number(value);
@@ -203,9 +235,17 @@ const StudentDashboard = () => {
     studentStatus === 'NG' ||
     studentStatus === 'DISMISSED' ||
     studentStatus === 'INELIGIBLE';
+  const studentAssignmentStatus = normalizeAssignmentStatus(
+    profile?.status || placementResult?.student?.status || placementResult?.placement?.placement_status || ''
+  ) || 'Pending';
+  const studentDepartment = profile?.department || placementResult?.student?.department || placementResult?.placement?.assigned_department || 'Not available';
+  const isStudentUnassigned = isUnassignedAssignment(
+    profile?.status || placementResult?.student?.status,
+    profile?.department || placementResult?.student?.department || placementResult?.placement?.assigned_department
+  );
   const hasPublishedPlacement = Boolean(placementResult?.placement) &&
     placementResult.published !== false &&
-    ['approved', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
+    ['assigned', 'approved', 'placed', 'published'].includes(String(placementResult.placement.placement_status || '').trim().toLowerCase());
 
   useEffect(() => {
     if (!['overview', 'result'].includes(tab) || !student?.id) return;
@@ -669,6 +709,10 @@ const StudentDashboard = () => {
 
                 {placementResultLoading ? (
                   <div className="alert alert-info mb-0">Loading your placement result...</div>
+                ) : isStudentUnassigned ? (
+                  <div className="alert alert-warning mb-0" role="alert">
+                    You are currently unassigned. Please report to the Registrar office in person for remediation and manual assignment.
+                  </div>
                 ) : placementResult?.published === false || (placementResult?.placement && !hasPublishedPlacement) ? (
                   <div className="alert alert-info mb-0" role="status">
                     ℹ️ Placement Under Review: Your department assignment is currently being verified by the Office of the Registrar and has not been published yet.
@@ -680,7 +724,9 @@ const StudentDashboard = () => {
                 ) : (
                   <>
                     <div className="alert alert-success">
-                      {placementResult.message}
+                      {studentAssignmentStatus === 'Approved'
+                        ? `Your placement has been approved and confirmed in ${placementResult.placement.assigned_department || studentDepartment}.`
+                        : `Your placement has been assigned successfully to ${placementResult.placement.assigned_department || studentDepartment}.`}
                     </div>
 
                     <div className="table-responsive">
@@ -696,31 +742,31 @@ const StudentDashboard = () => {
                           </tr>
                           <tr>
                             <th>Assigned Department</th>
-                            <td>{placementResult.placement.assigned_department || 'Not available'}</td>
-                          </tr>
-                          <tr>
-                            <th>College</th>
-                            <td>{placementResult.placement.college || 'Not available'}</td>
+                            <td>{placementResult.placement.assigned_department || studentDepartment || 'Not available'}</td>
                           </tr>
                           <tr>
                             <th>Stream</th>
                             <td>{placementResult.placement.stream || 'Not available'}</td>
                           </tr>
                           <tr>
-                            <th>Merit Score</th>
-                            <td>{Number(placementResult.placement.merit_score || 0).toFixed(2)}</td>
+                            <th>Cumulative Score</th>
+                            <td>{Number(placementResult.placement.merit_score || profile?.cumulative_score || 0).toFixed(2)}</td>
+                          </tr>
+                          <tr>
+                            <th>Placement Status</th>
+                            <td>
+                              <span className="badge bg-success">
+                                {studentAssignmentStatus || placementResult.placement.placement_status || 'Pending'}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <th>College</th>
+                            <td>{placementResult.placement.college || 'Not available'}</td>
                           </tr>
                           <tr>
                             <th>Choice Rank</th>
                             <td>{placementResult.placement.choice_rank || 'Not available'}</td>
-                          </tr>
-                          <tr>
-                            <th>Status</th>
-                            <td>
-                              <span className="badge bg-success">
-                                {placementResult.placement.placement_status || 'Pending'}
-                              </span>
-                            </td>
                           </tr>
                         </tbody>
                       </table>
