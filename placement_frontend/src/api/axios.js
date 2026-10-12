@@ -1,0 +1,16 @@
+import axios from 'axios';
+
+const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+const defaultBaseUrl = isLocalhost
+  ? 'http://localhost/student-placement/placement_backend'
+  : 'https://placement-backend-21ap.onrender.com';
+
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_BASE_URL || defaultBaseUrl,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true,
+});
+
+export default api;
