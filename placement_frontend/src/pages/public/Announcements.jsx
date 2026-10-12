@@ -19,10 +19,17 @@ function Announcements() {
     api.get('api/common/announcements_api.php')
       .then((response) => {
         const payload = response.data?.announcements ?? response.data ?? [];
-        if (isMounted) setAnnouncementData(Array.isArray(payload) ? payload : []);
+        if (isMounted) {
+          setAnnouncementData(Array.isArray(payload) ? payload : []);
+          setError('');
+        }
       })
-      .catch(() => {
-        if (isMounted) setError('Announcements are temporarily unavailable. Please try again later.');
+      .catch((requestError) => {
+        if (!isMounted) return;
+        setAnnouncementData([]);
+        setError(requestError.response?.status === 404
+          ? 'The announcements service could not be found. Please try again later.'
+          : 'Announcements are temporarily unavailable. Please try again later.');
       })
       .finally(() => {
         if (isMounted) setLoading(false);
