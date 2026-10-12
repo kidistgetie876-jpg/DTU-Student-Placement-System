@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: dtu-student-placement-system-1
+    runtime: static
+    rootDir: placement_frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
