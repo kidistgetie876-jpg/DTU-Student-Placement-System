@@ -27,7 +27,7 @@ if ($registrarId <= 0 || $reportId <= 0) markRegistrarReportResponse(['success' 
 try {
     $pdo = getAuditPdo();
     $statement = $pdo->prepare(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP
+        'UPDATE notifications SET is_read = 1
          WHERE id = :report_id AND recipient_role = "registrar"
            AND (recipient_id = :registrar_id OR recipient_id IS NULL)'
     );

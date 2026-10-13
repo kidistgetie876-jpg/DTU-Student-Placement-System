@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api.js';
+import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentRegistration from './StudentRegistration';
 import UnassignedStudents from './UnassignedStudents.jsx';
 import DataImport from '../admin/DataImport.jsx';
@@ -461,6 +462,7 @@ const RegistrarDashboard = () => {
   const [adminReportsLoading, setAdminReportsLoading] = useState(false);
   const [adminReportsError, setAdminReportsError] = useState('');
   const [adminReportsRefresh, setAdminReportsRefresh] = useState(0);
+  const [deletingAdminReportId, setDeletingAdminReportId] = useState(null);
   const [sentReports, setSentReports] = useState([]);
   const [sentReportsLoading, setSentReportsLoading] = useState(false);
   const [sentReportsError, setSentReportsError] = useState('');
@@ -867,6 +869,24 @@ const RegistrarDashboard = () => {
       )));
     } catch (error) {
       setAdminReportsError(error.response?.data?.message || 'Unable to mark the message as read.');
+    }
+  };
+
+  const deleteAdminReport = async (report) => {
+    if (!window.confirm('Delete this message from Admin?')) return;
+
+    setDeletingAdminReportId(report.id);
+    setAdminReportsError('');
+    try {
+      const response = await api.post('api/registrar/delete_admin_report.php', { report_id: report.id });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to delete the Admin message.');
+      }
+      setAdminReports((current) => current.filter((item) => item.id !== report.id));
+    } catch (error) {
+      setAdminReportsError(error.response?.data?.message || error.message || 'Unable to delete the Admin message.');
+    } finally {
+      setDeletingAdminReportId(null);
     }
   };
 
@@ -3723,11 +3743,28 @@ const RegistrarDashboard = () => {
                             <small className="text-muted text-nowrap">{report.created_at}</small>
                           </div>
                           <p className="mb-0 mt-2">{report.message}</p>
-                          {report.file_url && (
-                            <a className="btn btn-sm btn-outline-primary mt-2" href={report.file_url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                          {report.file_path && (
+                            <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={(event) => {
+                              event.stopPropagation();
+                              const attachmentUrl = getAttachmentUrl(report.file_path);
+                              if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                            }}>
                               Open attachment
-                            </a>
+                            </button>
                           )}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger mt-2 ms-2"
+                            title="Delete message from Admin"
+                            aria-label="Delete message from Admin"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              deleteAdminReport(report);
+                            }}
+                            disabled={deletingAdminReportId === report.id}
+                          >
+                            <FaTrash aria-hidden="true" />
+                          </button>
                         </article>
                       ))}
                     </div>
@@ -3757,10 +3794,13 @@ const RegistrarDashboard = () => {
                             <small className="text-muted text-nowrap">{report.created_at}</small>
                           </div>
                           <p className="mb-0 mt-2">{report.message}</p>
-                          {report.file_url && (
-                            <a className="btn btn-sm btn-outline-primary mt-2" href={report.file_url} target="_blank" rel="noreferrer">
+                          {report.file_path && (
+                            <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={() => {
+                              const attachmentUrl = getAttachmentUrl(report.file_path);
+                              if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                            }}>
                               Open attachment
-                            </a>
+                            </button>
                           )}
                           <button
                             type="button"

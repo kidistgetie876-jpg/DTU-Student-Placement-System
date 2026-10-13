@@ -39,22 +39,6 @@ try {
     );
     $statement->execute([':registrar_id' => $registrarId]);
     $reports = $statement->fetchAll();
-    foreach ($reports as &$report) {
-        if (!empty($report['file_path'])) {
-            $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
-            $relative = ltrim($report['file_path'], '/');
-            $c1 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-            $c2 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-            if ($docRoot && file_exists($c1)) {
-                $report['file_url'] = 'http://localhost/placment_backend/' . $relative;
-            } elseif ($docRoot && file_exists($c2)) {
-                $report['file_url'] = 'http://localhost/placment_backend/placment_backend/' . $relative;
-            } else {
-                $report['file_url'] = 'http://localhost/placment_backend/' . $relative;
-            }
-        }
-    }
-    unset($report);
     registrarReportsResponse(['success' => true, 'reports' => $reports]);
 } catch (Throwable $error) {
     error_log('Registrar reports load failed: ' . $error->getMessage());

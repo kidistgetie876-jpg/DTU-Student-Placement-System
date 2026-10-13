@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentAppeal from './StudentAppeal';
 import '../admin/AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
@@ -974,16 +975,18 @@ const StudentDashboard = () => {
                               )}
                             </div>
                           </div>
-                          {notification.file_url && (
-                            <a
+                          {notification.file_path && (
+                            <button
+                              type="button"
                               className="btn btn-sm btn-outline-primary mt-2"
-                              href={notification.file_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const attachmentUrl = getAttachmentUrl(notification.file_path);
+                                if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                              }}
                             >
                               Open attachment
-                            </a>
+                            </button>
                           )}
                         </div>
                       );

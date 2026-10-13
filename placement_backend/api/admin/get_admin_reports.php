@@ -40,22 +40,6 @@ try {
 		':recipient_admin_id' => $adminId,
 	]);
 	$reports = $statement->fetchAll();
-	foreach ($reports as &$report) {
-		if (!empty($report['file_path'])) {
-			$docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
-			$relative = ltrim($report['file_path'], '/');
-			$c1 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-			$c2 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-			if ($docRoot && file_exists($c1)) {
-				$report['file_url'] = 'http://localhost/placment_backend/' . $relative;
-			} elseif ($docRoot && file_exists($c2)) {
-				$report['file_url'] = 'http://localhost/placment_backend/placment_backend/' . $relative;
-			} else {
-				// Fallback to the original URL format when filesystem checks are not available
-				$report['file_url'] = 'http://localhost/placment_backend/' . $relative;
-			}
-		}
-	}
 	adminReportsResponse(['success' => true, 'reports' => $reports]);
 } catch (Throwable $error) {
 	error_log('Admin reports load failed: ' . $error->getMessage());

@@ -56,19 +56,6 @@ try {
     
     $notifications = [];
     while ($row = $result->fetch_assoc()) {
-        if (!empty($row['file_path'])) {
-            $docRoot = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
-            $relative = ltrim($row['file_path'], '/');
-            $c1 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-            $c2 = $docRoot . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . 'placment_backend' . DIRECTORY_SEPARATOR . $relative;
-            if ($docRoot && file_exists($c1)) {
-                $row['file_url'] = "http://localhost/placment_backend/" . $relative;
-            } elseif ($docRoot && file_exists($c2)) {
-                $row['file_url'] = "http://localhost/placment_backend/placment_backend/" . $relative;
-            } else {
-                $row['file_url'] = "http://localhost/placment_backend/" . $relative;
-            }
-        }
         $row['notification_type'] = 'general';
         $row['meeting_date'] = null;
         $row['meeting_time'] = null;

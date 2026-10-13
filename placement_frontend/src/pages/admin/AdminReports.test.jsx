@@ -6,7 +6,7 @@ import api from '../../services/api.js';
 jest.mock('../../services/api.js', () => ({
   __esModule: true,
   default: {
-    defaults: { baseURL: 'http://localhost/placment_backend/' },
+    defaults: { baseURL: 'http://localhost/student-placement/placement_backend' },
     get: jest.fn(),
     post: jest.fn(),
   },
@@ -68,8 +68,8 @@ describe('AdminReports', () => {
           id: 12,
           title: 'Placement report',
           message: 'Please review.',
-          direction: 'sent',
-          is_read: 1,
+          direction: 'received',
+          is_read: 0,
           created_at: '2026-10-01 10:00:00',
           file_path: 'uploads/reports/placement-report.pdf',
         }],
@@ -77,16 +77,22 @@ describe('AdminReports', () => {
     });
     api.post.mockResolvedValue({ data: { success: true } });
     jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
 
     render(<AdminReports />);
 
-    const attachmentLink = await screen.findByRole('link', { name: 'Download Attachment' });
-    expect(attachmentLink).toHaveAttribute('href', 'http://localhost/placment_backend/uploads/reports/placement-report.pdf');
-    expect(attachmentLink).toHaveAttribute('target', '_blank');
+    fireEvent.click(await screen.findByRole('button', { name: 'Download Attachment' }));
+    expect(openSpy).toHaveBeenCalledWith(
+      'http://localhost/student-placement/placement_backend/uploads/reports/placement-report.pdf',
+      '_blank',
+      'noopener,noreferrer'
+    );
+    expect(api.post).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/admin/delete_report.php', { report_id: 12 }));
     expect(window.confirm).toHaveBeenCalledWith('Delete this message?');
     window.confirm.mockRestore();
+    openSpy.mockRestore();
   });
 });

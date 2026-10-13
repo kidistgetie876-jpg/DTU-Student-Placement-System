@@ -1,20 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import api from '../../services/api.js';
+import getAttachmentUrl from '../../utils/getAttachmentUrl';
 
 const EMPTY_STATUS = { type: '', message: '' };
 const ALLOWED_FILE_EXTENSIONS = ['pdf', 'xls', 'xlsx', 'doc', 'docx'];
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
-
-const getAttachmentUrl = (report) => {
-  const fileUrl = report.file_url || report.file_path;
-  if (!fileUrl) return null;
-
-  try {
-    return new URL(fileUrl, api.defaults.baseURL).toString();
-  } catch (error) {
-    return fileUrl;
-  }
-};
 
 const AdminReports = () => {
   const [reports, setReports] = useState([]);
@@ -203,10 +193,14 @@ const AdminReports = () => {
                   <small className="text-muted text-nowrap">{report.created_at}</small>
                 </div>
                 <p className="mb-2 mt-2">{report.message}</p>
-                {getAttachmentUrl(report) && (
-                  <a className="btn btn-sm btn-outline-primary me-2" href={getAttachmentUrl(report)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                {report.file_path && (
+                  <button type="button" className="btn btn-sm btn-outline-primary me-2" onClick={(event) => {
+                    event.stopPropagation();
+                    const attachmentUrl = getAttachmentUrl(report.file_path);
+                    if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                  }}>
                     Download Attachment
-                  </a>
+                  </button>
                 )}
                 <button type="button" className="btn btn-sm btn-outline-danger" onClick={(event) => { event.stopPropagation(); deleteReport(report.id); }}>Delete</button>
                 {status.message && status.reportId === report.id && status.action !== 'send' && (

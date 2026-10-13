@@ -2,6 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FaTrash } from 'react-icons/fa';
 import { FaPaperclip } from 'react-icons/fa';
 import api from '../../services/api';
+import getAttachmentUrl from '../../utils/getAttachmentUrl';
+
+const handleOpenAttachment = (filePath) => {
+  const attachmentUrl = getAttachmentUrl(filePath);
+  if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+};
 
 const Reports = ({ leader, department, students = [] }) => {
   const [reports, setReports] = useState([]);
@@ -14,6 +20,7 @@ const Reports = ({ leader, department, students = [] }) => {
   const [reportFile, setReportFile] = useState(null);
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [sendStatus, setSendStatus] = useState({ type: '', message: '' });
   const fileInputRef = useRef(null);
 
@@ -114,6 +121,21 @@ const Reports = ({ leader, department, students = [] }) => {
     }
   };
 
+  const clearHistory = async () => {
+    if (!reports.length || !window.confirm('Permanently delete all reports in your history? This cannot be undone.')) return;
+    setClearingHistory(true);
+    setError('');
+    try {
+      const response = await api.post('api/head/clear_head_report_history.php');
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to clear report history.');
+      setReports([]);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message || 'Unable to clear report history.');
+    } finally {
+      setClearingHistory(false);
+    }
+  };
+
   const unreadCount = reports.filter((report) => report.direction !== 'sent' && !Number(report.is_read)).length;
 
   return (
@@ -124,7 +146,12 @@ const Reports = ({ leader, department, students = [] }) => {
             <h5 className="card-title mb-1">Report Notifications</h5>
             <p className="text-muted mb-0">Send messages to the Registrar or students in your department.</p>
           </div>
-          {unreadCount > 0 && <span className="badge bg-primary">{unreadCount} unread</span>}
+          <div className="d-flex align-items-center gap-2">
+            {unreadCount > 0 && <span className="badge bg-primary">{unreadCount} unread</span>}
+            <button type="button" className="btn btn-sm btn-outline-danger" onClick={clearHistory} disabled={!reports.length || clearingHistory || loading}>
+              {clearingHistory ? 'Deleting...' : 'Clear History'}
+            </button>
+          </div>
         </div>
 
         <form className="border rounded p-3 mb-4" onSubmit={sendMessage}>
@@ -216,17 +243,19 @@ const Reports = ({ leader, department, students = [] }) => {
         {!loading && !error && reports.length === 0 && <div className="alert alert-light border mb-0">No reports have been sent or received.</div>}
         {!loading && !error && reports.length > 0 && (
           <div className="list-group">
-            {reports.map((report) => (
-              <div className={`list-group-item ${report.direction !== 'sent' && !Number(report.is_read) ? 'fw-semibold' : ''}`} key={report.id} onClick={() => markAsRead(report)}>
-                <div className="d-flex justify-content-between gap-3">
-                  <span><span className={`badge ${report.direction === 'sent' ? 'bg-secondary' : 'bg-success'} me-2`}>{report.direction === 'sent' ? `Sent to ${report.recipient_role}` : `From ${report.sender_role || 'Office'}`}</span>{report.message}</span>
-                  <small className="text-muted text-nowrap">{report.created_at}</small>
+            {reports.map((report) => {
+              return (
+                <div className={`list-group-item ${report.direction !== 'sent' && !Number(report.is_read) ? 'fw-semibold' : ''}`} key={report.id} onClick={() => markAsRead(report)}>
+                  <div className="d-flex justify-content-between gap-3">
+                    <span><span className={`badge ${report.direction === 'sent' ? 'bg-secondary' : 'bg-success'} me-2`}>{report.direction === 'sent' ? `Sent to ${report.recipient_role}` : `From ${report.sender_role || 'Office'}`}</span>{report.message}</span>
+                    <small className="text-muted text-nowrap">{report.created_at}</small>
+                  </div>
+                  {report.title && <div className="text-muted small mt-1">{report.title}</div>}
+                  {report.file_path && <button type="button" className="btn btn-sm btn-outline-primary mt-2 me-2" onClick={(event) => { event.stopPropagation(); handleOpenAttachment(report.file_path); }}>Open attachment</button>}
+                  {report.direction === 'sent' && <button type="button" className="btn btn-sm btn-outline-danger mt-2" title="Delete message" aria-label="Delete message" onClick={(event) => { event.stopPropagation(); deleteReport(report); }} disabled={deletingId === report.id}><FaTrash aria-hidden="true" /></button>}
                 </div>
-                {report.title && <div className="text-muted small mt-1">{report.title}</div>}
-                {report.file_url && <a className="btn btn-sm btn-outline-primary mt-2 me-2" href={report.file_url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open attachment</a>}
-                {report.direction === 'sent' && <button type="button" className="btn btn-sm btn-outline-danger mt-2" title="Delete message" aria-label="Delete message" onClick={(event) => { event.stopPropagation(); deleteReport(report); }} disabled={deletingId === report.id}><FaTrash aria-hidden="true" /></button>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

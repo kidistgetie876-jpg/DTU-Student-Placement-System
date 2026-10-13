@@ -23,7 +23,7 @@ if ($adminId <= 0 || $reportId <= 0) markAdminReportResponse(['success' => false
 try {
     $pdo = getAuditPdo();
     $statement = $pdo->prepare(
-        'UPDATE notifications SET is_read = 1, read_at = CURRENT_TIMESTAMP
+        'UPDATE notifications SET is_read = 1
          WHERE id = :report_id AND recipient_role = "admin" AND (recipient_id = :admin_id OR recipient_id IS NULL)'
     );
     $statement->execute([':report_id' => $reportId, ':admin_id' => $adminId]);
