@@ -1664,6 +1664,8 @@ const RegistrarDashboard = () => {
             username={registrar.username}
             role="Registrar"
             subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
+            dashboardPath="/registrar-dashboard/overview"
+            onSelectTab={setTab}
           />
 
           {tab === 'overview' ? (

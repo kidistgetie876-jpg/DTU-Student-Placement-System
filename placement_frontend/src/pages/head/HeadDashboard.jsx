@@ -120,13 +120,6 @@ const HeadDashboard = () => {
     { student: 'Martha Kassa', program: 'Data Science', status: 'Confirmed' },
     { student: 'Samuel Tadesse', program: 'Information Systems', status: 'Pending' },
   ]);
-  const [preferences, setPreferences] = useState(() => {
-    return { notifications: true, reporting: true };
-  });
-  const [preferencesLoading, setPreferencesLoading] = useState(false);
-  const [preferencesSaving, setPreferencesSaving] = useState(false);
-  const [preferencesSaveMsg, setPreferencesSaveMsg] = useState('');
-  
   // State for card detail modals
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'placedStudents', 'approvalRequests', 'capacityUsed'
   const [cardDetailData, setCardDetailData] = useState([]);
@@ -307,27 +300,6 @@ const HeadDashboard = () => {
   }, [leader, tab]);
 
   useEffect(() => {
-    if (!leader) return;
-
-    const loadPreferences = async () => {
-      setPreferencesLoading(true);
-      try {
-        const response = await api.get('api/head/head_preferences.php');
-        if (!response.data?.success) {
-          throw new Error(response.data?.message || 'Unable to load preferences.');
-        }
-        setPreferences(response.data.preferences || { notifications: true, reporting: true });
-      } catch (error) {
-        setPreferencesSaveMsg(error.response?.data?.message || error.message || 'Unable to load preferences.');
-      } finally {
-        setPreferencesLoading(false);
-      }
-    };
-
-    loadPreferences();
-  }, [leader]);
-
-  useEffect(() => {
     const draft = {};
     departments.forEach((dept) => {
       draft[dept.id] = Number(dept.capacity || 0);
@@ -492,6 +464,8 @@ const HeadDashboard = () => {
             username={leader.username}
             role="Head of Department"
             subtitle="Track placement progress, approve department allocations, and monitor student outcomes."
+            dashboardPath="/head-dashboard"
+            onSelectTab={setTab}
           />
 
           {tab === 'overview' && (
@@ -1132,57 +1106,6 @@ const HeadDashboard = () => {
             </div>
           )}
 
-          {tab === 'settings' && (
-            <div className="card analytics-card">
-              <div className="card-body">
-                <h5 className="card-title mb-4">Department Preferences</h5>
-                <p className="text-muted">Update notification and reporting preferences for this dashboard.</p>
-                {preferencesLoading && <p className="text-muted">Loading preferences...</p>}
-                <div className="settings-grid">
-                  <div className="settings-card">
-                    <h6>Notifications</h6>
-                    <label className="d-flex align-items-center gap-2">
-                      <input type="checkbox" checked={preferences.notifications} onChange={(event) => setPreferences((current) => ({ ...current, notifications: event.target.checked }))} />
-                      <span className="text-muted small">Receive alerts for new placement requests.</span>
-                    </label>
-                  </div>
-                  <div className="settings-card">
-                    <h6>Reporting</h6>
-                    <label className="d-flex align-items-center gap-2">
-                      <input type="checkbox" checked={preferences.reporting} onChange={(event) => setPreferences((current) => ({ ...current, reporting: event.target.checked }))} />
-                      <span className="text-muted small">Receive reporting summaries for your department.</span>
-                    </label>
-                  </div>
-                </div>
-                <div className="d-flex gap-3 align-items-center mt-4">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={preferencesLoading || preferencesSaving}
-                    onClick={async () => {
-                      setPreferencesSaving(true);
-                      setPreferencesSaveMsg('');
-                      try {
-                        const response = await api.post('api/head/head_preferences.php', preferences);
-                        if (!response.data?.success) {
-                          throw new Error(response.data?.message || 'Unable to save preferences.');
-                        }
-                        setPreferences(response.data.preferences || preferences);
-                        setPreferencesSaveMsg(response.data.message || 'Preferences saved successfully.');
-                      } catch (error) {
-                        setPreferencesSaveMsg(error.response?.data?.message || error.message || 'Unable to save preferences.');
-                      } finally {
-                        setPreferencesSaving(false);
-                      }
-                    }}
-                  >
-                    {preferencesSaving ? 'Saving...' : 'Save Preferences'}
-                  </button>
-                  {preferencesSaveMsg && <span className={`${preferencesSaveMsg.includes('Unable') || preferencesSaveMsg.includes('must') || preferencesSaveMsg.includes('Only') ? 'text-danger' : 'text-success'} fw-semibold`}>{preferencesSaveMsg}</span>}
-                </div>
-              </div>
-            </div>
-          )}
         </main>
       </div>
     </div>

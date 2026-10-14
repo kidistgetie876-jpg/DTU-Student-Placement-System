@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import { LanguageProvider } from '../../contexts/LanguageContext.jsx';
 import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
@@ -46,20 +47,29 @@ describe('Sidebar', () => {
     });
   });
 
+  it('does not show the Preferences page in the Department Head navigation', () => {
+    renderSidebar({ role: 'head', activeItem: 'overview', onSelect: jest.fn() });
+
+    expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument();
+  });
+
   it('translates common sidebar labels when Amharic is selected', () => {
     localStorage.removeItem('language');
     render(
-      <ThemeProvider>
-        <LanguageProvider>
-          <>
-            <DashboardHeader username="Aster" role="Registrar" subtitle="" />
-            <Sidebar role="registrar" activeItem="overview" onSelect={jest.fn()} />
-          </>
-        </LanguageProvider>
-      </ThemeProvider>
+      <MemoryRouter>
+        <ThemeProvider>
+          <LanguageProvider>
+            <>
+              <DashboardHeader username="Aster" role="Registrar" subtitle="" />
+              <Sidebar role="registrar" activeItem="overview" onSelect={jest.fn()} />
+            </>
+          </LanguageProvider>
+        </ThemeProvider>
+      </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'አማ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select language' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'አማርኛ' }));
 
     expect(screen.getByRole('heading', { name: 'የሬጅስትራር ፖርታል' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'አጠቃላይ እይታ' })).toBeInTheDocument();

@@ -20,20 +20,11 @@ const mergePublicLinks = (navigation) => defaultPublicLinks.map((defaultLink) =>
 function Header() {
   const getStoredUser = () => {
     const storedUser = localStorage.getItem('user');
-
     if (!storedUser) return null;
-
     try {
       const parsedUser = JSON.parse(storedUser);
-      const hasUserData = parsedUser && typeof parsedUser === 'object' && (
-        parsedUser.id !== undefined ||
-        parsedUser.username !== undefined ||
-        parsedUser.email !== undefined ||
-        parsedUser.role !== undefined
-      );
-
-      return hasUserData ? parsedUser : null;
-    } catch (error) {
+      return parsedUser && typeof parsedUser === 'object' ? parsedUser : null;
+    } catch {
       return null;
     }
   };
@@ -51,6 +42,7 @@ function Header() {
                        location.pathname.startsWith('/registrar') || 
                        location.pathname.startsWith('/head');
   const isDashboardRoute = isAdminRoute || location.pathname.startsWith('/student-dashboard');
+  const hasDashboardHeader = /^\/(admin-dashboard|registrar-dashboard|head-dashboard|student-dashboard)(\/|$)/.test(location.pathname);
 
   useEffect(() => {
     setUser(getStoredUser());
@@ -84,11 +76,8 @@ function Header() {
 
   useEffect(() => {
     const syncUser = (event) => {
-      if (event.key === 'user') {
-        setUser(getStoredUser());
-      }
+      if (event.key === 'user') setUser(getStoredUser());
     };
-
     window.addEventListener('storage', syncUser);
     return () => window.removeEventListener('storage', syncUser);
   }, []);
@@ -156,19 +145,20 @@ function Header() {
               </ul>
             )}
 
-            {/* Top Right Action Button */}
-            <div className="auth-action-wrapper ms-auto">
-              {isAuthenticated && isDashboardRoute ? (
-                <div className="d-flex align-items-center gap-3">
-                  {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">Dashboard</Link>}
-                  <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
-                </div>
-              ) : (
-                <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
-                  Login
-                </button>
-              )}
-            </div>
+            {!hasDashboardHeader && (
+              <div className="auth-action-wrapper ms-auto">
+                {isAuthenticated && isDashboardRoute ? (
+                  <div className="d-flex align-items-center gap-3">
+                    {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">Dashboard</Link>}
+                    <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
+                  </div>
+                ) : (
+                  <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
+                    Login
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </nav>

@@ -198,6 +198,8 @@ const AdminDashboard = () => {
             username={admin.username}
             role="Admin"
             subtitle="Use the navigation panel to review users, departments, and dashboard insights."
+            dashboardPath="/admin-dashboard"
+            onSelectTab={setTab}
           />
 
           {tab === 'dashboard' ? (

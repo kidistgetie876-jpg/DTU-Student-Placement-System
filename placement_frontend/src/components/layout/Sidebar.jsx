@@ -66,7 +66,6 @@ const roleNavigation = {
       { key: 'capacity', label: 'Department Capacity', Icon: Building2 },
       { key: 'students', label: 'Placed Students', Icon: Users },
       { key: 'reports', label: 'Reports', Icon: Send },
-      { key: 'settings', label: 'Preferences', Icon: Settings },
     ],
   },
   student: {

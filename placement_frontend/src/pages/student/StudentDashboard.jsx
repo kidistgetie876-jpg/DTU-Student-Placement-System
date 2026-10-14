@@ -641,6 +641,10 @@ const StudentDashboard = () => {
             greeting="Welcome"
             subtitle="Profile, preferences, and placement updates."
             profileDetail={`ID: ${student?.id_number || student?.id}`}
+            dashboardPath="/student-dashboard"
+            notificationCount={unreadNotifications}
+            onSelectTab={setTab}
+            notificationsTab="notifications"
           />
 
           {tab === 'overview' && (
