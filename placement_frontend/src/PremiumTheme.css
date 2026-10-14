@@ -465,3 +465,191 @@ body.dark-mode {
     transition: none;
   }
 }
+
+.dashboard-header-navigation .dashboard-control-button,
+.dashboard-header-navigation .dashboard-profile-trigger,
+.dashboard-topbar-actions .dashboard-control-button,
+.dashboard-topbar-actions .dashboard-profile-trigger {
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 200ms ease;
+}
+
+.dashboard-header-navigation .dashboard-control-button:hover,
+.dashboard-header-navigation .dashboard-profile-trigger:hover,
+.dashboard-topbar-actions .dashboard-control-button:hover,
+.dashboard-topbar-actions .dashboard-profile-trigger:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 14px rgba(30, 41, 59, 0.12);
+}
+
+.dashboard-header-navigation .dashboard-control-button:active,
+.dashboard-header-navigation .dashboard-profile-trigger:active,
+.dashboard-topbar-actions .dashboard-control-button:active,
+.dashboard-topbar-actions .dashboard-profile-trigger:active {
+  transform: scale(0.95);
+}
+
+.dashboard-header-navigation .dashboard-accent-indigo,
+.dashboard-topbar-actions .dashboard-accent-indigo {
+  border-color: #e0e7ff;
+  background: rgba(238, 242, 255, 0.72);
+  color: #4f46e5;
+}
+
+.dashboard-header-navigation .dashboard-accent-indigo:hover,
+.dashboard-topbar-actions .dashboard-accent-indigo:hover {
+  border-color: #a5b4fc;
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.dashboard-header-navigation .dashboard-accent-amber,
+.dashboard-topbar-actions .dashboard-accent-amber {
+  border-color: #fef3c7;
+  background: rgba(255, 251, 235, 0.78);
+  color: #d97706;
+}
+
+.dashboard-header-navigation .dashboard-accent-amber:hover,
+.dashboard-topbar-actions .dashboard-accent-amber:hover {
+  border-color: #fcd34d;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.dashboard-header-navigation .dashboard-accent-purple,
+.dashboard-topbar-actions .dashboard-accent-purple {
+  border-color: #ede9fe;
+  background: rgba(250, 245, 255, 0.8);
+  color: #9333ea;
+}
+
+.dashboard-header-navigation .dashboard-accent-purple:hover,
+.dashboard-topbar-actions .dashboard-accent-purple:hover {
+  border-color: #c4b5fd;
+  background: #ede9fe;
+  color: #7e22ce;
+}
+
+.dashboard-header-navigation .dashboard-accent-teal,
+.dashboard-topbar-actions .dashboard-accent-teal {
+  border-color: #ccfbf1;
+  background: rgba(240, 253, 250, 0.84);
+  color: #0d9488;
+}
+
+.dashboard-header-navigation .dashboard-accent-teal:hover,
+.dashboard-topbar-actions .dashboard-accent-teal:hover,
+.dashboard-header-navigation .dashboard-accent-teal.is-active,
+.dashboard-topbar-actions .dashboard-accent-teal.is-active {
+  border-color: #5eead4;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.dashboard-header-navigation .dashboard-profile-trigger,
+.dashboard-topbar-actions .dashboard-profile-trigger {
+  border-color: #e2e8f0;
+}
+
+.dashboard-header-navigation .dashboard-profile-trigger:hover,
+.dashboard-topbar-actions .dashboard-profile-trigger:hover {
+  border-color: #3b82f6;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-control-button,
+body.dark-mode .dashboard-header-navigation .dashboard-profile-trigger,
+body.dark-mode .dashboard-topbar-actions .dashboard-control-button,
+body.dark-mode .dashboard-topbar-actions .dashboard-profile-trigger {
+  border-color: #334155;
+  background-color: rgba(30, 41, 59, 0.72);
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.28);
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-indigo,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-indigo {
+  color: #a5b4fc;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-indigo:hover,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-indigo:hover {
+  border-color: #6366f1;
+  background-color: #312e81;
+  color: #c7d2fe;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-amber,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-amber {
+  color: #fbbf24;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-amber:hover,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-amber:hover {
+  border-color: #d97706;
+  background-color: #78350f;
+  color: #fde68a;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-purple,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-purple {
+  color: #c4b5fd;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-purple:hover,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-purple:hover {
+  border-color: #8b5cf6;
+  background-color: #4c1d95;
+  color: #ddd6fe;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-teal,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-teal {
+  color: #5eead4;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-accent-teal:hover,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-teal:hover,
+body.dark-mode .dashboard-header-navigation .dashboard-accent-teal.is-active,
+body.dark-mode .dashboard-topbar-actions .dashboard-accent-teal.is-active {
+  border-color: #14b8a6;
+  background-color: #134e4a;
+  color: #99f6e4;
+}
+
+body.dark-mode .dashboard-header-navigation .dashboard-profile-trigger:hover,
+body.dark-mode .dashboard-topbar-actions .dashboard-profile-trigger:hover {
+  border-color: #60a5fa;
+  background-color: #1e3a5f;
+}
+
+body.eye-care-mode .dashboard-header-navigation .dashboard-control-button,
+body.eye-care-mode .dashboard-header-navigation .dashboard-profile-trigger,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-control-button,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-profile-trigger {
+  border-color: #dfd0b4;
+}
+
+body.eye-care-mode .dashboard-header-navigation .dashboard-accent-indigo,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-accent-indigo {
+  background-color: #f1e9ff;
+  color: #514078;
+}
+
+body.eye-care-mode .dashboard-header-navigation .dashboard-accent-amber,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-accent-amber {
+  background-color: #fff2d4;
+  color: #80551c;
+}
+
+body.eye-care-mode .dashboard-header-navigation .dashboard-accent-purple,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-accent-purple {
+  background-color: #f1e8f8;
+  color: #684d75;
+}
+
+body.eye-care-mode .dashboard-header-navigation .dashboard-accent-teal,
+body.eye-care-mode .dashboard-topbar-actions .dashboard-accent-teal {
+  background-color: #e1f2e8;
+  color: #35624c;
+}

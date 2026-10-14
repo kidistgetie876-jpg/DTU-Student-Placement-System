@@ -327,7 +327,7 @@ const DashboardHeader = ({
           <div className="dashboard-header-menu-anchor">
             <button
               type="button"
-              className="dashboard-control-button dashboard-language-trigger"
+              className="dashboard-control-button dashboard-language-trigger dashboard-accent-indigo"
               aria-label={t('Select language')}
               aria-expanded={openMenu === 'language'}
               aria-haspopup="menu"
@@ -351,7 +351,7 @@ const DashboardHeader = ({
 
           <button
             type="button"
-            className="dashboard-control-button dashboard-notifications-button"
+            className="dashboard-control-button dashboard-notifications-button dashboard-accent-amber"
             aria-label={t('Notifications') + (count > 0 ? ` (${count})` : '')}
             title={t('Notifications')}
             aria-expanded={openMenu === 'notifications'}
@@ -418,7 +418,7 @@ const DashboardHeader = ({
 
           <button
             type="button"
-            className="dashboard-control-button dashboard-theme-button"
+            className="dashboard-control-button dashboard-theme-button dashboard-accent-purple"
             onClick={toggleTheme}
             aria-label={t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}
             title={t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}
@@ -427,7 +427,7 @@ const DashboardHeader = ({
           </button>
           <button
             type="button"
-            className={`dashboard-control-button dashboard-eye-care-button${isEyeCareMode ? ' is-active' : ''}`}
+            className={`dashboard-control-button dashboard-eye-care-button dashboard-accent-teal${isEyeCareMode ? ' is-active' : ''}`}
             onClick={toggleEyeCareMode}
             aria-label={t(isEyeCareMode ? 'Turn off eye care mode' : 'Switch to eye care mode')}
             title={t(isEyeCareMode ? 'Turn off eye care mode' : 'Switch to eye care mode')}
