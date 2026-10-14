@@ -33,11 +33,50 @@ try {
     $pdo = getAuditPdo();
     $actor = $pdo->prepare('SELECT role FROM users WHERE id = :id LIMIT 1');
     $actor->execute([':id' => $userId]);
-    $role = strtolower(trim((string) ($actor->fetchColumn() ?: '')));
-    if (!in_array($role, ['admin', 'registrar'], true)) {
-        markContactMessageResponse(['success' => false, 'message' => 'Only administrators and registrars can update contact messages.'], 403);
+    $user = $actor->fetch() ?: [];
+    if (strtolower(trim((string) ($user['role'] ?? ''))) !== 'admin') {
+        markContactMessageResponse(['success' => false, 'message' => 'Only System Administrators may update contact messages.'], 403);
     }
 
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS contact_messages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL DEFAULT '',
+            subject VARCHAR(255) NOT NULL DEFAULT '',
+            message TEXT NOT NULL,
+            recipient_role ENUM('all', 'registrar', 'admin', 'head', 'student') NOT NULL DEFAULT 'all',
+            target_type ENUM('all', 'individual') NOT NULL DEFAULT 'all',
+            specific_recipient VARCHAR(255) NULL,
+            student_id VARCHAR(100) NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'unread',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+    $schemaColumns = [
+        'recipient_role' => "ENUM('all', 'registrar', 'admin', 'head', 'student') NOT NULL DEFAULT 'all' AFTER message",
+        'target_type' => "ENUM('all', 'individual') NOT NULL DEFAULT 'all' AFTER recipient_role",
+        'specific_recipient' => 'VARCHAR(255) NULL AFTER target_type',
+        'student_id' => 'VARCHAR(100) NULL AFTER specific_recipient',
+        'status' => "VARCHAR(20) NOT NULL DEFAULT 'unread' AFTER student_id",
+    ];
+    foreach ($schemaColumns as $columnName => $definition) {
+        $column = $pdo->query("SHOW COLUMNS FROM contact_messages LIKE '{$columnName}'");
+        if (!$column) {
+            throw new RuntimeException('Unable to verify contact message storage.');
+        }
+        $columnDefinition = $column->fetch();
+        if (!$columnDefinition) {
+            $pdo->exec("ALTER TABLE contact_messages ADD COLUMN {$columnName} {$definition}");
+        } elseif ($columnName === 'recipient_role') {
+            if (strpos((string) ($columnDefinition['Type'] ?? ''), "'student'") === false) {
+                $pdo->exec(
+                    "ALTER TABLE contact_messages
+                     MODIFY COLUMN recipient_role ENUM('all', 'registrar', 'admin', 'head', 'student') NOT NULL DEFAULT 'all'"
+                );
+            }
+        }
+    }
     $statement = $pdo->prepare("UPDATE contact_messages SET status = 'read' WHERE id = :id");
     $statement->execute([':id' => $messageId]);
     if ($statement->rowCount() === 0) {

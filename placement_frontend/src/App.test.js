@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import App from './App.js';
 import Header from './components/layout/Header.jsx';
 import Login from './pages/public/Login.jsx';
 import StudentRegistration from './pages/registrar/StudentRegistration.jsx';
@@ -65,7 +66,7 @@ describe('Login', () => {
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('auth/login.php', {
-        identifier: 'marta',
+        username_or_email: 'marta',
         password: 'secret123',
       });
     });
@@ -73,6 +74,37 @@ describe('Login', () => {
     await waitFor(() => {
       expect(JSON.parse(localStorage.getItem('user')).role).toBe('head');
     });
+  });
+
+  test('renders the login route inside the public header and footer shell', async () => {
+    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    window.history.pushState({}, '', '/login');
+
+    render(<App />);
+
+    expect(await screen.findByRole('dialog', { name: /user login/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Log in' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Reset your password' })).toHaveAttribute('aria-selected', 'false');
+    const navigation = screen.getByRole('navigation');
+    for (const link of ['Home', 'Services', 'Placement Info', 'Announcements', 'Contact']) {
+      expect(await within(navigation).findByRole('link', { name: link })).toBeInTheDocument();
+    }
+    expect(within(navigation).getByRole('button', { name: /^login$/i })).toBeInTheDocument();
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /let’s talk about your next step/i })).not.toBeInTheDocument();
+  });
+
+  test('opens the password reset tab from the login page', async () => {
+    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    window.history.pushState({}, '', '/login');
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Reset your password' }));
+
+    expect(screen.getByRole('tab', { name: 'Reset your password' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Reset your password' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Email address', { selector: '#reset-email' })).toBeInTheDocument();
   });
 
   test('routes a registrar to the overview after login', async () => {
@@ -182,7 +214,7 @@ describe('Login', () => {
     expect(await screen.findByText('Please enter the correct email or username.')).toBeInTheDocument();
   });
 
-  test('completes the forgot-password flow inside the login modal', async () => {
+  test('completes the password reset flow in the dedicated login page tab', async () => {
     api.post
       .mockResolvedValueOnce({ data: { message: 'Reset code sent.' } })
       .mockResolvedValueOnce({ data: { success: true, message: 'Password updated.' } });
@@ -193,16 +225,16 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
-    expect(screen.getByRole('heading', { name: 'Forgot Password' })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Email Address'), { target: { value: 'marta@dtu.edu' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Reset your password' }));
+    expect(screen.getByRole('tab', { name: 'Reset your password' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'marta@dtu.edu' } });
     fireEvent.click(screen.getByRole('button', { name: /send reset code/i }));
 
     expect(await screen.findByLabelText('Six-digit verification code')).toBeInTheDocument();
     expect(api.post).toHaveBeenNthCalledWith(1, 'auth/forgot_password.php', { email: 'marta@dtu.edu' });
     fireEvent.change(screen.getByLabelText('Six-digit verification code'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'updated123' } });
-    fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'updated123' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'updated123' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'updated123' } });
     fireEvent.click(screen.getByRole('button', { name: /reset password/i }));
 
     expect(await screen.findByText('Password updated.')).toBeInTheDocument();
@@ -235,23 +267,21 @@ describe('Login', () => {
     expect(screen.getByTestId('current-route')).toHaveTextContent('/contact');
   });
 
-  test('opens the login modal when no user is stored', async () => {
+  test('navigates to the dedicated login route when no user is stored', async () => {
     localStorage.setItem('darkMode', 'true');
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Header />
+        <>
+          <Header />
+          <CurrentRoute />
+        </>
       </MemoryRouter>
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
-    expect(screen.getByRole('dialog', { name: /portal login/i })).toBeInTheDocument();
-    expect(document.body.style.overflow).toBe('hidden');
-    fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
-    });
-    expect(document.body.style.overflow).toBe('');
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/login');
+    expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
     expect(localStorage.getItem('darkMode')).toBe('true');
   });
 

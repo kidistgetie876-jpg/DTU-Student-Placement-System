@@ -12,8 +12,12 @@ import AdminReports from './AdminReports';
 import ContactMessages from './ContactMessages.jsx';
 import './AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
+import Sidebar from '../../components/layout/Sidebar.jsx';
+import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const AdminDashboard = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [admin, setAdmin] = useState(null);
@@ -187,80 +191,14 @@ const AdminDashboard = () => {
         metadata={`Generated on: ${new Date().toLocaleDateString()}`}
       />
       <div className="row g-0">
-        <aside className="col-md-2 sidebar bg-dark text-white d-flex flex-column p-4">
-          <div className="sidebar-brand mb-5">
-            <h4 className="fw-bold text-white mb-1">Placement Admin</h4>
-            <p className="text-white-50 small mb-0">Manage users, departments, and reports</p>
-          </div>
-
-          <nav className="nav flex-column gap-2 mb-4">
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setTab('dashboard')}
-            >
-              Dashboard
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'manage' ? 'active' : ''}`}
-              onClick={() => setTab('manage')}
-            >
-              Manage Users
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'departments' ? 'active' : ''}`}
-              onClick={() => setTab('departments')}
-            >
-              Manage Departments
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'reports' ? 'active' : ''}`}
-              onClick={() => setTab('reports')}
-            >
-              Reports
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'contact-messages' ? 'active' : ''}`}
-              onClick={() => setTab('contact-messages')}
-            >
-              Contact Messages
-            </button>
-          
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'data-import' ? 'active' : ''}`}
-              onClick={() => setTab('data-import')}
-            >
-              Data Import
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'audit-logs' ? 'active' : ''}`}
-              onClick={() => setTab('audit-logs')}
-            >
-              Audit Logs
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'system-config' ? 'active' : ''}`}
-              onClick={() => setTab('system-config')}
-            >
-              System Settings
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'account-settings' ? 'active' : ''}`}
-              onClick={() => setTab('account-settings')}
-            >
-              Account Settings
-            </button>
-          </nav>
-
-        </aside>
+        <Sidebar role="admin" activeItem={tab} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
-          <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4">
-            <div>
-              <h2 className="fw-bold mb-1">Welcome back, {admin.username}</h2>
-              <p className="text-muted mb-0">Use the navigation panel to review users, departments, and dashboard insights.</p>
-            </div>
-            <span className="badge bg-primary text-white py-2 px-3">Admin</span>
-          </div>
+          <DashboardHeader
+            username={admin.username}
+            role="Admin"
+            subtitle="Use the navigation panel to review users, departments, and dashboard insights."
+          />
 
           {tab === 'dashboard' ? (
             <>
@@ -282,7 +220,7 @@ const AdminDashboard = () => {
                     onClick={() => handleCardClick('totalStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Total Students</span>
+                      <span className="summary-label">{t('Total Students')}</span>
                       <h3 className="summary-value">{statsLoading ? '...' : stats.totalStudents}</h3>
                       <div className="mt-2"><small className="text-primary fw-bold">Click to view details →</small></div>
                     </div>
@@ -305,7 +243,7 @@ const AdminDashboard = () => {
                     onClick={() => handleCardClick('totalDepartments')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Total Departments</span>
+                      <span className="summary-label">{t('Total Departments')}</span>
                       <h3 className="summary-value">{statsLoading ? '...' : stats.totalDepartments}</h3>
                       <div className="mt-2"><small className="text-success fw-bold">Click to view details →</small></div>
                     </div>
@@ -328,7 +266,7 @@ const AdminDashboard = () => {
                     onClick={() => handleCardClick('activeAdmins')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Active Admins</span>
+                      <span className="summary-label">{t('Active Admins')}</span>
                       <h3 className="summary-value">{statsLoading ? '...' : stats.activeAdmins}</h3>
                       <div className="mt-2"><small className="text-warning fw-bold">Click to view details →</small></div>
                     </div>
@@ -351,7 +289,7 @@ const AdminDashboard = () => {
                     onClick={() => handleCardClick('totalHeads')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Total Heads</span>
+                      <span className="summary-label">{t('Total Heads')}</span>
                       <h3 className="summary-value">{statsLoading ? '...' : stats.totalHeads}</h3>
                       <div className="mt-2"><small className="text-info fw-bold">Click to view details →</small></div>
                     </div>

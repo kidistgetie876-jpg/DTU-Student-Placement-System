@@ -5,6 +5,9 @@ import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentAppeal from './StudentAppeal';
 import '../admin/AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
+import Sidebar from '../../components/layout/Sidebar.jsx';
+import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 export const parseYesNo = (value) => {
   if (value === null || value === undefined) return false;
@@ -163,6 +166,7 @@ const hasSubmissionDeadlinePassed = (submissionDeadline, currentTime = new Date(
 };
 
 const StudentDashboard = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -623,28 +627,21 @@ const StudentDashboard = () => {
         metadata={`Academic Year: 2016 E.C. / 2026 G.C. | Generated on: ${new Date().toLocaleDateString()}`}
       />
       <div className="row g-0">
-        <aside className="col-md-2 sidebar bg-dark text-white p-4 min-vh-100 shadow">
-          <div className="sidebar-brand mb-4">
-            <h5 className="fw-bold text-warning">DTU Portal</h5>
-            <p className="small text-white-50">Student Dashboard</p>
-          </div>
-          <nav className="nav flex-column gap-2">
-            <button className={`btn dashboard-nav-btn text-start ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
-            {/* <button className={`btn dashboard-nav-btn text-start ${tab === 'profile' ? 'active' : ''}`} onClick={() => setTab('profile')}>Profile & Verify</button> */}
-            <button className={`btn dashboard-nav-btn text-start ${tab === 'preferences' ? 'active' : ''}`} onClick={() => setTab('preferences')}>Submit Preferences</button>
-            <button className={`btn dashboard-nav-btn text-start ${tab === 'result' ? 'active' : ''}`} onClick={() => setTab('result')}>Placement Result</button>
-            <button className={`btn dashboard-nav-btn text-start ${tab === 'appeal' ? 'active' : ''}`} onClick={() => setTab('appeal')}>Submit Appeal</button>
-            <button className={`btn dashboard-nav-btn text-start ${tab === 'notifications' ? 'active' : ''}`} onClick={() => setTab('notifications')}>
-              Notifications{unreadNotifications > 0 ? ` (${unreadNotifications})` : ''}
-            </button>
-          </nav>
-        </aside>
+        <Sidebar
+          role="student"
+          activeItem={tab}
+          onSelect={setTab}
+          notificationCount={unreadNotifications}
+        />
 
-        <main className="col-md-10 p-5 main-content bg-light">
-          <header className="d-flex justify-content-between align-items-center mb-4">
-            <h2 className="fw-bold">Welcome, <span className="text-primary">{student?.username}</span>! 👋</h2>
-            <span className="badge bg-primary px-3 py-2 rounded-pill">ID: {student?.id_number || student?.id}</span>
-          </header>
+        <main className="col-md-10 p-5 main-content">
+          <DashboardHeader
+            username={student?.username}
+            role="Student"
+            greeting="Welcome"
+            subtitle="Profile, preferences, and placement updates."
+            profileDetail={`ID: ${student?.id_number || student?.id}`}
+          />
 
           {tab === 'overview' && (
             <div className="row g-4">
@@ -657,7 +654,7 @@ const StudentDashboard = () => {
                     onClick={() => openOverviewDetail(card.key, card.title)}
                     disabled={!student?.id}
                   >
-                    <span className="text-muted small fw-bold text-uppercase">{card.title}</span>
+                    <span className="text-muted small fw-bold text-uppercase">{t(card.title)}</span>
                     <h2 className={`fw-bold m-0 text-${card.color}`}>{card.value}</h2>
                     <span className="small text-muted mt-2">Click to view details</span>
                   </button>
@@ -996,6 +993,7 @@ const StudentDashboard = () => {
               </div>
             </div>
           )}
+
         </main>
       </div>
       {overviewDetail && (

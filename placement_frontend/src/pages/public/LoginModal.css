@@ -67,6 +67,88 @@
   outline-offset: 2px;
 }
 
+.login-page-backdrop {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 2rem 1rem;
+  background:
+    radial-gradient(ellipse at 15% 10%, rgba(47, 102, 177, 0.12), transparent 38%),
+    linear-gradient(145deg, #f1f5fa 0%, #e7edf5 100%);
+}
+
+.login-page-dialog {
+  width: min(100%, 480px);
+  animation: none;
+}
+
+.login-page-card {
+  border: 1px solid #e1e7ef !important;
+  border-radius: 10px !important;
+  box-shadow: 0 18px 48px rgba(22, 44, 74, 0.14) !important;
+}
+
+.login-page-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: -1.25rem -1.25rem 1.75rem;
+  border-bottom: 1px solid #e2e7ee;
+}
+
+.login-page-tabs button {
+  min-height: 3.2rem;
+  padding: 0.75rem 0.5rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: #f8fafc;
+  color: #64748b;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.login-page-tabs button.active {
+  border-bottom-color: #0a2d6d;
+  background: #fff;
+  color: #0a2d6d;
+}
+
+.login-page-tabs button:focus-visible {
+  outline: 3px solid rgba(10, 45, 109, 0.3);
+  outline-offset: -3px;
+}
+
+.login-forgot-link {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.85rem;
+  margin-bottom: 1.1rem;
+}
+
+.login-forgot-link .btn {
+  padding-right: 0;
+}
+
+.login-route-shell {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  flex-direction: column;
+}
+
+.login-route-main {
+  display: flex;
+  flex: 1;
+}
+
+@media (min-width: 992px) {
+  .login-route-shell {
+    padding-top: 190px;
+  }
+}
+
 @keyframes login-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -92,6 +174,17 @@
   .login-modal-dialog,
   .login-modal-backdrop.is-closing .login-modal-dialog {
     animation-duration: 1ms;
+  }
+
+  @media (max-width: 480px) {
+    .login-page-backdrop {
+      padding: 1rem 0.75rem;
+    }
+
+    .login-page-tabs {
+      margin-right: -0.75rem;
+      margin-left: -0.75rem;
+    }
   }
 
   .login-modal-close {

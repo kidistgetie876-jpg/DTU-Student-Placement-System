@@ -34,7 +34,7 @@ try {
 }
 
 $data = json_decode(file_get_contents('php://input'));
-$identifier = trim((string) ($data->identifier ?? ''));
+$identifier = trim((string) ($data->username_or_email ?? $data->username ?? $data->identifier ?? ''));
 $credential = (string) ($data->password ?? '');
 
 if ($identifier === '' || $credential === '') {

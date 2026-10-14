@@ -1,0 +1,88 @@
+.dark-mode .admin-dashboard,
+.dark-mode .head-dashboard {
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+.dark-mode .admin-dashboard .main-content,
+.dark-mode .head-dashboard .main-section,
+.dark-mode .student-dashboard .main-content {
+  background: #0b1220 !important;
+  color: #e2e8f0;
+}
+
+.dark-mode .admin-dashboard .card,
+.dark-mode .head-dashboard .card,
+.dark-mode .student-dashboard .card {
+  border-color: #334155 !important;
+  background-color: #111c2e;
+  color: #e2e8f0;
+}
+
+.dark-mode .admin-dashboard .card .card,
+.dark-mode .head-dashboard .card .card,
+.dark-mode .student-dashboard .card .card {
+  background-color: #17253a;
+}
+
+.dark-mode .admin-dashboard .text-muted,
+.dark-mode .head-dashboard .text-muted,
+.dark-mode .student-dashboard .text-muted,
+.dark-mode .admin-dashboard .summary-label,
+.dark-mode .head-dashboard .summary-label,
+.dark-mode .student-dashboard .summary-label {
+  color: #a8b6ca !important;
+}
+
+.dark-mode .admin-dashboard .summary-value,
+.dark-mode .head-dashboard .summary-value {
+  color: #f1f5f9;
+}
+
+.dark-mode .admin-dashboard .table,
+.dark-mode .head-dashboard .table,
+.dark-mode .student-dashboard .table {
+  --bs-table-color: #e2e8f0;
+  --bs-table-bg: #111c2e;
+  --bs-table-border-color: #334155;
+  --bs-table-striped-bg: #17253a;
+  --bs-table-hover-bg: #1e304a;
+}
+
+.dark-mode .admin-dashboard .list-group-item,
+.dark-mode .head-dashboard .list-group-item,
+.dark-mode .student-dashboard .list-group-item {
+  border-color: #334155;
+  background-color: #111c2e;
+  color: #e2e8f0;
+}
+
+.dark-mode .admin-dashboard .form-control,
+.dark-mode .admin-dashboard .form-select,
+.dark-mode .head-dashboard .form-control,
+.dark-mode .head-dashboard .form-select,
+.dark-mode .student-dashboard .form-control,
+.dark-mode .student-dashboard .form-select {
+  border-color: #475569;
+  background-color: #17253a;
+  color: #e2e8f0;
+}
+
+.dark-mode .admin-dashboard .form-control::placeholder,
+.dark-mode .head-dashboard .form-control::placeholder,
+.dark-mode .student-dashboard .form-control::placeholder {
+  color: #94a3b8;
+}
+
+.dark-mode .role-sidebar {
+  background: #0f172a;
+}
+
+.dark-mode .role-sidebar-item {
+  color: #cbd5e1;
+}
+
+.dark-mode .role-sidebar-item:hover,
+.dark-mode .role-sidebar-item.active {
+  color: #fff;
+}

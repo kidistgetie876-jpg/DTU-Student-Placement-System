@@ -5,16 +5,18 @@
 }
 
 .admin-dashboard .sidebar {
-  background: linear-gradient(145deg, #061c47 0%, #0a2d6d 58%, #123880 100%) !important;
+  background: #0f172a !important;
   position: fixed;
-  left: 0;
-  top: 160px;
-  width: 16.666667%;
-  height: calc(100vh - 160px);
-  min-height: calc(100vh - 160px);
+  left: 12px;
+  top: 172px;
+  width: calc(16.666667% - 24px);
+  height: calc(100vh - 184px);
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  border-right: 1px solid rgba(244, 201, 93, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 18px;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.2);
   z-index: 1020;
 }
 
@@ -192,8 +194,8 @@
 }
 
 .dark-mode .admin-dashboard .sidebar {
-  background: linear-gradient(145deg, #061c47 0%, #0a2d6d 58%, #123880 100%) !important;
-  border-right: 1px solid rgba(244, 201, 93, 0.28);
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 .dark-mode .admin-dashboard .dashboard-nav-btn {

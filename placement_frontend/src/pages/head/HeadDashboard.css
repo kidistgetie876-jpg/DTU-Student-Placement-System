@@ -1,24 +1,20 @@
 .head-dashboard{min-height:100vh;background:var(--dtu-bg);padding-top:160px}
 .head-dashboard .sidebar{
   position:fixed;
-  left:0;
-  top:160px;
-  width:16.666667%;
-  height:calc(100vh - 160px);
-  min-height:calc(100vh - 160px);
+  left:12px;
+  top:172px;
+  width:calc(16.666667% - 24px);
+  height:calc(100vh - 184px);
+  min-height:0;
   overflow-y:auto;
   overflow-x:hidden;
-  background:linear-gradient(145deg,#061c47 0%,#0a2d6d 58%,#123880 100%);
-  border-right:1px solid rgba(244,201,93,.28);
+  border:1px solid rgba(148,163,184,.12);
+  border-radius:18px;
+  background:#0f172a;
   color:#ffffff;
+  box-shadow:0 16px 38px rgba(15,23,42,.2);
   z-index:1020;
 }
-.head-dashboard .sidebar-brand h5{font-size:1.05rem;margin-bottom:.5rem;color:#fff}
-.head-dashboard .sidebar-brand p{color:rgba(255,255,255,.8)}
-.head-dashboard .sidebar-nav{margin-top:1rem}
-.head-dashboard .nav-button{width:100%;text-align:left;padding:.85rem 1rem;border:1px solid transparent;border-radius:1rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,.88);font-weight:600;transition:transform .18s ease,background .18s ease,border-color .18s ease,color .18s ease}
-.head-dashboard .nav-button:hover{background:rgba(255,255,255,0.12);border-color:rgba(244,201,93,.3);transform:translateX(2px)}
-.head-dashboard .nav-button.active{background:linear-gradient(135deg,rgba(21,66,148,.95),rgba(10,45,109,.9));border-color:rgba(244,201,93,.55);color:#fff;box-shadow:0 8px 20px rgba(2,6,23,.2)}
 .head-dashboard .main-section{
   margin-left:16.666667%;
   width:calc(100% - 16.666667%);

@@ -8,7 +8,7 @@ import './LoginModal.css';
 
 const noop = () => {};
 
-const LoginModal = ({ isOpen = true, onClose = noop }) => {
+const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const closeTimer = useRef(null);
@@ -17,10 +17,9 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [identifierUnlocked, setIdentifierUnlocked] = useState(false);
-  const [passwordUnlocked, setPasswordUnlocked] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
   const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
@@ -81,7 +80,7 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
       return 'Please enter the correct email or username.';
     }
     if (responseCode === 'INVALID_IDENTIFIER' || responseCode === 'USER_NOT_FOUND') {
-      return 'Please enter the correct email orusername.';
+      return 'Please enter the correct email or username.';
     }
     if (normalizedMessage.includes('email') || normalizedMessage.includes('username') || normalizedMessage.includes('identifier')) {
       return 'Please enter the correct email or username.';
@@ -100,7 +99,7 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('auth/login.php', { identifier: trimmedIdentifier, password });
+      const response = await api.post('auth/login.php', { username_or_email: trimmedIdentifier, password });
       if (response.data.status === 'success' || response.data.success === true) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
         const role = normalizeRole(response.data.user.role);
@@ -200,32 +199,45 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
     setShowModal(true);
   };
 
+  const openResetTab = () => {
+    setResetData((current) => ({
+      ...current,
+      email: isValidEmail(identifier.trim()) ? identifier.trim() : current.email,
+    }));
+    setResetStep('request');
+    setResetError('');
+    setResetMessage('');
+    setActiveTab('reset');
+  };
+
   if (!isRendered) return null;
 
-  return createPortal(
+  const loginContent = (
     <div
-      className={`login-modal-backdrop${isClosing ? ' is-closing' : ''}`}
+      className={`login-modal-backdrop${standalone ? ' login-page-backdrop' : ''}${isClosing ? ' is-closing' : ''}`}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeLoginModal();
+        if (!standalone && event.target === event.currentTarget) closeLoginModal();
       }}
     >
       <section
-        className="login-modal-dialog"
+        className={`login-modal-dialog${standalone ? ' login-page-dialog' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-modal-title"
         aria-describedby="login-modal-description"
       >
-        <button type="button" className="login-modal-close" aria-label="Close dialog" onClick={closeLoginModal}>
-          <span aria-hidden="true">&times;</span>
-        </button>
+        {!standalone && (
+          <button type="button" className="login-modal-close" aria-label="Close dialog" onClick={closeLoginModal}>
+            <span aria-hidden="true">&times;</span>
+          </button>
+        )}
         <div className="container-fluid px-0">
         <div className="row justify-content-center">
           <div className="col-12">
             
             {/* Modern Card */}
             <div 
-              className="card login-modal-card border-0 shadow-lg" 
+              className={`card login-modal-card border-0 shadow-lg${standalone ? ' login-page-card' : ''}`}
               style={{ 
                 borderRadius: '24px', 
                 overflow: 'hidden',
@@ -237,6 +249,33 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
               <div style={{ height: '6px', background: 'linear-gradient(90deg, #0a2d6d 0%, #f4c95d 100%)' }}></div>
               
               <div className="card-body p-4 p-sm-5">
+                {standalone && (
+                  <div className="login-page-tabs" role="tablist" aria-label="Login and password reset">
+                    <button
+                      type="button"
+                      id="login-tab"
+                      role="tab"
+                      aria-selected={activeTab === 'login'}
+                      aria-controls="login-tab-panel"
+                      className={activeTab === 'login' ? 'active' : ''}
+                      onClick={() => setActiveTab('login')}
+                    >
+                      Log in
+                    </button>
+                    <button
+                      type="button"
+                      id="reset-tab"
+                      role="tab"
+                      aria-selected={activeTab === 'reset'}
+                      aria-controls="reset-tab-panel"
+                      className={activeTab === 'reset' ? 'active' : ''}
+                      onClick={openResetTab}
+                    >
+                      Reset your password
+                    </button>
+                  </div>
+                )}
+
                 {/* Brand Logo & Title */}
                 <div className="text-center mb-4">
                   <img 
@@ -244,18 +283,19 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
                     alt="DTU Logo" 
                     style={{ width: 68, height: 68, borderRadius: '16px', padding: '4px', border: '2px solid #f4c95d', marginBottom: '12px' }} 
                   />
-                  <h3 id="login-modal-title" className="fw-bold mb-1" style={{ color: '#0a2d6d', letterSpacing: '-0.02em' }}>Portal Login</h3>
+                  <h3 id="login-modal-title" className="fw-bold mb-1" style={{ color: '#0a2d6d', letterSpacing: '-0.02em' }}>{standalone ? 'User Login' : 'Portal Login'}</h3>
                   <p id="login-modal-description" className="text-muted small mb-0">Sign in to access your DTU placement portal</p>
                 </div>
 
-                {/* Error Banner */}
-                {error && (
-                  <div className="alert alert-danger py-2 px-3 small text-center rounded-3 mb-3 border-0 shadow-sm" style={{ backgroundColor: '#ffebe8', color: '#c92a2a' }}>
-                    {error}
-                  </div>
-                )}
-                
-                <form onSubmit={handleLogin} autoComplete="new-password">
+                {activeTab === 'login' ? (
+                  <div id="login-tab-panel" role={standalone ? 'tabpanel' : undefined} aria-labelledby={standalone ? 'login-tab' : undefined}>
+                    {error && (
+                      <div className="alert alert-danger py-2 px-3 small text-center rounded-3 mb-3 border-0 shadow-sm" role="alert" style={{ backgroundColor: '#ffebe8', color: '#c92a2a' }}>
+                        {error}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleLogin} autoComplete="on">
                   {/* Identifier Input */}
                   <div className="mb-3">
                     <label htmlFor="login-identifier" className="form-label small fw-bold text-secondary mb-1">
@@ -268,17 +308,15 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
                       <input 
                         ref={identifierInput}
                         id="login-identifier" 
-                        name="account-value" 
+                        name="username_or_email"
                         type="text" 
-                        autoComplete="new-password" 
+                        autoComplete="username"
                         data-lpignore="true" 
                         data-1p-ignore="true" 
-                        readOnly={!identifierUnlocked} 
-                        placeholder=" Enter your email or username" 
-                        className="form-control border-start-0 bg-light py-2" 
+                        placeholder="Enter your username or email"
+                        className="form-control border-start-0 bg-light py-2"
                         style={{ borderRadius: '0 12px 12px 0', fontSize: '0.95rem' }}
                         value={identifier} 
-                        onFocus={() => setIdentifierUnlocked(true)} 
                         onChange={(e) => setIdentifier(e.target.value)} 
                         required 
                       />
@@ -296,17 +334,15 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
                       </span>
                       <input 
                         id="login-password" 
-                        name="password-value" 
+                        name="password"
                         type={showPassword ? 'text' : 'password'} 
-                        autoComplete="new-password" 
+                        autoComplete="current-password"
                         data-lpignore="true" 
                         data-1p-ignore="true" 
-                        readOnly={!passwordUnlocked} 
                         placeholder="Enter your password" 
                         className="form-control border-start-0 border-end-0 bg-light py-2" 
                         style={{ fontSize: '0.95rem' }}
                         value={password} 
-                        onFocus={() => setPasswordUnlocked(true)} 
                         onChange={(e) => setPassword(e.target.value)} 
                         required 
                       />
@@ -319,9 +355,17 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
                         {showPassword ? <FiEyeOff /> : <FiEye />}
                       </button>
                     </div>
-                    <div className="form-text small text-muted" style={{ fontSize: '11px' }}>
-                      Tip: New students can use their Student ID as default password.
-                    </div>
+                  </div>
+
+                  <div className="login-forgot-link">
+                    <button
+                      type="button"
+                      onClick={standalone ? openResetTab : openResetModal}
+                      className="btn btn-link btn-sm text-decoration-none fw-semibold"
+                      style={{ color: '#0a2d6d' }}
+                    >
+                      Forgot password?
+                    </button>
                   </div>
 
                   {/* Submit Button */}
@@ -341,19 +385,81 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
                     ) : null}
                     {loading ? 'SIGNING IN...' : 'LOGIN'}
                   </button>
-
-                  {/* Forgot Password */}
-                  <div className="text-center mt-3 pt-1">
-                    <button 
-                      type="button" 
-                      onClick={openResetModal}
-                      className="btn btn-link btn-sm text-decoration-none fw-semibold"
-                      style={{ color: '#0a2d6d' }}
-                    >
-                      Forgot Password?
-                    </button>
+                    </form>
                   </div>
-                </form>
+                ) : (
+                  <div id="reset-tab-panel" role="tabpanel" aria-labelledby="reset-tab">
+                    {resetError && <div className="alert alert-danger py-2 px-3 small" role="alert">{resetError}</div>}
+                    {resetMessage && <div className="alert alert-info py-2 px-3 small" role="status">{resetMessage}</div>}
+                    {resetStep === 'request' && (
+                      <form onSubmit={handleForgotPassword}>
+                        <div className="mb-3">
+                          <label htmlFor="reset-email" className="form-label small fw-bold text-secondary">Email address</label>
+                          <input
+                            id="reset-email"
+                            type="email"
+                            className="form-control bg-light py-2"
+                            autoComplete="email"
+                            value={resetData.email}
+                            onChange={(event) => setResetData((current) => ({ ...current, email: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        <button type="submit" className="btn w-100 fw-bold py-2 text-white" style={{ backgroundColor: '#0a2d6d', borderRadius: '12px' }} disabled={resetLoading}>
+                          {resetLoading ? 'Sending code…' : 'Send reset code'}
+                        </button>
+                      </form>
+                    )}
+                    {resetStep === 'reset' && (
+                      <form onSubmit={handleResetSubmit}>
+                        <div className="mb-3">
+                          <label htmlFor="reset-code" className="form-label small fw-bold text-secondary">Six-digit verification code</label>
+                          <input
+                            id="reset-code"
+                            className="form-control bg-light py-2"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={resetData.code}
+                            onChange={(event) => setResetData((current) => ({ ...current, code: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="mb-3">
+                          <label htmlFor="reset-new-password" className="form-label small fw-bold text-secondary">New password</label>
+                          <input
+                            id="reset-new-password"
+                            type="password"
+                            className="form-control bg-light py-2"
+                            autoComplete="new-password"
+                            value={resetData.newPassword}
+                            onChange={(event) => setResetData((current) => ({ ...current, newPassword: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="mb-3">
+                          <label htmlFor="reset-confirm-password" className="form-label small fw-bold text-secondary">Confirm new password</label>
+                          <input
+                            id="reset-confirm-password"
+                            type="password"
+                            className="form-control bg-light py-2"
+                            autoComplete="new-password"
+                            value={resetData.confirmPassword}
+                            onChange={(event) => setResetData((current) => ({ ...current, confirmPassword: event.target.value }))}
+                            required
+                          />
+                        </div>
+                        <button type="submit" className="btn w-100 fw-bold py-2 text-white" style={{ backgroundColor: '#0a2d6d', borderRadius: '12px' }} disabled={resetLoading}>
+                          {resetLoading ? 'Resetting password…' : 'Reset password'}
+                        </button>
+                      </form>
+                    )}
+                    {resetStep === 'complete' && (
+                      <button type="button" className="btn btn-link fw-semibold" onClick={() => setActiveTab('login')}>
+                        Return to log in
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -469,9 +575,10 @@ const LoginModal = ({ isOpen = true, onClose = noop }) => {
         </div>
       )}
       </section>
-    </div>,
-    document.body
+    </div>
   );
+
+  return standalone ? loginContent : createPortal(loginContent, document.body);
 };
 
 export default LoginModal;

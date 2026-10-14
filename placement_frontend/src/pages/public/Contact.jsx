@@ -22,7 +22,12 @@ const defaultContactInfo = {
 
 const Contact = () => {
   const [contactInfo, setContactInfo] = useState(defaultContactInfo);
-  const [form, setForm] = useState({ full_name: '', email: '', subject: '', message: '' });
+  const [form, setForm] = useState({
+    full_name: '',
+    email: '',
+    subject: '',
+    message: '',
+  });
   const [status, setStatus] = useState({ type: '', message: '' });
   const [sending, setSending] = useState(false);
 
@@ -56,7 +61,12 @@ const Contact = () => {
   };
 
   const resetForm = () => {
-    setForm({ full_name: '', email: '', subject: '', message: '' });
+    setForm({
+      full_name: '',
+      email: '',
+      subject: '',
+      message: '',
+    });
     setStatus({ type: '', message: '' });
   };
 
@@ -70,15 +80,21 @@ const Contact = () => {
       const email = form.email.trim();
       const subject = form.subject.trim();
       const message = form.message.trim();
-      if (!fullName || !email || !subject || !message) {
+      if (
+        !fullName ||
+        !email ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        !subject ||
+        !message
+      ) {
         setStatus({
           type: 'error',
-          message: 'Please fill in all required fields with a valid email address.',
+          message: 'Please provide your name, a valid email address, a subject, and a message.',
         });
         return;
       }
 
-      const response = await api.post('api/common/contact_api.php', {
+      const response = await api.post('api/common/submit_contact.php', {
         full_name: fullName,
         email,
         subject,
@@ -90,9 +106,14 @@ const Contact = () => {
 
       setStatus({
         type: 'success',
-        message: response.data.message || 'Thank you! Your message has been sent to the Placement Office.',
+        message: response.data.message || 'Thank you! Your message has been sent to the Registrar and Administrator.',
       });
-      setForm({ full_name: '', email: '', subject: '', message: '' });
+      setForm({
+        full_name: '',
+        email: '',
+        subject: '',
+        message: '',
+      });
     } catch (error) {
       setStatus({
         type: 'error',
@@ -139,7 +160,7 @@ const Contact = () => {
           <div className="contact-eyebrow"><FiGlobe aria-hidden="true" /> Debre Tabor University</div>
           <h1 id="contact-heading">Let’s talk about your next step.</h1>
           <p>
-            Questions about department placement? Send a message to the Placement Office and our team will help you find the right answer.
+            Questions about department placement? Send a message to the Registrar and Administrator, and our team will help you find the right answer.
           </p>
         </section>
 
@@ -149,7 +170,7 @@ const Contact = () => {
               <span className="contact-section-kicker">We’re here to help</span>
               <h2 id="contact-info-heading">Contact information</h2>
               <p className="contact-sidebar-copy">
-                Reach out to the Registrar and Placement Office using any of the options below.
+                Reach out to the Registrar and Administrator using any of the options below.
               </p>
 
               <div className="contact-info-list">
@@ -185,7 +206,7 @@ const Contact = () => {
             <div className="contact-form-heading">
               <span className="contact-section-kicker">Send us a message</span>
               <h2 id="contact-form-heading">How can we help?</h2>
-              <p>Complete the form and your message will go directly to the Placement Office.</p>
+              <p>Complete the form and your message will go directly to the Registrar and Administrator.</p>
             </div>
 
             {status.message && (

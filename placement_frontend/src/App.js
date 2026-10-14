@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import "./App.css";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import api from './services/api.js';
 import Header from "./components/layout/Header.jsx";
 import Footer from "./components/layout/Footer.jsx";
@@ -9,6 +9,7 @@ import Services from "./pages/public/Services.jsx";
 import PlacementInfo from "./pages/public/PlacementInfo.jsx";
 import Announcements from "./pages/public/Announcements.jsx";
 import Contact from "./pages/public/Contact.jsx";
+import Login from "./pages/public/Login.jsx";
 import AdminDashboard from "./pages/admin/Admin_Dashboard.jsx";
 import RegistrarDashboard from "./pages/registrar/RegistrarDashboard.jsx";
 import EditUser from "./pages/admin/EditUser.jsx";
@@ -19,6 +20,8 @@ import StudentRegistration from "./pages/registrar/StudentRegistration.jsx";
 import AssignHead from "./pages/admin/AssignHead.jsx";
 import MissingScoresForm from "./pages/registrar/MissingScoresForm.jsx";
 import Maintenance from './pages/public/Maintenance.jsx';
+import { LanguageProvider } from './contexts/LanguageContext.jsx';
+import { ThemeProvider } from './contexts/ThemeContext.jsx';
 
 const DEFAULT_MAINTENANCE = {
   enabled: false,
@@ -85,37 +88,50 @@ function AppRoutes() {
   }
 
   const isAdminUser = String(user?.role || '').trim().toLowerCase() === 'admin';
-  const isLoginRoute = location.pathname === '/login' || location.state?.openLogin === true;
+  const isLoginRoute = location.pathname === '/login';
   if (maintenance.enabled && !isAdminUser && !isLoginRoute) {
     return <Maintenance settings={maintenance} />;
   }
 
   const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department') || location.pathname.startsWith('/admin/assign-head');
   const isAssignHeadPage = location.pathname === '/admin/assign-head';
+  const routes = (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/services" element={<Services />} />
+      <Route path="/placement-info" element={<PlacementInfo />} />
+      <Route path="/announcements" element={<Announcements />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/admin-dashboard" element={<AdminDashboard />} />
+      <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
+      <Route path="/registrar-dashboard/:tab" element={<RegistrarDashboard />} />
+      <Route path="/student-registration" element={<StudentRegistration />} />
+      <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
+      <Route path="/head-dashboard" element={<HeadDashboard />} />
+      <Route path="/admin/assign-head" element={<AssignHead />} />
+      <Route path="/edit-user/:id" element={<EditUser />} />
+      <Route path="/edit-department/:id" element={<EditDepartment />} />
+      <Route path="/student-dashboard" element={<StudentDashboard />} />
+      <Route path="*" element={<Home />} />
+    </Routes>
+  );
+
+  if (isLoginRoute) {
+    return (
+      <div className="login-route-shell">
+        <Header />
+        <main className="login-route-main">{routes}</main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <>
       <Header />
       <main className={`app-main ${isAdmin && !isAssignHeadPage ? 'dashboard-main' : 'container pt-0'} ${isAssignHeadPage ? 'assign-head-main' : ''}`}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/placement-info" element={<PlacementInfo />} />
-          <Route path="/announcements" element={<Announcements />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Navigate to="/" replace state={{ openLogin: true }} />} />
-          <Route path="/admin-dashboard" element={<AdminDashboard />} />
-          <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
-          <Route path="/registrar-dashboard/:tab" element={<RegistrarDashboard />} />
-          <Route path="/student-registration" element={<StudentRegistration />} />
-          <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
-          <Route path="/head-dashboard" element={<HeadDashboard />} />
-          <Route path="/admin/assign-head" element={<AssignHead />} />
-          <Route path="/edit-user/:id" element={<EditUser />} />
-          <Route path="/edit-department/:id" element={<EditDepartment />} />
-          <Route path="/student-dashboard" element={<StudentDashboard />} />
-          <Route path="*" element={<Home />} />
-        </Routes>
+        {routes}
       </main>
       {!user && <Footer />}
     </>
@@ -125,7 +141,11 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AppRoutes />
+      <ThemeProvider>
+        <LanguageProvider>
+          <AppRoutes />
+        </LanguageProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

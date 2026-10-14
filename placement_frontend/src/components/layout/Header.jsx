@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import './Header.css';
 import dtuLogo from '../../assets/image.png'; // ሎጎህ እዚህ መሆኑን አረጋግጥ
 import api from '../../services/api.js';
-import LoginModal from '../../pages/public/LoginModal.jsx';
 
 const defaultPublicLinks = [
   { id: 'home', label: 'Home', path: '/', enabled: true },
@@ -41,7 +40,6 @@ function Header() {
 
   const [user, setUser] = useState(() => getStoredUser());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [siteBranding, setSiteBranding] = useState({
     universityTitle: 'DEBRE TABOR UNIVERSITY',
     systemSubtitle: 'Student Department Placement System',
@@ -57,12 +55,7 @@ function Header() {
   useEffect(() => {
     setUser(getStoredUser());
     setIsMenuOpen(false);
-    if (location.pathname === '/login' || location.state?.openLogin) {
-      setIsLoginOpen(true);
-    } else {
-      setIsLoginOpen(false);
-    }
-  }, [location.pathname, location.state]);
+  }, [location.pathname]);
 
   useEffect(() => {
     let isMounted = true;
@@ -108,19 +101,11 @@ function Header() {
       sessionStorage.removeItem(key);
     });
     setUser(null);
-    setIsLoginOpen(false);
     navigate('/', { replace: true });
     Promise.resolve(api.post('auth/logout.php')).catch((error) => {
       console.error('Unable to invalidate the server login session:', error);
     });
   };
-
-  const closeLogin = useCallback((options = {}) => {
-    setIsLoginOpen(false);
-    if (location.state?.openLogin && !options.authenticated) {
-      navigate(location.pathname, { replace: true, state: null });
-    }
-  }, [location.pathname, location.state, navigate]);
 
   const isAuthenticated = user !== null;
 
@@ -179,7 +164,7 @@ function Header() {
                   <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
                 </div>
               ) : (
-                <button type="button" className="btn btn-login-custom" onClick={() => setIsLoginOpen(true)}>
+                <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
                   Login
                 </button>
               )}
@@ -187,7 +172,6 @@ function Header() {
           </div>
         </div>
       </nav>
-      <LoginModal isOpen={isLoginOpen} onClose={closeLogin} />
     </header>
   );
 }

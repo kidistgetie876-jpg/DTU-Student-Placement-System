@@ -17,9 +17,9 @@ describe('Contact', () => {
     api.get.mockResolvedValue({ data: {} });
   });
 
-  it('sends the contact message, displays success, and clears the fields', async () => {
+  it('sends a public contact message to the office, displays success, and clears the fields', async () => {
     api.post.mockResolvedValue({
-      data: { success: true, message: 'Your message was sent to the Placement Office.' },
+      data: { success: true, message: 'Your message was sent to the Registrar and Administrator.' },
     });
 
     render(<Contact />);
@@ -29,13 +29,15 @@ describe('Contact', () => {
     fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'I need help with my placement.' } });
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Your message was sent to the Placement Office.');
-    expect(api.post).toHaveBeenCalledWith('api/common/contact_api.php', {
+    expect(await screen.findByRole('status')).toHaveTextContent('Your message was sent to the Registrar and Administrator.');
+    expect(api.post).toHaveBeenCalledWith('api/common/submit_contact.php', {
       full_name: 'Aster Mekonnen',
       email: 'aster@example.edu',
       subject: 'Placement question',
       message: 'I need help with my placement.',
     });
+    expect(screen.getByLabelText(/email address/i)).toBeRequired();
+    expect(screen.queryByLabelText(/send to \/ recipient/i)).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText(/full name/i)).toHaveValue('');
       expect(screen.getByLabelText(/email address/i)).toHaveValue('');
@@ -44,13 +46,7 @@ describe('Contact', () => {
     });
   });
 
-  it('shows the backend validation error and keeps entered values', async () => {
-    api.post.mockRejectedValue({
-      response: {
-        data: { message: 'Please fill in all required fields with a valid email address.' },
-      },
-    });
-
+  it('rejects an invalid email and keeps entered values', async () => {
     render(<Contact />);
     fireEvent.change(screen.getByLabelText(/full name/i), { target: { value: 'Aster Mekonnen' } });
     fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'invalid-email' } });
@@ -58,9 +54,15 @@ describe('Contact', () => {
     fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'Please contact me.' } });
     fireEvent.click(screen.getByRole('button', { name: /send message/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Please fill in all required fields with a valid email address.'
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Please provide your name, a valid email address, a subject, and a message.');
     expect(screen.getByLabelText(/full name/i)).toHaveValue('Aster Mekonnen');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('does not expose recipient routing controls on the public form', () => {
+    render(<Contact />);
+    expect(screen.queryByLabelText(/send to \/ recipient/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/student id/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/specific recipient/i)).not.toBeInTheDocument();
   });
 });

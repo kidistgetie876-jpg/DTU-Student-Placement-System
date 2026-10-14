@@ -1,0 +1,145 @@
+.dashboard-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+
+.dashboard-topbar-copy h2 {
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+}
+
+.dashboard-topbar-copy h2 span {
+  color: var(--dtu-primary, #0a2d6d);
+}
+
+.dashboard-topbar-copy p {
+  color: #64748b;
+}
+
+.dashboard-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.dashboard-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-right: 0.35rem;
+}
+
+.dashboard-profile-avatar {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8efff;
+  color: #0a2d6d;
+  font-weight: 700;
+}
+
+.dashboard-profile-details {
+  display: grid;
+  line-height: 1.2;
+}
+
+.dashboard-profile-details strong {
+  font-size: 0.85rem;
+}
+
+.dashboard-profile-details small {
+  color: #64748b;
+}
+
+.dashboard-control-button,
+.dashboard-language-control button {
+  display: inline-flex;
+  min-width: 2.35rem;
+  height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.55rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.dashboard-control-button:hover,
+.dashboard-language-control button:hover,
+.dashboard-language-control button.active {
+  border-color: #0a2d6d;
+  background: #0a2d6d;
+  color: #fff;
+}
+
+.dashboard-language-control {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+}
+
+.dashboard-language-control button {
+  min-width: 2.1rem;
+  height: 1.95rem;
+  border-color: transparent;
+}
+
+.dark-mode .dashboard-topbar {
+  border-color: #334155;
+  background: #111c2e;
+  color: #e2e8f0;
+}
+
+.dark-mode .dashboard-topbar-copy p,
+.dark-mode .dashboard-profile-details small {
+  color: #a8b6ca;
+}
+
+.dark-mode .dashboard-profile-avatar {
+  background: #263954;
+  color: #bfdbfe;
+}
+
+.dark-mode .dashboard-control-button,
+.dark-mode .dashboard-language-control button {
+  border-color: #475569;
+  background: #17253a;
+  color: #e2e8f0;
+}
+
+.dark-mode .dashboard-control-button:hover,
+.dark-mode .dashboard-language-control button:hover,
+.dark-mode .dashboard-language-control button.active {
+  border-color: #60a5fa;
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.dark-mode .dashboard-language-control {
+  border-color: #475569;
+}
+
+@media (max-width: 767.98px) {
+  .dashboard-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

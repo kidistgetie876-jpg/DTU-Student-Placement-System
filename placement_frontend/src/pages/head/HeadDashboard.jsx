@@ -7,6 +7,9 @@ import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetter
 import api from '../../services/api';
 import './HeadDashboard.css';
 import Reports from './Reports.jsx';
+import Sidebar from '../../components/layout/Sidebar.jsx';
+import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const normalizeDepartment = (dept, index = 0) => {
   const capacity = Number(dept?.capacity ?? 0);
@@ -83,6 +86,7 @@ const defaultDepartments = [
 ];
 
 const HeadDashboard = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [leader, setLeader] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -481,30 +485,14 @@ const HeadDashboard = () => {
   return (
     <div className="head-dashboard container-fluid px-0">
       <div className="row g-0">
-        <aside className="col-xl-2 sidebar p-4">
-          <div className="sidebar-brand mb-5">
-            <h5 className="mb-2">Head Dashboard</h5>
-            <p className="small text-white-75 mb-0">Department leadership tools and placement oversight.</p>
-          </div>
-
-          <nav className="sidebar-nav d-flex flex-column gap-2">
-            <button className={`nav-button ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Overview</button>
-            <button className={`nav-button ${tab === 'approvals' ? 'active' : ''}`} onClick={() => setTab('approvals')}>Approvals</button>
-            <button className={`nav-button ${tab === 'capacity' ? 'active' : ''}`} onClick={() => setTab('capacity')}>Capacity Plan</button>
-            <button className={`nav-button ${tab === 'students' ? 'active' : ''}`} onClick={() => setTab('students')}>Placed Students</button>
-            <button className={`nav-button ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>Reports</button>
-            <button className={`nav-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Preferences</button>
-          </nav>
-        </aside>
+        <Sidebar role="head" activeItem={tab} onSelect={setTab} />
 
         <main className="col-xl-10 p-5 main-section">
-          <header className="dashboard-header mb-5">
-            <div>
-              <h2 className="fw-bold mb-1">Welcome back, {leader.username}</h2>
-              <p className="text-muted mb-0">Track placement progress, approve department allocations, and monitor student outcomes.</p>
-            </div>
-            <div className="status-chip">Head of Department</div>
-          </header>
+          <DashboardHeader
+            username={leader.username}
+            role="Head of Department"
+            subtitle="Track placement progress, approve department allocations, and monitor student outcomes."
+          />
 
           {tab === 'overview' && (
             <>
@@ -526,7 +514,7 @@ const HeadDashboard = () => {
                     onClick={() => handleCardClick('totalStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Total Students</span>
+                      <span className="summary-label">{t('Total Students')}</span>
                       <h3 className="summary-value">{stats.totalStudents}</h3>
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <small style={{ color: '#0d6efd', fontWeight: 'bold' }}>Click to view details →</small>
@@ -571,7 +559,7 @@ const HeadDashboard = () => {
                     onClick={() => handleCardClick('placedStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Placed Students</span>
+                      <span className="summary-label">{t('Placed Students')}</span>
                       <h3 className="summary-value">{stats.placedStudents}</h3>
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <small style={{ color: '#198754', fontWeight: 'bold' }}>Click to view details →</small>
@@ -618,7 +606,7 @@ const HeadDashboard = () => {
                     onClick={() => handleCardClick('approvalRequests')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Pending Approvals</span>
+                      <span className="summary-label">{t('Pending Approvals')}</span>
                       <h3 className="summary-value">{stats.approvalRequests}</h3>
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <small style={{ color: '#dc3545', fontWeight: 'bold' }}>Click to view details →</small>
@@ -664,7 +652,7 @@ const HeadDashboard = () => {
                     onClick={() => handleCardClick('capacityUsed')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Capacity Utilized</span>
+                      <span className="summary-label">{t('Capacity Utilized')}</span>
                       <h3 className="summary-value">{stats.capacityUsed}%</h3>
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <small style={{ color: '#ffc107', fontWeight: 'bold' }}>Click to view details →</small>

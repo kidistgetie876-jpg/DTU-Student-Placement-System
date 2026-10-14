@@ -4,8 +4,10 @@ import LoginModal from './LoginModal.jsx';
 
 const Login = () => {
   const navigate = useNavigate();
-  const closeLogin = useCallback(() => navigate('/', { replace: true }), [navigate]);
-  return <LoginModal isOpen onClose={closeLogin} />;
+  const closeLogin = useCallback((options = {}) => {
+    if (!options.authenticated) navigate('/', { replace: true });
+  }, [navigate]);
+  return <LoginModal isOpen onClose={closeLogin} standalone />;
 };
 
 export default Login;

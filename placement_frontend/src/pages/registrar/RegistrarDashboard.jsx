@@ -5,7 +5,6 @@ import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentRegistration from './StudentRegistration';
 import UnassignedStudents from './UnassignedStudents.jsx';
 import DataImport from '../admin/DataImport.jsx';
-import ContactMessages from '../admin/ContactMessages.jsx';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
 import * as XLSX from 'xlsx';
@@ -13,8 +12,11 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import dtuLogo from '../../assets/images6.jpg';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
+import Sidebar from '../../components/layout/Sidebar.jsx';
+import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { FaTrash } from 'react-icons/fa';
-import { FiCalendar, FiToggleRight } from 'react-icons/fi';
+import { FiCalendar } from 'react-icons/fi';
 
 export const parseYesNo = (value) => {
   if (value === null || value === undefined) return false;
@@ -113,7 +115,6 @@ const registrarTabs = [
   'unassigned-students',
   'appeals',
   'reports',
-  'contact-messages',
   'announcements',
   'student-registration',
 ];
@@ -368,6 +369,7 @@ const normalizeDepartmentPayload = (payload) => {
 };
 
 const RegistrarDashboard = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const { tab: routeTab } = useParams();
@@ -1655,122 +1657,14 @@ const RegistrarDashboard = () => {
         metadata={`Academic Year: 2016 E.C. / 2026 G.C. | Generated on: ${new Date().toLocaleDateString()}`}
       />
       <div className="row g-0">
-        <aside className="col-md-2 sidebar bg-dark text-white d-flex flex-column p-4">
-          <div className="sidebar-brand mb-5">
-            <h4 className="fw-bold text-white mb-1">Registrar Portal</h4>
-            <p className="text-white-50 small mb-0">Review placements, departments, and approvals.</p>
-          </div>
-
-          <nav className="nav flex-column gap-2 mb-4">
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'overview' ? 'active' : ''}`}
-              onClick={() => setTab('overview')}
-            >
-              Overview
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'student-info' ? 'active' : ''}`}
-              onClick={() => setTab('student-info')}
-            >
-              Student Information
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'data-import' ? 'active' : ''}`}
-              onClick={() => setTab('data-import')}
-            >
-              Import Student Data
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'choice-matrix' ? 'active' : ''}`}
-              onClick={() => setTab('choice-matrix')}
-            >
-              Student Choice Matrix
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'capacity' ? 'active' : ''}`}
-              onClick={() => setTab('capacity')}
-            >
-              Department Capacity
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'department-status' ? 'active' : ''}`}
-              onClick={() => setTab('department-status')}
-            >
-              <FiToggleRight className="me-2" aria-hidden="true" />
-              Department Status
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'placement-rules' ? 'active' : ''}`}
-              onClick={() => setTab('placement-rules')}
-            >
-              Placement Rules
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'deadlines' ? 'active' : ''}`}
-              onClick={() => setTab('deadlines')}
-            >
-              <FiCalendar className="me-2" aria-hidden="true" />
-              Placement Deadlines
-            </button>
-            {/* <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'placements' ? 'active' : ''}`}
-              onClick={() => setTab('placements')}
-            >
-              Placements
-            </button> */}
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'run-placement' ? 'active' : ''}`}
-              onClick={() => setTab('run-placement')}
-            >
-              Run Placement
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'approve-results' ? 'active' : ''}`}
-              onClick={() => setTab('approve-results')}
-            >
-              Approve & Publish Results
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'unassigned-students' ? 'active' : ''}`}
-              onClick={() => setTab('unassigned-students')}
-            >
-              Unassigned Students
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'appeals' ? 'active' : ''}`}
-              onClick={() => setTab('appeals')}
-            >
-              Handle Appeals
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'reports' ? 'active' : ''}`}
-              onClick={() => setTab('reports')}
-            >
-              Reports
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'contact-messages' ? 'active' : ''}`}
-              onClick={() => setTab('contact-messages')}
-            >
-              Contact Messages
-            </button>
-            <button
-              className={`btn dashboard-nav-btn text-start ${tab === 'announcements' ? 'active' : ''}`}
-              onClick={() => setTab('announcements')}
-            >
-              Announcements
-            </button>
-          </nav>
-        </aside>
+        <Sidebar role="registrar" activeItem={tab} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
-          <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4">
-            <div>
-              <h2 className="fw-bold mb-1">Welcome back, {registrar.username}</h2>
-              <p className="text-muted mb-0">Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions.</p>
-            </div>
-            <span className="badge bg-primary text-white py-2 px-3">Registrar</span>
-          </div>
+          <DashboardHeader
+            username={registrar.username}
+            role="Registrar"
+            subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
+          />
 
           {tab === 'overview' ? (
             <>
@@ -1792,7 +1686,7 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('departments')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Departments</span>
+                      <span className="summary-label">{t('Departments')}</span>
                       <h3 className="summary-value">{summary.departments}</h3>
                       <small className="text-muted">DTU academic departments</small>
                       <div className="mt-2"><small className="text-primary fw-bold">Click to view details →</small></div>
@@ -1816,7 +1710,7 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('activeStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Active Students</span>
+                      <span className="summary-label">{t('Active Students')}</span>
                       <h3 className="summary-value">{summary.activeStudents}</h3>
                       <small className="text-muted">Verified for this cycle</small>
                       <div className="mt-2"><small className="text-success fw-bold">Click to view details →</small></div>
@@ -1840,7 +1734,7 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('placementsCompleted')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Placements Completed</span>
+                      <span className="summary-label">{t('Placements Completed')}</span>
                       <h3 className="summary-value">{summary.placementsCompleted}</h3>
                       <small className="text-muted">Department assignments finalized</small>
                       <div className="mt-2"><small className="text-warning fw-bold">Click to view details →</small></div>
@@ -1864,7 +1758,7 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('unplacedStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Unplaced Students</span>
+                      <span className="summary-label">{t('Unplaced Students')}</span>
                       <h3 className="summary-value">{summary.unplacedStudents}</h3>
                       <small className="text-muted">Awaiting placement run</small>
                       <div className="mt-2"><small className="fw-bold" style={{ color: '#fd7e14' }}>Click to view details →</small></div>
@@ -1888,47 +1782,10 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('pendingApprovals')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">Pending Approvals</span>
+                      <span className="summary-label">{t('Pending Approvals')}</span>
                       <h3 className="summary-value">{summary.pendingApprovals}</h3>
                       <small className="text-muted">Awaiting registrar approval</small>
                       <div className="mt-2"><small className="text-danger fw-bold">Click to view details →</small></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="row g-4">
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">DTU Registrar Workflow</h5>
-                      <p className="text-muted">The registrar office verifies departmental capacity, checks applicant records, and approves the final placement batch before publishing outcomes to students.</p>
-                      <ul className="list-group list-group-flush">
-                        <li className="list-group-item">Review department capacity and college seat allocation.</li>
-                        <li className="list-group-item">Validate student data for placement batch {placementBatch}.</li>
-                        <li className="list-group-item">Approve final placement results and publish outcomes.</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-lg-6">
-                  <div className="card shadow-sm">
-                    <div className="card-body">
-                      <h5 className="card-title">Quick actions</h5>
-                      <div className="d-grid gap-2">
-                        <button className="btn btn-outline-primary" onClick={() => setTab('student-info')}>
-                          Student Information
-                        </button>
-                        <button className="btn btn-outline-primary" onClick={() => setTab('capacity')}>
-                          Review Department Capacity
-                        </button>
-                        <button className="btn btn-outline-primary" onClick={() => setTab('placements')}>
-                          Review Placement Requests
-                        </button>
-                        <button className="btn btn-outline-primary" onClick={() => setTab('reports')}>
-                          Open Placements Report
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -3479,8 +3336,6 @@ const RegistrarDashboard = () => {
             </div>
           ) : tab === 'unassigned-students' ? (
             <UnassignedStudents refreshToken={unassignedStudentsRefreshToken} />
-          ) : tab === 'contact-messages' ? (
-            <ContactMessages />
           ) : tab === 'announcements' ? (
             <div className="card shadow-sm">
               <div className="card-body">
