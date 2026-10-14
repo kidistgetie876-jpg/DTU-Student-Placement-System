@@ -196,14 +196,6 @@ const StudentDashboard = () => {
   const [markingNotificationId, setMarkingNotificationId] = useState(null);
 
   useEffect(() => {
-    const selectDashboardTab = (event) => {
-      if (event.detail?.tab) setTab(event.detail.tab);
-    };
-    window.addEventListener('dashboard-select-tab', selectDashboardTab);
-    return () => window.removeEventListener('dashboard-select-tab', selectDashboardTab);
-  }, []);
-
-  useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) { navigate('/login'); return; }
     const parsedUser = JSON.parse(storedUser);
@@ -365,13 +357,6 @@ const StudentDashboard = () => {
   }, [student, tab]);
 
   const unreadNotifications = notifications.filter(isNotificationUnread).length;
-
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent('dashboard-notification-count', { detail: { count: unreadNotifications } }));
-    return () => {
-      window.dispatchEvent(new CustomEvent('dashboard-notification-count', { detail: { count: 0 } }));
-    };
-  }, [unreadNotifications]);
 
   const markAllNotificationsRead = async () => {
     setMarkingNotificationsRead(true);
@@ -658,9 +643,6 @@ const StudentDashboard = () => {
             subtitle="Profile, preferences, and placement updates."
             profileDetail={`ID: ${student?.id_number || student?.id}`}
             dashboardPath="/student-dashboard"
-            notificationCount={unreadNotifications}
-            onSelectTab={setTab}
-            notificationsTab="notifications"
           />
 
           {tab === 'overview' && (

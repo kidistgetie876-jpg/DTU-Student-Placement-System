@@ -35,16 +35,6 @@ const defaultPlacementSettings = {
   capacityTitle: 'Department Capacity Overview',
   capacitySummary: 'Each department has a fixed number of available seats determined by the university council and academic leadership.',
   capacityDescription: 'Capacity is limited and may vary by department, stream, and academic year. Students are ranked according to their placement score and department preferences.',
-  capacityGroup1: 'Natural Science',
-  capacityGroup2: 'Social Science',
-  capacityGroup3: 'Health Sciences',
-  capacityGroup4: 'Technology & Engineering',
-  capacityGroup5: 'Business & Economics',
-  capacityGroup1Description: 'Departments in this category operate with fixed quota limits, and seats are allocated based on merit ranking and preference order.',
-  capacityGroup2Description: 'Departments in this category operate with fixed quota limits, and seats are allocated based on merit ranking and preference order.',
-  capacityGroup3Description: 'Departments in this category operate with fixed quota limits, and seats are allocated based on merit ranking and preference order.',
-  capacityGroup4Description: 'Departments in this category operate with fixed quota limits, and seats are allocated based on merit ranking and preference order.',
-  capacityGroup5Description: 'Departments in this category operate with fixed quota limits, and seats are allocated based on merit ranking and preference order.',
   loginTitle: 'Login & Account Guide',
   loginSummary: 'Students access the system through their assigned portal credentials provided by the Registrar’s Office.',
   loginStep1: 'Open the Student Portal and go to the login screen.',
@@ -155,23 +145,46 @@ const placementGuidance = {
         <p className="text-muted mb-3">
           {settings.capacityDescription}
         </p>
-        <div className="row g-3">
-          {[1, 2, 3, 4, 5].map((groupNumber) => ({
-            name: settings[`capacityGroup${groupNumber}`],
-            description: settings[`capacityGroup${groupNumber}Description`],
-            groupNumber,
-          })).map(({ name: group, description, groupNumber }) => (
-            <div className="col-md-6 col-xl-4" key={groupNumber}>
-              <div className="border rounded-4 p-3 h-100 bg-white shadow-sm">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span className="fw-bold" style={{ color: "#0a2d6d" }}>{group}</span>
-                  <span className="badge rounded-pill" style={{ background: "rgba(215, 183, 90, 0.18)", color: "#0a2d6d" }}>{groupNumber} Group</span>
-                </div>
-                <p className="small text-muted mb-0">{description}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        {settings.capacitiesLoading ? (
+          <div className="alert alert-info mb-0" role="status">Loading department capacities...</div>
+        ) : settings.capacitiesError ? (
+          <div className="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2" role="alert">
+            <span>{settings.capacitiesError}</span>
+            <button type="button" className="btn btn-sm btn-outline-danger" onClick={settings.onRetryCapacities}>
+              Try again
+            </button>
+          </div>
+        ) : settings.capacityDepartments.length === 0 ? (
+          <div className="alert alert-secondary mb-0" role="status">No department capacities are currently available.</div>
+        ) : (
+          <div className="table-responsive border rounded-4 shadow-sm">
+            <table className="table table-hover align-middle mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th scope="col" className="px-3 py-3">Department ID</th>
+                  <th scope="col" className="py-3">Stream / College</th>
+                  <th scope="col" className="py-3">Department Name</th>
+                  <th scope="col" className="text-end px-3 py-3">Maximum Student Quota</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settings.capacityDepartments.map((department) => (
+                  <tr key={department.id}>
+                    <td className="px-3">{department.id}</td>
+                    <td>
+                      <div>{department.stream || '—'}</div>
+                      {department.college_name && (
+                        <div className="small text-muted">{department.college_name}</div>
+                      )}
+                    </td>
+                    <td className="fw-semibold">{department.name}</td>
+                    <td className="text-end px-3 fw-bold">{department.capacity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     ),
   },
@@ -266,7 +279,42 @@ function PlacementInfo() {
   const [rulesSettings, setRulesSettings] = useState(defaultPlacementSettings);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState('');
+  const [capacityDepartments, setCapacityDepartments] = useState([]);
+  const [capacitiesLoading, setCapacitiesLoading] = useState(false);
+  const [capacitiesError, setCapacitiesError] = useState('');
+  const [capacityRetry, setCapacityRetry] = useState(0);
   const activeContent = placementGuidance[activeTab];
+
+  useEffect(() => {
+    if (activeTab !== 'capacity') return undefined;
+
+    let isMounted = true;
+    setCapacitiesLoading(true);
+    setCapacitiesError('');
+
+    api.get('api/common/get_public_capacities.php')
+      .then(({ data }) => {
+        if (!data?.success || !Array.isArray(data.departments)) {
+          throw new Error(data?.message || 'Unable to load department capacities.');
+        }
+        if (isMounted) setCapacityDepartments(data.departments);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setCapacitiesError(
+          error.response?.data?.message
+          || error.message
+          || 'Unable to load department capacities. Please try again.'
+        );
+      })
+      .finally(() => {
+        if (isMounted) setCapacitiesLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab, capacityRetry]);
 
   useEffect(() => {
     let isMounted = true;
@@ -351,7 +399,16 @@ function PlacementInfo() {
             <p className="text-muted mb-0">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
           </div>
 
-          {typeof activeContent.body === 'function' ? activeContent.body({ ...placementSettings, ...rulesSettings }) : activeContent.body}
+          {typeof activeContent.body === 'function'
+            ? activeContent.body({
+              ...placementSettings,
+              ...rulesSettings,
+              capacityDepartments,
+              capacitiesLoading,
+              capacitiesError,
+              onRetryCapacities: () => setCapacityRetry((retry) => retry + 1),
+            })
+            : activeContent.body}
         </div>
       </div>
     </div>

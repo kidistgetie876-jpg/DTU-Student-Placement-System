@@ -70,8 +70,13 @@ try {
     // 2. Count active verified students (students with verified profiles)
      $activeStudents = countQuery($db, "SELECT COUNT(*) AS total FROM users WHERE LOWER(role) = 'student'");
 
-    // 3. Count placements completed (approved placements)
-     $placementsCompleted = countQuery($db, "SELECT COUNT(DISTINCT student_id) AS total FROM placement_results WHERE LOWER(status) IN ('approved', 'published', 'placed')");
+    // 3. Count the student records shown in the Registrar's placed-students modal.
+     $placementsCompleted = countQuery($db, "
+        SELECT COUNT(*) AS total
+        FROM student_data sd
+        INNER JOIN users u ON u.id = sd.user_id AND LOWER(u.role) = 'student'
+        WHERE LOWER(TRIM(sd.status)) IN ('placed', 'approved', 'published')
+     ");
 
     // 4. Count pending approvals (placement results awaiting approval)
      $pendingApprovals = countQuery($db, "SELECT COUNT(DISTINCT student_id) AS total FROM placement_results WHERE LOWER(status) IN ('pending', 'pending_approval')");

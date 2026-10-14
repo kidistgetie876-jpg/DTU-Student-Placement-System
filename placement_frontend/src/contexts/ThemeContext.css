@@ -160,3 +160,92 @@
 .dark-mode .role-sidebar-item.active {
   color: #fff;
 }
+
+html.eye-care-mode,
+body.eye-care-mode {
+  color: #4b4232;
+  background-color: #fbf0d9;
+  color-scheme: light;
+}
+
+body.eye-care-mode :is(.card, .modal-content, .list-group-item) {
+  border-color: #dfd0b4;
+  background-color: #fff8e9;
+  color: #4b4232;
+}
+
+body.eye-care-mode :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea, .form-control, .form-select) {
+  border-color: #d8c7a8;
+  background-color: #fffaf0;
+  color: #4b4232;
+  color-scheme: light;
+}
+
+body.eye-care-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard) {
+  --bs-body-color: #4b4232;
+  --bs-body-bg: #fbf0d9;
+  --bs-border-color: #dfd0b4;
+  color: #4b4232;
+  background-color: #fbf0d9;
+}
+
+body.eye-care-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard)
+  :is(.main-content, .main-section, .container-fluid) {
+  background-color: #fbf0d9;
+  color: #4b4232;
+}
+
+body.eye-care-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard)
+  :is(.card, .summary-card, .analytics-card, .task-card, .settings-card, .modal-content, .list-group-item) {
+  border-color: #dfd0b4 !important;
+  background-color: #fff8e9 !important;
+  color: #4b4232 !important;
+}
+
+body.eye-care-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard)
+  :is(h1, h2, h3, h4, h5, h6, p, label, legend, dt, dd, th, td, .form-label, .text-dark, .text-body) {
+  color: #514735;
+}
+
+body.eye-care-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard)
+  :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  border-color: #d8c7a8 !important;
+  background-color: #fffaf0 !important;
+  color: #4b4232 !important;
+  color-scheme: light;
+}
+
+body.eye-care-mode :is(.form-control, input, textarea)::placeholder {
+  color: #887b62 !important;
+  opacity: 1;
+}
+
+body.eye-care-mode :is(.table, .table-light) {
+  --bs-table-color: #514735;
+  --bs-table-bg: #fff8e9;
+  --bs-table-border-color: #dfd0b4;
+  --bs-table-striped-bg: #f7ecd5;
+  --bs-table-hover-bg: #f3e7ce;
+}
+
+body.eye-care-mode .dashboard-subheader {
+  border-color: #dfd0b4;
+  background: rgba(255, 248, 233, 0.96);
+}
+
+body.eye-care-mode .dashboard-control-button,
+body.eye-care-mode .dashboard-profile-trigger {
+  border-color: #d8c7a8;
+  background-color: #fff8e9;
+  color: #514735;
+}
+
+body.eye-care-mode .dashboard-modal {
+  border-color: #dfd0b4;
+  background-color: #fff8e9;
+  color: #4b4232;
+}
+
+body.eye-care-mode .dashboard-modal-header h3 {
+  color: #514735;
+}

@@ -62,22 +62,27 @@ describe('DashboardHeader', () => {
   });
 
   beforeEach(() => {
-    jest.spyOn(api, 'get').mockResolvedValue({
-      data: {
-        success: true,
-        profile: {
-          id: 7,
-          first_name: 'Aster',
-          last_name: 'Gebre',
-          full_name: 'Aster Gebre',
-          username: 'Aster',
-          email: 'aster@example.com',
-          role: 'registrar',
-        },
-      },
-    });
+    jest.spyOn(api, 'get').mockImplementation((path) => Promise.resolve({
+      data: path === 'api/common/get_profile.php'
+        ? {
+            success: true,
+            profile: {
+              id: 7,
+              first_name: 'Aster',
+              last_name: 'Gebre',
+              full_name: 'Aster Gebre',
+              username: 'Aster',
+              email: 'aster@example.com',
+              role: 'registrar',
+            },
+          }
+        : { success: true, notifications: [], unread_count: 0 },
+    }));
     localStorage.removeItem('language');
     localStorage.removeItem('darkMode');
+    localStorage.removeItem('themeMode');
+    document.documentElement.classList.remove('dark-mode', 'eye-care-mode');
+    document.body.classList.remove('dark-mode', 'eye-care-mode');
     localStorage.setItem('user', JSON.stringify({
       first_name: 'Aster',
       last_name: 'Gebre',
@@ -97,6 +102,17 @@ describe('DashboardHeader', () => {
     expect(screen.getByRole('button', { name: 'Switch to light mode' })).toBeInTheDocument();
   });
 
+  it('enables and persists Eye Care Mode from the dashboard header', () => {
+    renderDashboardHeader();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to eye care mode' }));
+
+    expect(document.documentElement).toHaveClass('eye-care-mode');
+    expect(document.documentElement).not.toHaveClass('dark-mode');
+    expect(localStorage.getItem('themeMode')).toBe('eye-care');
+    expect(screen.getByRole('button', { name: 'Turn off eye care mode' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('offers English and Amharic from the language dropdown', () => {
     renderDashboardHeader();
 
@@ -110,9 +126,9 @@ describe('DashboardHeader', () => {
   });
 
   it('shows the profile card, role badge, and notification count', () => {
-    renderDashboardHeader({ notificationCount: 2 });
+    renderDashboardHeader();
 
-    expect(screen.getByRole('button', { name: 'Notifications (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
 
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toBeInTheDocument();
@@ -133,6 +149,52 @@ describe('DashboardHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toHaveTextContent('Aster Gebre');
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toHaveTextContent('Registrar');
+  });
+
+  it('loads unread notifications, marks a selected notification and supports mark all read', async () => {
+    api.get.mockImplementation((path) => Promise.resolve({
+      data: path === 'api/common/get_profile.php'
+        ? {
+            success: true,
+            profile: {
+              id: 7,
+              first_name: 'Aster',
+              last_name: 'Gebre',
+              full_name: 'Aster Gebre',
+              username: 'Aster',
+              email: 'aster@example.com',
+              role: 'registrar',
+            },
+          }
+        : {
+            success: true,
+            unread_count: 2,
+            notifications: [
+              { id: 31, title: 'First alert', message: 'First message', is_read: 0, notification_type: 'general' },
+              { id: 32, title: 'Second alert', message: 'Second message', is_read: 0, notification_type: 'general' },
+              { id: 33, title: 'Earlier alert', message: 'Earlier message', is_read: 1, notification_type: 'general' },
+            ],
+          },
+    }));
+    const postSpy = jest.spyOn(api, 'post').mockResolvedValue({ data: { success: true } });
+    renderDashboardHeader({ variant: 'navigation' });
+
+    const bellButton = await screen.findByRole('button', { name: 'Notifications (2)' });
+    expect(api.get).toHaveBeenCalledWith('api/common/get_notifications.php');
+    fireEvent.click(bellButton);
+    expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /First alert/ }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications (1)' })).toBeInTheDocument());
+    expect(postSpy).toHaveBeenCalledWith('api/common/mark_notifications_read.php', {
+      notification_id: 31,
+      notification_type: 'general',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument());
+    expect(postSpy).toHaveBeenCalledWith('api/common/mark_notifications_read.php', { mark_all: true });
+    expect(screen.queryByRole('button', { name: 'Notifications (0)' })).not.toBeInTheDocument();
   });
 
   it('updates full name and email using the profile API', async () => {
@@ -237,6 +299,8 @@ describe('DashboardHeader', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Change Password' }));
+    expect(document.body.querySelector('.dashboard-modal-backdrop')).toBeInTheDocument();
+    expect(document.querySelector('.main-header-container .dashboard-modal-backdrop')).toBeNull();
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'old-password' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'new-password-123' } });
     fireEvent.change(screen.getByLabelText('Confirm New Password'), { target: { value: 'new-password-123' } });
@@ -250,12 +314,30 @@ describe('DashboardHeader', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Password changed successfully.');
   });
 
+  it('toggles visibility for each Change Password field', () => {
+    renderDashboardHeader();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Change Password' }));
+
+    const currentPassword = screen.getByLabelText('Current Password');
+    expect(currentPassword).toHaveAttribute('type', 'password');
+    fireEvent.click(screen.getByRole('button', { name: 'Show current password' }));
+    expect(currentPassword).toHaveAttribute('type', 'text');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide current password' }));
+    expect(currentPassword).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('New Password')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Confirm New Password')).toHaveAttribute('type', 'password');
+  });
+
   it('opens theme and language settings from the profile menu', () => {
     renderDashboardHeader();
 
     fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Dashboard Settings' }));
     expect(screen.getByRole('dialog', { name: 'Dashboard Settings' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Eye Care' }));
+    expect(document.documentElement).toHaveClass('eye-care-mode');
     fireEvent.click(screen.getByRole('button', { name: 'አማርኛ' }));
     expect(localStorage.getItem('language')).toBe('am');
   });

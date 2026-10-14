@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api.js';
-import { FiEye, FiEyeOff } from 'react-icons/fi';
+import PasswordInput from '../../components/layout/PasswordInput.jsx';
 
 const AdminAccount = () => {
   const [admin, setAdmin] = useState(null);
@@ -8,12 +8,6 @@ const AdminAccount = () => {
   const [formData, setFormData] = useState({ username: '', email: '', currentPassword: '', newPassword: '', confirmPassword: '' });
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [loading, setLoading] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState({ current: false, new: false, confirm: false });
-
-  const togglePassword = (field) => {
-    setVisiblePasswords((previous) => ({ ...previous, [field]: !previous[field] }));
-  };
-
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user'));
     if (user) {
@@ -50,7 +44,6 @@ const AdminAccount = () => {
         localStorage.setItem('user', JSON.stringify({ ...admin, username: formData.username, email: formData.email }));
         setIsEditing(false);
         setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
-        setVisiblePasswords({ current: false, new: false, confirm: false });
       } else {
         setMsg({ text: res.data.message, type: 'danger' });
       }
@@ -89,31 +82,16 @@ const AdminAccount = () => {
               <div className="bg-light p-3 rounded-3 mb-3 border">
                 <div className="mb-3">
                   <label className="form-label small fw-bold">Current Password</label>
-                  <div className="input-group mb-3">
-                    <input type={visiblePasswords.current ? 'text' : 'password'} className="form-control shadow-sm" autoComplete="current-password" value={formData.currentPassword}
-                      onChange={(e) => setFormData({...formData, currentPassword: e.target.value})} required />
-                    <button type="button" className="btn btn-outline-secondary" aria-label={visiblePasswords.current ? 'Hide current password' : 'Show current password'} onClick={() => togglePassword('current')}>
-                      {visiblePasswords.current ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                  </div>
+                  <PasswordInput className="mb-3" inputClassName="form-control shadow-sm" autoComplete="current-password" label="current password" value={formData.currentPassword}
+                    onChange={(e) => setFormData({...formData, currentPassword: e.target.value})} required />
                   <label className="form-label small fw-bold">New Password (Optional)</label>
-                  <div className="input-group">
-                    <input type={visiblePasswords.new ? 'text' : 'password'} className="form-control shadow-sm" autoComplete="new-password" value={formData.newPassword}
-                      onChange={(e) => setFormData({...formData, newPassword: e.target.value})} />
-                    <button type="button" className="btn btn-outline-secondary" aria-label={visiblePasswords.new ? 'Hide new password' : 'Show new password'} onClick={() => togglePassword('new')}>
-                      {visiblePasswords.new ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                  </div>
+                  <PasswordInput className="mb-3" inputClassName="form-control shadow-sm" autoComplete="new-password" label="new password" value={formData.newPassword}
+                    onChange={(e) => setFormData({...formData, newPassword: e.target.value})} />
                 </div>
                 <div>
                   <label className="form-label small fw-bold">Confirm New Password</label>
-                  <div className="input-group">
-                    <input type={visiblePasswords.confirm ? 'text' : 'password'} className="form-control shadow-sm" autoComplete="new-password" value={formData.confirmPassword}
-                      onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})} />
-                    <button type="button" className="btn btn-outline-secondary" aria-label={visiblePasswords.confirm ? 'Hide confirm password' : 'Show confirm password'} onClick={() => togglePassword('confirm')}>
-                      {visiblePasswords.confirm ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                  </div>
+                  <PasswordInput inputClassName="form-control shadow-sm" autoComplete="new-password" label="confirm password" value={formData.confirmPassword}
+                    onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})} />
                 </div>
               </div>
             )}
@@ -124,7 +102,7 @@ const AdminAccount = () => {
               ) : (
                 <>
                   <button type="submit" className="btn btn-success px-4" disabled={loading}>{loading ? 'Saving...' : 'Save Changes'}</button>
-                  <button type="button" className="btn btn-light border" onClick={() => { setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' })); setVisiblePasswords({ current: false, new: false, confirm: false }); setIsEditing(false); }}>Cancel</button>
+                  <button type="button" className="btn btn-light border" onClick={() => { setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' })); setIsEditing(false); }}>Cancel</button>
                 </>
               )}
             </div>

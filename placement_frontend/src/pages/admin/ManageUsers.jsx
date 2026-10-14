@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import PasswordInput from '../../components/layout/PasswordInput.jsx';
 import './ManageUsers.css';
 
 const normalizeRole = (role = '') => String(role || '').trim().toLowerCase();
@@ -380,11 +381,11 @@ const ManageUsers = () => {
                 </div>
                 <div className="col-md-2">
                   <label className="form-label" htmlFor="new-password">Password</label>
-                  <input
+                  <PasswordInput
                     id="new-password"
-                    type="password"
-                    className="form-control"
+                    inputClassName="form-control"
                     placeholder="Password"
+                    label="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     disabled={saving}

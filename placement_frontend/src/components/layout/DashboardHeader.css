@@ -83,6 +83,146 @@
   padding: 0;
 }
 
+.dashboard-theme-button,
+.dashboard-eye-care-button {
+  flex: 0 0 auto;
+}
+
+.dashboard-notifications-dropdown {
+  right: 0;
+  width: min(25rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 8rem));
+  overflow: hidden;
+  padding: 0;
+}
+
+.dashboard-notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dashboard-notifications-header > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.dashboard-notifications-header strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.dashboard-notifications-header span {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.dashboard-dropdown .dashboard-mark-all-read {
+  width: auto;
+  min-height: 2rem;
+  flex: 0 0 auto;
+}
+
+.dashboard-eye-care-button.is-active {
+  border-color: #d7bb7e;
+  background: #fbf0d9;
+  color: #6a5731;
+}
+
+.eye-care-mode .dashboard-theme-button,
+.eye-care-mode .dashboard-eye-care-button.is-active {
+  border-color: #d7bb7e;
+  background: #fbf0d9;
+  color: #6a5731;
+}
+
+.dashboard-dropdown .dashboard-mark-all-read:hover:not(:disabled) {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.dashboard-dropdown .dashboard-mark-all-read:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dashboard-notifications-list {
+  max-height: min(25rem, calc(100vh - 13rem));
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+}
+
+.dashboard-notifications-list li + li {
+  border-top: 1px solid #f1f5f9;
+}
+
+.dashboard-dropdown .dashboard-notification-item {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 0;
+  padding: 0.7rem;
+  border-radius: 0.65rem;
+}
+
+.dashboard-dropdown .dashboard-notification-item.is-unread {
+  background: #eff6ff;
+}
+
+.dashboard-notification-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.dashboard-notification-item-heading strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-notification-message {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #475569;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dashboard-notification-item small {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.dashboard-notification-unread-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #dc2626;
+}
+
+.dashboard-notifications-empty,
+.dashboard-notifications-error {
+  margin: 0;
+  padding: 1.1rem 1rem;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.dashboard-notifications-error {
+  color: #b91c1c;
+}
+
 .dashboard-notification-badge {
   position: absolute;
   top: -0.38rem;
@@ -206,11 +346,12 @@
 .dashboard-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  z-index: 3000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  overflow-y: auto;
   background: rgba(15, 23, 42, 0.48);
 }
 
@@ -469,6 +610,43 @@
   border-color: #334155;
   background: #111c2e;
   color: #e2e8f0;
+}
+
+.dark-mode .dashboard-notifications-header {
+  border-bottom-color: #334155;
+}
+
+.dark-mode .dashboard-notifications-header strong,
+.dark-mode .dashboard-notification-item-heading strong {
+  color: #f1f5f9;
+}
+
+.dark-mode .dashboard-notifications-header span,
+.dark-mode .dashboard-notification-message,
+.dark-mode .dashboard-notification-item small,
+.dark-mode .dashboard-notifications-empty {
+  color: #a8b6ca;
+}
+
+.dark-mode .dashboard-dropdown .dashboard-notification-item.is-unread {
+  background: #1e3a5f;
+}
+
+.dark-mode .dashboard-notifications-list li + li {
+  border-top-color: #334155;
+}
+
+.dark-mode .dashboard-dropdown .dashboard-mark-all-read {
+  color: #93c5fd;
+}
+
+.dark-mode .dashboard-dropdown .dashboard-mark-all-read:hover:not(:disabled) {
+  background: #1e3a5f;
+  color: #bfdbfe;
+}
+
+.dark-mode .dashboard-notifications-error {
+  color: #fca5a5;
 }
 
 .dark-mode .dashboard-modal {

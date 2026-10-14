@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bell,
   ChevronDown,
+  Eye,
   Globe,
   LayoutDashboard,
   LockKeyhole,
@@ -17,6 +19,7 @@ import api from '../../services/api.js';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
 import EditProfileModal from './EditProfileModal.jsx';
+import ChangePasswordModal from './ChangePasswordModal.jsx';
 import './DashboardHeader.css';
 
 const readStoredUser = () => {
@@ -51,16 +54,19 @@ const DashboardHeader = ({
   greeting = 'Welcome back',
   profileDetail,
   dashboardPath,
-  notificationCount = 0,
-  onSelectTab,
-  notificationsTab,
 }) => {
-  const { isDarkMode, toggleTheme } = useTheme();
+  const { isDarkMode, isEyeCareMode, toggleTheme, toggleEyeCareMode, setThemeMode } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const [openMenu, setOpenMenu] = useState(null);
   const [modal, setModal] = useState(null);
   const [profile, setProfile] = useState(() => readStoredUser());
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
+  const [notificationActionError, setNotificationActionError] = useState('');
+  const [markingAllNotifications, setMarkingAllNotifications] = useState(false);
+  const [markingNotificationId, setMarkingNotificationId] = useState(null);
   const [modalError, setModalError] = useState('');
   const [modalSuccess, setModalSuccess] = useState('');
   const [passwordForm, setPasswordForm] = useState({
@@ -83,6 +89,9 @@ const DashboardHeader = ({
   const avatarUrl = getAvatarUrl(profile);
   const showControls = variant !== 'welcome';
   const showGreeting = variant !== 'navigation';
+  const unreadNotifications = notifications.filter((notification) => (
+    Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false
+  )).length;
 
   useEffect(() => {
     if (!showControls) return undefined;
@@ -110,6 +119,46 @@ const DashboardHeader = ({
   }, [showControls]);
 
   useEffect(() => {
+    if (!showControls) return undefined;
+    let isCurrent = true;
+    let requestInProgress = false;
+
+    const loadNotifications = async () => {
+      if (requestInProgress) return;
+      requestInProgress = true;
+      try {
+        const response = await api.get('api/common/get_notifications.php');
+        if (!response.data?.success || !Array.isArray(response.data.notifications)) {
+          throw new Error(response.data?.message || 'Unable to load notifications.');
+        }
+        if (isCurrent) {
+          setNotifications(response.data.notifications);
+          setNotificationsError('');
+        }
+      } catch (error) {
+        if (!isCurrent) return;
+        setNotificationsError(error.response?.data?.message || error.message || 'Unable to load notifications.');
+        console.error('Unable to load dashboard notifications:', error);
+      } finally {
+        requestInProgress = false;
+      }
+    };
+
+    setNotificationsLoading(true);
+    loadNotifications().finally(() => {
+      if (isCurrent) setNotificationsLoading(false);
+    });
+    const intervalId = window.setInterval(loadNotifications, 60 * 1000);
+    const refreshOnFocus = () => loadNotifications();
+    window.addEventListener('focus', refreshOnFocus);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshOnFocus);
+    };
+  }, [showControls]);
+
+  useEffect(() => {
     if (!showControls || (!openMenu && !modal)) return undefined;
 
     const closeOnOutsideClick = (event) => {
@@ -131,11 +180,6 @@ const DashboardHeader = ({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [modal, openMenu, showControls]);
-
-  const selectTab = (tab) => {
-    if (tab && onSelectTab) onSelectTab(tab);
-    setOpenMenu(null);
-  };
 
   const signOut = () => {
     localStorage.removeItem('user');
@@ -214,6 +258,49 @@ const DashboardHeader = ({
     setOpenMenu(null);
   };
 
+  const markNotificationRead = async (notification) => {
+    if (Number(notification.is_read) !== 0 && notification.is_read !== false && notification.read !== false) return;
+    setNotificationActionError('');
+    setMarkingNotificationId(notification.id);
+    try {
+      const response = await api.post('api/common/mark_notifications_read.php', {
+        notification_id: Number(notification.id),
+        notification_type: notification.notification_type || 'general',
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to mark notification as read.');
+      }
+      setNotifications((current) => current.map((item) => (
+        String(item.id) === String(notification.id)
+          && (item.notification_type || 'general') === (notification.notification_type || 'general')
+          ? { ...item, is_read: 1, read: true }
+          : item
+      )));
+    } catch (error) {
+      setNotificationActionError(error.response?.data?.message || error.message || 'Unable to mark notification as read.');
+      console.error('Unable to mark dashboard notification as read:', error);
+    } finally {
+      setMarkingNotificationId(null);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    setNotificationActionError('');
+    setMarkingAllNotifications(true);
+    try {
+      const response = await api.post('api/common/mark_notifications_read.php', { mark_all: true });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to mark notifications as read.');
+      }
+      setNotifications((current) => current.map((item) => ({ ...item, is_read: 1, read: true })));
+    } catch (error) {
+      setNotificationActionError(error.response?.data?.message || error.message || 'Unable to mark notifications as read.');
+      console.error('Unable to mark all dashboard notifications as read:', error);
+    } finally {
+      setMarkingAllNotifications(false);
+    }
+  };
+
   const handleProfileSaved = (updatedProfile) => {
     setProfile((current) => ({ ...current, ...updatedProfile }));
     const storedUser = readStoredUser();
@@ -221,7 +308,7 @@ const DashboardHeader = ({
     window.dispatchEvent(new Event('user-profile-updated'));
   };
 
-  const count = Number(notificationCount);
+  const count = unreadNotifications;
 
   return (
     <>
@@ -267,11 +354,67 @@ const DashboardHeader = ({
             className="dashboard-control-button dashboard-notifications-button"
             aria-label={t('Notifications') + (count > 0 ? ` (${count})` : '')}
             title={t('Notifications')}
-            onClick={() => selectTab(notificationsTab)}
+            aria-expanded={openMenu === 'notifications'}
+            aria-haspopup="dialog"
+            onClick={() => {
+              setNotificationActionError('');
+              setOpenMenu((current) => current === 'notifications' ? null : 'notifications');
+            }}
           >
             <Bell size={18} aria-hidden="true" />
-            {count > 0 && <span className="dashboard-notification-badge" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
+            {count > 0 && <span className="dashboard-notification-badge" aria-hidden="true">{count}</span>}
           </button>
+          {openMenu === 'notifications' && (
+            <section className="dashboard-dropdown dashboard-notifications-dropdown" role="dialog" aria-label={t('Notifications')}>
+              <div className="dashboard-notifications-header">
+                <div>
+                  <strong>{t('Notifications')}</strong>
+                  <span>{count} {t('unread')}</span>
+                </div>
+                <button
+                  type="button"
+                  className="dashboard-mark-all-read"
+                  onClick={markAllNotificationsRead}
+                  disabled={markingAllNotifications || count === 0}
+                >
+                  {markingAllNotifications ? t('Marking...') : t('Mark all as read')}
+                </button>
+              </div>
+              {notificationActionError && <p className="dashboard-notifications-error" role="alert">{notificationActionError}</p>}
+              {notificationsLoading && notifications.length === 0 && <p className="dashboard-notifications-empty">{t('Loading notifications...')}</p>}
+              {!notificationsLoading && notificationsError && (
+                <p className="dashboard-notifications-error" role="alert">{notificationsError}</p>
+              )}
+              {!notificationsLoading && !notificationsError && notifications.length === 0 && (
+                <p className="dashboard-notifications-empty">{t('No notifications.')}</p>
+              )}
+              {notifications.length > 0 && (
+                <ul className="dashboard-notifications-list">
+                  {notifications.map((notification) => {
+                    const unread = Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false;
+                    const key = `${notification.notification_type || 'general'}-${notification.id}`;
+                    return (
+                      <li key={key}>
+                        <button
+                          type="button"
+                          className={`dashboard-notification-item${unread ? ' is-unread' : ''}`}
+                          onClick={() => markNotificationRead(notification)}
+                          disabled={String(markingNotificationId) === String(notification.id)}
+                        >
+                          <span className="dashboard-notification-item-heading">
+                            <strong>{notification.title || t('Notification')}</strong>
+                            {unread && <span className="dashboard-notification-unread-dot" aria-label={t('Unread')} />}
+                          </span>
+                          <span className="dashboard-notification-message">{notification.message || ''}</span>
+                          <small>{notification.created_at ? new Date(notification.created_at).toLocaleString() : ''}</small>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
 
           <button
             type="button"
@@ -281,6 +424,16 @@ const DashboardHeader = ({
             title={t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}
           >
             {isDarkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+          </button>
+          <button
+            type="button"
+            className={`dashboard-control-button dashboard-eye-care-button${isEyeCareMode ? ' is-active' : ''}`}
+            onClick={toggleEyeCareMode}
+            aria-label={t(isEyeCareMode ? 'Turn off eye care mode' : 'Switch to eye care mode')}
+            title={t(isEyeCareMode ? 'Turn off eye care mode' : 'Switch to eye care mode')}
+            aria-pressed={isEyeCareMode}
+          >
+            <Eye size={18} aria-hidden="true" />
           </button>
 
           <div className="dashboard-header-menu-anchor dashboard-profile-menu-anchor">
@@ -345,93 +498,65 @@ const DashboardHeader = ({
       )}
 
       {modal === 'profile' && (
-        <EditProfileModal profile={{ ...profile, full_name: getFullName(profile) || displayName }} onClose={closeModal} onSaved={handleProfileSaved} />
+        createPortal(
+          <EditProfileModal profile={{ ...profile, full_name: getFullName(profile) || displayName }} onClose={closeModal} onSaved={handleProfileSaved} />,
+          document.body
+        )
       )}
 
       {modal === 'password' && (
-        <div className="dashboard-modal-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) closeModal();
-        }}>
-          <section className="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
-            <div className="dashboard-modal-header">
-              <h3 id="dashboard-modal-title">Change Password</h3>
-              <button type="button" className="dashboard-modal-close" aria-label="Close" onClick={closeModal}>
-                <X size={20} aria-hidden="true" />
-              </button>
-            </div>
-            {modalError && <div className="alert alert-danger py-2" role="alert">{modalError}</div>}
-            {modalSuccess && <div className="alert alert-success py-2" role="status">{modalSuccess}</div>}
-            <form onSubmit={changePassword}>
-              <label className="form-label" htmlFor="dashboard-current-password">Current Password</label>
-              <input
-                id="dashboard-current-password"
-                className="form-control mb-3"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={passwordForm.current_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
-              />
-              <label className="form-label" htmlFor="dashboard-new-password">New Password</label>
-              <input
-                id="dashboard-new-password"
-                className="form-control mb-3"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                value={passwordForm.new_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
-              />
-              <label className="form-label" htmlFor="dashboard-confirm-password">Confirm New Password</label>
-              <input
-                id="dashboard-confirm-password"
-                className="form-control mb-3"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                value={passwordForm.confirm_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
-              />
-              <div className="dashboard-modal-actions">
-                <button type="button" className="btn btn-outline-secondary" onClick={closeModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Change Password</button>
-              </div>
-            </form>
-          </section>
-        </div>
+        createPortal(
+          <ChangePasswordModal
+            error={modalError}
+            onClose={closeModal}
+            onSubmit={changePassword}
+            passwordForm={passwordForm}
+            setPasswordForm={setPasswordForm}
+            success={modalSuccess}
+          />,
+          document.body
+        )
       )}
 
       {modal === 'settings' && (
-        <div className="dashboard-modal-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) closeModal();
-        }}>
-          <section className="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
-            <div className="dashboard-modal-header">
-              <h3 id="dashboard-modal-title">{t('Dashboard Settings')}</h3>
-              <button type="button" className="dashboard-modal-close" aria-label="Close" onClick={closeModal}>
-                <X size={20} aria-hidden="true" />
-              </button>
-            </div>
-            <div className="dashboard-settings-form">
-              <fieldset>
-                <legend>{t('Language')}</legend>
-                <div className="dashboard-settings-options">
-                  <button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>English</button>
-                  <button type="button" className={language === 'am' ? 'active' : ''} aria-pressed={language === 'am'} onClick={() => setLanguage('am')}>አማርኛ</button>
-                </div>
-              </fieldset>
-              <fieldset>
-                <legend>{t('Appearance')}</legend>
-                <button type="button" className="dashboard-settings-theme" onClick={toggleTheme}>
-                  {isDarkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
-                  <span>{t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}</span>
+        createPortal(
+          <div className="dashboard-modal-backdrop" onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
+          }}>
+            <section className="dashboard-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-modal-title">
+              <div className="dashboard-modal-header">
+                <h3 id="dashboard-modal-title">{t('Dashboard Settings')}</h3>
+                <button type="button" className="dashboard-modal-close" aria-label="Close" onClick={closeModal}>
+                  <X size={20} aria-hidden="true" />
                 </button>
-              </fieldset>
-            </div>
-          </section>
-        </div>
+              </div>
+              <div className="dashboard-settings-form">
+                <fieldset>
+                  <legend>{t('Language')}</legend>
+                  <div className="dashboard-settings-options">
+                    <button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>English</button>
+                    <button type="button" className={language === 'am' ? 'active' : ''} aria-pressed={language === 'am'} onClick={() => setLanguage('am')}>አማርኛ</button>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>{t('Appearance')}</legend>
+                  <div className="dashboard-settings-options" role="group" aria-label={t('Appearance')}>
+                    <button type="button" className={!isDarkMode && !isEyeCareMode ? 'active' : ''} aria-pressed={!isDarkMode && !isEyeCareMode} onClick={() => setThemeMode('light')}>
+                      <Sun size={17} aria-hidden="true" /> {t('Light')}
+                    </button>
+                    <button type="button" className={isDarkMode ? 'active' : ''} aria-pressed={isDarkMode} onClick={() => setThemeMode('dark')}>
+                      <Moon size={17} aria-hidden="true" /> {t('Dark')}
+                    </button>
+                    <button type="button" className={isEyeCareMode ? 'active' : ''} aria-pressed={isEyeCareMode} onClick={() => setThemeMode('eye-care')}>
+                      <Eye size={17} aria-hidden="true" /> {t('Eye Care')}
+                    </button>
+                  </div>
+                </fieldset>
+              </div>
+            </section>
+          </div>,
+          document.body
+        )
       )}
     </>
   );

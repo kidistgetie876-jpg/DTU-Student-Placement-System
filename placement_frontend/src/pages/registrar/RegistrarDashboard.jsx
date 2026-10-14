@@ -1081,18 +1081,15 @@ const RegistrarDashboard = () => {
           }));
       } 
       else if (cardType === 'placementsCompleted') {
-        // Show placed students
-        data = studentRecords
-          .filter((student) => /placed|approved/i.test(student.status))
-          .slice(0, 20)
-          .map((student) => ({
-            id: student.id,
-            name: student.name,
-            email: student.email,
-            status: student.status,
-            department: student.department,
-            cumulativeScore: student.cumulativeScore
-          }));
+        const response = await api.get('api/registrar/get_placed_students.php');
+        if (!response.data?.success || !Array.isArray(response.data.students)) {
+          throw new Error(response.data?.message || 'Unable to load placed students.');
+        }
+        data = response.data.students;
+        setSummary((current) => ({
+          ...current,
+          placementsCompleted: Number(response.data.count ?? data.length),
+        }));
       } 
       else if (cardType === 'unplacedStudents') {
         const pendingResponse = await api.get('api/registrar/get_pending_results.php');

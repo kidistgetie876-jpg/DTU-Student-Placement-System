@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
+import PasswordInput from '../../components/layout/PasswordInput.jsx';
 
 const initialForm = {
   firstName: '',
@@ -183,7 +184,7 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Password</label>
-                    <input type="password" className="form-control" name="password" value={form.password} onChange={handleChange} required />
+                    <PasswordInput name="password" value={form.password} onChange={handleChange} label="password" required />
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold">Phone Number</label>

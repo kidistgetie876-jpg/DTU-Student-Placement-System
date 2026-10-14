@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../services/api.js';
 import { useNavigate } from 'react-router-dom';
-import { FiEye, FiEyeOff, FiLock, FiUser } from 'react-icons/fi';
+import { Eye, EyeOff } from 'lucide-react';
+import { FiLock, FiUser } from 'react-icons/fi';
 import dtuLogo from '../../assets/image.png';
+import PasswordInput from '../../components/layout/PasswordInput.jsx';
 import './LoginModal.css';
 
 const noop = () => {};
@@ -349,10 +351,13 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
                       <button 
                         type="button" 
                         className="btn btn-light border border-start-0 text-muted" 
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
+                        title={showPassword ? 'Hide password' : 'Show password'}
                         style={{ borderRadius: '0 12px 12px 0' }}
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? <FiEyeOff /> : <FiEye />}
+                        {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
                       </button>
                     </div>
                   </div>
@@ -426,11 +431,11 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
                         </div>
                         <div className="mb-3">
                           <label htmlFor="reset-new-password" className="form-label small fw-bold text-secondary">New password</label>
-                          <input
+                          <PasswordInput
                             id="reset-new-password"
-                            type="password"
-                            className="form-control bg-light py-2"
+                            inputClassName="form-control bg-light py-2"
                             autoComplete="new-password"
+                            label="new password"
                             value={resetData.newPassword}
                             onChange={(event) => setResetData((current) => ({ ...current, newPassword: event.target.value }))}
                             required
@@ -438,11 +443,11 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
                         </div>
                         <div className="mb-3">
                           <label htmlFor="reset-confirm-password" className="form-label small fw-bold text-secondary">Confirm new password</label>
-                          <input
+                          <PasswordInput
                             id="reset-confirm-password"
-                            type="password"
-                            className="form-control bg-light py-2"
+                            inputClassName="form-control bg-light py-2"
                             autoComplete="new-password"
+                            label="confirm password"
                             value={resetData.confirmPassword}
                             onChange={(event) => setResetData((current) => ({ ...current, confirmPassword: event.target.value }))}
                             required
@@ -526,12 +531,12 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
                     </div>
                     <div className="mb-3">
                       <label htmlFor="reset-new-password" className="small fw-bold text-secondary">New Password</label>
-                      <input
+                      <PasswordInput
                         id="reset-new-password"
-                        type="password"
                         minLength={6}
-                        className="form-control py-2 rounded-3"
+                        inputClassName="form-control py-2 rounded-3"
                         autoComplete="new-password"
+                        label="new password"
                         value={resetData.newPassword}
                         onChange={(e) => setResetData((current) => ({ ...current, newPassword: e.target.value }))}
                         required
@@ -539,12 +544,12 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
                     </div>
                     <div className="mb-3">
                       <label htmlFor="reset-confirm-password" className="small fw-bold text-secondary">Confirm New Password</label>
-                      <input
+                      <PasswordInput
                         id="reset-confirm-password"
-                        type="password"
                         minLength={6}
-                        className="form-control py-2 rounded-3"
+                        inputClassName="form-control py-2 rounded-3"
                         autoComplete="new-password"
+                        label="confirm password"
                         value={resetData.confirmPassword}
                         onChange={(e) => setResetData((current) => ({ ...current, confirmPassword: e.target.value }))}
                         required

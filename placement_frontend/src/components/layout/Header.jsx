@@ -32,7 +32,6 @@ function Header() {
 
   const [user, setUser] = useState(() => getStoredUser());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [siteBranding, setSiteBranding] = useState({
     universityTitle: 'DEBRE TABOR UNIVERSITY',
     systemSubtitle: 'Student Department Placement System',
@@ -89,14 +88,6 @@ function Header() {
     };
   }, []);
 
-  useEffect(() => {
-    const syncNotificationCount = (event) => {
-      setNotificationCount(Math.max(0, Number(event.detail?.count) || 0));
-    };
-    window.addEventListener('dashboard-notification-count', syncNotificationCount);
-    return () => window.removeEventListener('dashboard-notification-count', syncNotificationCount);
-  }, []);
-
   const handleLogout = () => {
     localStorage.removeItem('user');
     sessionStorage.removeItem('registrarActiveTab');
@@ -134,9 +125,6 @@ function Header() {
             <DashboardHeader
               variant="navigation"
               role={user?.role}
-              notificationCount={notificationCount}
-              notificationsTab="notifications"
-              onSelectTab={(tab) => window.dispatchEvent(new CustomEvent('dashboard-select-tab', { detail: { tab } }))}
             />
           </div>
         </div>
