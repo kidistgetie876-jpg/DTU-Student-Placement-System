@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import './Header.css';
 import dtuLogo from '../../assets/image.png'; // ሎጎህ እዚህ መሆኑን አረጋግጥ
 import api from '../../services/api.js';
+import DashboardHeader from './DashboardHeader.jsx';
 
 const defaultPublicLinks = [
   { id: 'home', label: 'Home', path: '/', enabled: true },
@@ -31,6 +32,7 @@ function Header() {
 
   const [user, setUser] = useState(() => getStoredUser());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [siteBranding, setSiteBranding] = useState({
     universityTitle: 'DEBRE TABOR UNIVERSITY',
     systemSubtitle: 'Student Department Placement System',
@@ -78,8 +80,21 @@ function Header() {
     const syncUser = (event) => {
       if (event.key === 'user') setUser(getStoredUser());
     };
+    const syncProfile = () => setUser(getStoredUser());
     window.addEventListener('storage', syncUser);
-    return () => window.removeEventListener('storage', syncUser);
+    window.addEventListener('user-profile-updated', syncProfile);
+    return () => {
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('user-profile-updated', syncProfile);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncNotificationCount = (event) => {
+      setNotificationCount(Math.max(0, Number(event.detail?.count) || 0));
+    };
+    window.addEventListener('dashboard-notification-count', syncNotificationCount);
+    return () => window.removeEventListener('dashboard-notification-count', syncNotificationCount);
   }, []);
 
   const handleLogout = () => {
@@ -113,55 +128,70 @@ function Header() {
         </div>
       </div>
 
-      {/* TIER 2: Navigation (Tebeb yalena Professional) */}
-      <nav className="navbar navbar-expand-lg navigation-tier">
-        <div className="container position-relative">
-          
-          {/* Mobile Toggle */}
-          {!isDashboardRoute && (
-            <button
-              className="navbar-toggler"
-              type="button"
-              aria-controls="dtuNavbar"
-              aria-expanded={isMenuOpen}
-              aria-label="Toggle navigation"
-              onClick={() => setIsMenuOpen((open) => !open)}
-            >
-              <span className="navbar-toggler-icon"></span>
-            </button>
-          )}
-
-          <div className={`collapse navbar-collapse ${isDashboardRoute || isMenuOpen ? 'show' : ''}`} id="dtuNavbar">
-            {/* Center Links (Home, Services, Contact) */}
-            {!isDashboardRoute && (
-              <ul className="navbar-nav mx-auto mb-2 mb-lg-0">
-                {publicLinks.filter((link) => link.enabled === true).map((link) => (
-                  <li className="nav-item" key={link.id}>
-                    <NavLink to={link.path} end={link.path === '/'} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
-                      {link.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {!hasDashboardHeader && (
-              <div className="auth-action-wrapper ms-auto">
-                {isAuthenticated && isDashboardRoute ? (
-                  <div className="d-flex align-items-center gap-3">
-                    {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">Dashboard</Link>}
-                    <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
-                  </div>
-                ) : (
-                  <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
-                    Login
-                  </button>
-                )}
-              </div>
-            )}
+      {hasDashboardHeader ? (
+        <div className="dashboard-subheader">
+          <div className="container">
+            <DashboardHeader
+              variant="navigation"
+              role={user?.role}
+              notificationCount={notificationCount}
+              notificationsTab="notifications"
+              onSelectTab={(tab) => window.dispatchEvent(new CustomEvent('dashboard-select-tab', { detail: { tab } }))}
+            />
           </div>
         </div>
-      </nav>
+      ) : (
+
+        /* TIER 2: Public navigation (Tebeb yalena Professional) */
+        <nav className="navbar navbar-expand-lg navigation-tier">
+          <div className="container position-relative">
+          
+            {/* Mobile Toggle */}
+            {!isDashboardRoute && (
+              <button
+                className="navbar-toggler"
+                type="button"
+                aria-controls="dtuNavbar"
+                aria-expanded={isMenuOpen}
+                aria-label="Toggle navigation"
+                onClick={() => setIsMenuOpen((open) => !open)}
+              >
+                <span className="navbar-toggler-icon"></span>
+              </button>
+            )}
+
+            <div className={`collapse navbar-collapse ${isDashboardRoute || isMenuOpen ? 'show' : ''}`} id="dtuNavbar">
+              {/* Center Links (Home, Services, Contact) */}
+              {!isDashboardRoute && (
+                <ul className="navbar-nav mx-auto mb-2 mb-lg-0">
+                  {publicLinks.filter((link) => link.enabled === true).map((link) => (
+                    <li className="nav-item" key={link.id}>
+                      <NavLink to={link.path} end={link.path === '/'} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+                        {link.label}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {!hasDashboardHeader && (
+                <div className="auth-action-wrapper ms-auto">
+                  {isAuthenticated && isDashboardRoute ? (
+                    <div className="d-flex align-items-center gap-3">
+                      {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">Dashboard</Link>}
+                      <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
+                      Login
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </nav>
+      )}
     </header>
   );
 }

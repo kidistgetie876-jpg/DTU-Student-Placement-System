@@ -22,11 +22,13 @@ if ($userId <= 0) {
     updateProfileResponse(['success' => false, 'message' => 'Authentication is required.'], 401);
 }
 
-$input = json_decode(file_get_contents('php://input'), true);
-if (!is_array($input)) {
-    updateProfileResponse(['success' => false, 'message' => 'Invalid request payload.'], 400);
+$input = $_POST;
+if (!$input) {
+    $jsonInput = json_decode(file_get_contents('php://input'), true);
+    if (is_array($jsonInput)) {
+        $input = $jsonInput;
+    }
 }
-
 $fullName = trim((string) ($input['full_name'] ?? ''));
 $email = strtolower(trim((string) ($input['email'] ?? '')));
 if ($fullName === '' || strlen($fullName) > 200) {
@@ -34,6 +36,31 @@ if ($fullName === '' || strlen($fullName) > 200) {
 }
 if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
     updateProfileResponse(['success' => false, 'message' => 'Enter a valid email address.'], 400);
+}
+
+$photo = $_FILES['profile_photo'] ?? null;
+$photoExtension = null;
+if ($photo && $photo['error'] !== UPLOAD_ERR_NO_FILE) {
+    if ($photo['error'] !== UPLOAD_ERR_OK) {
+        updateProfileResponse(['success' => false, 'message' => 'The profile photo upload failed.'], 400);
+    }
+    if ((int) $photo['size'] <= 0 || (int) $photo['size'] > 5 * 1024 * 1024) {
+        updateProfileResponse(['success' => false, 'message' => 'Profile photos must be 5 MB or smaller.'], 400);
+    }
+    if (!is_uploaded_file($photo['tmp_name'])) {
+        updateProfileResponse(['success' => false, 'message' => 'Invalid profile photo upload.'], 400);
+    }
+
+    $fileInfo = new finfo(FILEINFO_MIME_TYPE);
+    $mimeType = $fileInfo->file($photo['tmp_name']);
+    $photoExtension = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ][$mimeType] ?? null;
+    if ($photoExtension === null) {
+        updateProfileResponse(['success' => false, 'message' => 'Choose a JPEG, PNG, or WebP image.'], 400);
+    }
 }
 
 $nameParts = preg_split('/\s+/', $fullName, 2);
@@ -44,6 +71,11 @@ $db = getDbConnection();
 if (!$db instanceof mysqli) {
     updateProfileResponse(['success' => false, 'message' => 'Database connection failed.'], 500);
 }
+
+$storedPhotoPath = null;
+$newPhotoPath = null;
+$oldPhotoPath = null;
+$uploadDirectory = __DIR__ . '/../../uploads/profile-photos';
 
 try {
     if (!$db->begin_transaction()) {
@@ -65,11 +97,49 @@ try {
         updateProfileResponse(['success' => false, 'message' => 'That email address is already in use.'], 409);
     }
 
-    $updateUser = $db->prepare('UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?');
-    if (!$updateUser) {
-        throw new RuntimeException('Unable to prepare user profile update: ' . $db->error);
+    $currentProfile = $db->prepare('SELECT profile_photo FROM users WHERE id = ? LIMIT 1');
+    if (!$currentProfile) {
+        throw new RuntimeException('Unable to prepare current profile query: ' . $db->error);
     }
-    $updateUser->bind_param('sssi', $firstName, $lastName, $email, $userId);
+    $currentProfile->bind_param('i', $userId);
+    if (!$currentProfile->execute()) {
+        throw new RuntimeException('Unable to load current profile: ' . $currentProfile->error);
+    }
+    $currentUser = $currentProfile->get_result()->fetch_assoc();
+    $currentProfile->close();
+    if (!$currentUser) {
+        $db->rollback();
+        updateProfileResponse(['success' => false, 'message' => 'User account was not found.'], 404);
+    }
+    $oldPhotoPath = (string) ($currentUser['profile_photo'] ?? '');
+    $storedPhotoPath = $oldPhotoPath !== '' ? $oldPhotoPath : null;
+
+    if ($photoExtension !== null) {
+        if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
+            throw new RuntimeException('Unable to create profile photo storage directory.');
+        }
+        $photoFileName = bin2hex(random_bytes(16)) . '.' . $photoExtension;
+        $destination = $uploadDirectory . DIRECTORY_SEPARATOR . $photoFileName;
+        if (!move_uploaded_file($photo['tmp_name'], $destination)) {
+            throw new RuntimeException('Unable to store the uploaded profile photo.');
+        }
+        $newPhotoPath = $destination;
+        $storedPhotoPath = 'uploads/profile-photos/' . $photoFileName;
+    }
+
+    if ($photoExtension !== null) {
+        $updateUser = $db->prepare('UPDATE users SET first_name = ?, last_name = ?, email = ?, profile_photo = ? WHERE id = ?');
+        if (!$updateUser) {
+            throw new RuntimeException('Unable to prepare user profile update: ' . $db->error);
+        }
+        $updateUser->bind_param('ssssi', $firstName, $lastName, $email, $storedPhotoPath, $userId);
+    } else {
+        $updateUser = $db->prepare('UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?');
+        if (!$updateUser) {
+            throw new RuntimeException('Unable to prepare user profile update: ' . $db->error);
+        }
+        $updateUser->bind_param('sssi', $firstName, $lastName, $email, $userId);
+    }
     if (!$updateUser->execute()) {
         throw new RuntimeException('Unable to update user profile: ' . $updateUser->error);
     }
@@ -85,7 +155,7 @@ try {
     }
     $updateStudent->close();
 
-    $readProfile = $db->prepare('SELECT id, first_name, last_name, username, email, role FROM users WHERE id = ? LIMIT 1');
+    $readProfile = $db->prepare('SELECT id, first_name, last_name, username, email, role, profile_photo FROM users WHERE id = ? LIMIT 1');
     if (!$readProfile) {
         throw new RuntimeException('Unable to prepare updated profile query: ' . $db->error);
     }
@@ -99,11 +169,22 @@ try {
     if (!$profile || !$db->commit()) {
         throw new RuntimeException('Unable to commit profile update: ' . $db->error);
     }
+
+    if ($newPhotoPath !== null && preg_match('#^uploads/profile-photos/[a-f0-9]{32}\.(?:jpg|png|webp)$#', $oldPhotoPath)) {
+        $oldPhotoFile = __DIR__ . '/../../' . $oldPhotoPath;
+        if (is_file($oldPhotoFile) && !unlink($oldPhotoFile)) {
+            error_log('Unable to remove replaced profile photo: ' . $oldPhotoFile);
+        }
+    }
+
     $profile['full_name'] = trim((string) $profile['first_name'] . ' ' . (string) $profile['last_name']);
     $db->close();
     updateProfileResponse(['success' => true, 'message' => 'Profile updated successfully.', 'profile' => $profile]);
 } catch (Throwable $error) {
     $db->rollback();
+    if ($newPhotoPath !== null && is_file($newPhotoPath) && !unlink($newPhotoPath)) {
+        error_log('Unable to clean up failed profile photo upload: ' . $newPhotoPath);
+    }
     error_log('Profile update failed: ' . $error->getMessage());
     $db->close();
     updateProfileResponse(['success' => false, 'message' => 'Unable to update profile right now.'], 500);

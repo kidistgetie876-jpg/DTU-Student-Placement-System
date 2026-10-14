@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import api from '../../services/api.js';
 import DashboardHeader from './DashboardHeader.jsx';
+import Header from './Header.jsx';
 import { LanguageProvider } from '../../contexts/LanguageContext.jsx';
 import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
 
@@ -30,9 +31,34 @@ const renderDashboardHeader = (props = {}) => render(
   </MemoryRouter>
 );
 
+const renderGlobalDashboardHeader = () => render(
+  <MemoryRouter initialEntries={['/registrar-dashboard/overview']}>
+    <ThemeProvider>
+      <LanguageProvider>
+        <Routes>
+          <Route path="/registrar-dashboard/overview" element={<Header />} />
+        </Routes>
+      </LanguageProvider>
+    </ThemeProvider>
+  </MemoryRouter>
+);
+
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+
 describe('DashboardHeader', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    if (originalCreateObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreateObjectURL });
+    } else {
+      delete URL.createObjectURL;
+    }
+    if (originalRevokeObjectURL) {
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevokeObjectURL });
+    } else {
+      delete URL.revokeObjectURL;
+    }
   });
 
   beforeEach(() => {
@@ -130,12 +156,77 @@ describe('DashboardHeader', () => {
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'aster.abebe@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/common/update_profile.php', {
-      full_name: 'Aster Abebe',
-      email: 'aster.abebe@example.com',
-    }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/common/update_profile.php',
+      expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ));
+    const formData = api.post.mock.calls[0][1];
+    expect(formData.get('full_name')).toBe('Aster Abebe');
+    expect(formData.get('email')).toBe('aster.abebe@example.com');
     expect(await screen.findByRole('status')).toHaveTextContent('Profile updated successfully.');
     expect(localStorage.getItem('user')).toContain('aster.abebe@example.com');
+  });
+
+  it('previews and uploads a validated profile photo', async () => {
+    const photo = new File(['image-data'], 'profile.png', { type: 'image/png' });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: jest.fn(() => 'blob:profile-preview') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() });
+    jest.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Profile updated successfully.',
+        profile: {
+          id: 7,
+          full_name: 'Aster Gebre',
+          first_name: 'Aster',
+          last_name: 'Gebre',
+          username: 'Aster',
+          email: 'aster@example.com',
+          role: 'registrar',
+          profile_photo: 'uploads/profile-photos/0123456789abcdef0123456789abcdef.png',
+        },
+      },
+    });
+    renderDashboardHeader();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View Profile / Edit Profile' }));
+    fireEvent.change(screen.getByLabelText('Profile Photo'), { target: { files: [photo] } });
+    expect(await screen.findByAltText('Profile preview')).toHaveAttribute('src', expect.stringContaining('blob:'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/common/update_profile.php',
+      expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ));
+    expect(api.post.mock.calls[0][1].get('profile_photo')).toBe(photo);
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    const displayedPhotos = document.querySelectorAll('.dashboard-profile-avatar img');
+    expect(displayedPhotos).toHaveLength(2);
+    expect(displayedPhotos[0].getAttribute('src')).toContain('uploads/profile-photos/0123456789abcdef0123456789abcdef.png');
+  });
+
+  it('renders a clean greeting without controls in dashboard content', () => {
+    renderDashboardHeader({ variant: 'welcome' });
+
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Welcome back, Aster!');
+    expect(screen.queryByText('Review placements, departments, and approvals.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Select language' })).not.toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+
+  it('places dashboard controls in one secondary bar below university branding', async () => {
+    const { container } = renderGlobalDashboardHeader();
+
+    expect(screen.getByRole('heading', { name: 'DEBRE TABOR UNIVERSITY' })).toBeInTheDocument();
+    expect(container.querySelector('.dashboard-subheader')).toBeInTheDocument();
+    expect(container.querySelector('.top-branding-tier .dashboard-header-navigation')).toBeNull();
+    expect(container.querySelector('.dashboard-subheader .dashboard-header-navigation')).toBeInTheDocument();
+    expect(container.querySelector('.navigation-tier')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Select language' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Switch to dark mode' })).toBeInTheDocument();
   });
 
   it('submits current, new, and confirmed passwords to the password API', async () => {

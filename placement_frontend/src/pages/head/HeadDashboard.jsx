@@ -461,6 +461,7 @@ const HeadDashboard = () => {
 
         <main className="col-xl-10 p-5 main-section">
           <DashboardHeader
+            variant="welcome"
             username={leader.username}
             role="Head of Department"
             subtitle="Track placement progress, approve department allocations, and monitor student outcomes."

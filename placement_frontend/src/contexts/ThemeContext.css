@@ -1,77 +1,151 @@
-.dark-mode .admin-dashboard,
-.dark-mode .head-dashboard {
-  background: #0b1220;
+:is(.dark-mode, .dark-mode body) :is(.admin-dashboard, .head-dashboard, .student-dashboard) {
+  --dashboard-dark-surface: #111c2e;
+  --dashboard-dark-raised: #17253a;
+  --dashboard-dark-border: #334155;
+  --bs-body-color: #e2e8f0;
+  --bs-body-bg: #0b1220;
+  --bs-border-color: #334155;
+  color: #e2e8f0;
+  background-color: #0b1220;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.main-content, .main-section) {
+  background-color: #0b1220 !important;
   color: #e2e8f0;
 }
 
-.dark-mode .admin-dashboard .main-content,
-.dark-mode .head-dashboard .main-section,
-.dark-mode .student-dashboard .main-content {
-  background: #0b1220 !important;
-  color: #e2e8f0;
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(h1, h2, h3, h4, h5, h6, p, label, legend, dt, dd, th, td, .form-label, .dtu-label, .dtu-title, .dtu-department-name, .task-label, .overview-list strong, .planning-row strong, .text-dark, .text-body, .fw-semibold, .fw-bold) {
+  color: #e2e8f0 !important;
 }
 
-.dark-mode .admin-dashboard .card,
-.dark-mode .head-dashboard .card,
-.dark-mode .student-dashboard .card {
-  border-color: #334155 !important;
-  background-color: #111c2e;
-  color: #e2e8f0;
-}
-
-.dark-mode .admin-dashboard .card .card,
-.dark-mode .head-dashboard .card .card,
-.dark-mode .student-dashboard .card .card {
-  background-color: #17253a;
-}
-
-.dark-mode .admin-dashboard .text-muted,
-.dark-mode .head-dashboard .text-muted,
-.dark-mode .student-dashboard .text-muted,
-.dark-mode .admin-dashboard .summary-label,
-.dark-mode .head-dashboard .summary-label,
-.dark-mode .student-dashboard .summary-label {
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(.text-muted, .summary-label, .overview-list span, small, .text-secondary) {
   color: #a8b6ca !important;
 }
 
-.dark-mode .admin-dashboard .summary-value,
-.dark-mode .head-dashboard .summary-value {
-  color: #f1f5f9;
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(.card, .summary-card, .analytics-card, .task-card, .settings-card, .dtu-form-card, .department-form-card, .planning-panel, .activity-item, .department-table-toolbar, .modal-content) {
+  border-color: #334155 !important;
+  background: #111c2e !important;
+  color: #e2e8f0 !important;
 }
 
-.dark-mode .admin-dashboard .table,
-.dark-mode .head-dashboard .table,
-.dark-mode .student-dashboard .table {
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(.card .card, .settings-card, .task-card, .planning-panel, .activity-item) {
+  background-color: #17253a !important;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.summary-value, .status-chip) {
+  color: #f1f5f9 !important;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .table {
   --bs-table-color: #e2e8f0;
   --bs-table-bg: #111c2e;
   --bs-table-border-color: #334155;
   --bs-table-striped-bg: #17253a;
+  --bs-table-striped-color: #e2e8f0;
   --bs-table-hover-bg: #1e304a;
+  --bs-table-hover-color: #f8fafc;
+  color: #e2e8f0;
+  border-color: #334155;
 }
 
-.dark-mode .admin-dashboard .list-group-item,
-.dark-mode .head-dashboard .list-group-item,
-.dark-mode .student-dashboard .list-group-item {
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .table > :not(caption) > * > * {
+  color: var(--bs-table-color) !important;
+  border-color: var(--bs-table-border-color);
+  background-color: var(--bs-table-bg);
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-color-type: #e2e8f0;
+  --bs-table-bg-type: #17253a;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .table-hover > tbody > tr:hover > * {
+  --bs-table-color-state: #f8fafc;
+  --bs-table-bg-state: #1e304a;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .list-group-item {
   border-color: #334155;
   background-color: #111c2e;
   color: #e2e8f0;
 }
 
-.dark-mode .admin-dashboard .form-control,
-.dark-mode .admin-dashboard .form-select,
-.dark-mode .head-dashboard .form-control,
-.dark-mode .head-dashboard .form-select,
-.dark-mode .student-dashboard .form-control,
-.dark-mode .student-dashboard .form-select {
-  border-color: #475569;
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  border-color: #475569 !important;
+  background-color: #17253a !important;
+  color: #f8fafc !important;
+  color-scheme: dark;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
+  :is(.form-control, input, textarea)::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) select option {
   background-color: #17253a;
+  color: #f8fafc;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.modal-content, .modal-header, .modal-body, .modal-footer) {
+  border-color: #334155;
+  background-color: #111c2e;
   color: #e2e8f0;
 }
 
-.dark-mode .admin-dashboard .form-control::placeholder,
-.dark-mode .head-dashboard .form-control::placeholder,
-.dark-mode .student-dashboard .form-control::placeholder {
-  color: #94a3b8;
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .modal-header {
+  border-bottom-color: #334155;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .modal-footer {
+  border-top-color: #334155;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.dtu-title, .dtu-label) {
+  color: #e2e8f0 !important;
+}
+
+.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .dtu-table tbody tr:nth-child(even) {
+  background-color: #17253a;
+}
+
+.dark-mode .modal-content,
+.dark-mode .modal-header,
+.dark-mode .modal-body,
+.dark-mode .modal-footer {
+  border-color: #334155;
+  background-color: #111c2e;
+  color: #e2e8f0;
+}
+
+.dark-mode .modal-content :is(h1, h2, h3, h4, h5, h6, p, label, legend, .form-label, .text-dark, .text-body) {
+  color: #e2e8f0 !important;
+}
+
+.dark-mode .modal-content :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  border-color: #475569 !important;
+  background-color: #17253a !important;
+  color: #f8fafc !important;
+  color-scheme: dark;
+}
+
+.dark-mode .modal-content :is(.form-control, input, textarea)::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.dark-mode .modal-content .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
 }
 
 .dark-mode .role-sidebar {

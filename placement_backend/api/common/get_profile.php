@@ -31,7 +31,7 @@ $statement = $db->prepare(
     "SELECT u.id,
             COALESCE(NULLIF(sd.first_name, ''), u.first_name, '') AS first_name,
             COALESCE(NULLIF(sd.last_name, ''), u.last_name, '') AS last_name,
-            u.username, u.email, u.role
+            u.username, u.email, u.role, u.profile_photo
      FROM users u
      LEFT JOIN student_data sd ON sd.user_id = u.id
      WHERE u.id = ?

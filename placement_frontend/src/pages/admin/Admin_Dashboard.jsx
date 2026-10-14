@@ -195,6 +195,7 @@ const AdminDashboard = () => {
 
         <main className="col-md-10 p-5 main-content">
           <DashboardHeader
+            variant="welcome"
             username={admin.username}
             role="Admin"
             subtitle="Use the navigation panel to review users, departments, and dashboard insights."

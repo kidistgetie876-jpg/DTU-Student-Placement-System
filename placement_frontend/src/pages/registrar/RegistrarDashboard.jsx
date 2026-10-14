@@ -1661,6 +1661,7 @@ const RegistrarDashboard = () => {
 
         <main className="col-md-10 p-5 main-content">
           <DashboardHeader
+            variant="welcome"
             username={registrar.username}
             role="Registrar"
             subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
