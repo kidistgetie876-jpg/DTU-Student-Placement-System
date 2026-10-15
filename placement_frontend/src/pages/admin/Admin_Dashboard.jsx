@@ -16,6 +16,19 @@ import Sidebar from '../../components/layout/Sidebar.jsx';
 import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
+const adminTabs = [
+  'dashboard',
+  'manage',
+  'departments',
+  'reports',
+  'contact-messages',
+  'assign-head',
+  'data-import',
+  'system-config',
+  'account-settings',
+  'audit-logs',
+];
+
 const AdminDashboard = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -48,7 +61,15 @@ const AdminDashboard = () => {
     }
   }, [navigate]);
 
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTabState] = useState(() => {
+    const savedTab = localStorage.getItem('activeTab');
+    return adminTabs.includes(savedTab) ? savedTab : 'dashboard';
+  });
+  const setTab = (nextTab) => {
+    if (!adminTabs.includes(nextTab)) return;
+    localStorage.setItem('activeTab', nextTab);
+    setTabState(nextTab);
+  };
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'totalDepartments', 'activeAdmins'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);

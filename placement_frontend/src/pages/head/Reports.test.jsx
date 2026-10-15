@@ -33,10 +33,11 @@ describe('Reports attachment', () => {
     });
   });
 
-  it('opens the attachment from Apache and does not trigger the report card click', async () => {
+  it('opens the attachment from Apache after expanding report details', async () => {
     const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
 
     render(<Reports leader={{ id: 7 }} />);
+    fireEvent.click(await screen.findByRole('button', { name: /View Details/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Open attachment' }));
 
     expect(openSpy).toHaveBeenCalledWith(
@@ -44,9 +45,25 @@ describe('Reports attachment', () => {
       '_blank',
       'noopener,noreferrer'
     );
-    expect(api.post).not.toHaveBeenCalled();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith('api/head/mark_report_read.php', { notification_id: 1 });
 
     openSpy.mockRestore();
+  });
+
+  it('shows compact report cards and toggles the full details', async () => {
+    render(<Reports leader={{ id: 7 }} />);
+
+    expect(await screen.findByText('Department Report')).toBeInTheDocument();
+    expect(screen.getByText('Please review this file.')).toBeInTheDocument();
+    expect(screen.queryByText('Direction: Received')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /View Details/ }));
+    expect(await screen.findByText('Direction: Received')).toBeInTheDocument();
+    expect(screen.getByText('Recipient: head')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Hide Details/ }));
+    expect(screen.queryByText('Direction: Received')).not.toBeInTheDocument();
   });
 
   it('permanently clears report history after confirmation', async () => {

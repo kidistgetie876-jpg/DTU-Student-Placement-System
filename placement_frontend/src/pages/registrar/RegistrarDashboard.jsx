@@ -17,6 +17,7 @@ import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { FaTrash } from 'react-icons/fa';
 import { FiCalendar } from 'react-icons/fi';
+import { ChevronDown, ChevronUp, Eye, Pencil, Save } from 'lucide-react';
 
 export const parseYesNo = (value) => {
   if (value === null || value === undefined) return false;
@@ -377,10 +378,15 @@ const RegistrarDashboard = () => {
   const [studentRecordsRefreshToken, setStudentRecordsRefreshToken] = useState(0);
   const tab = registrarTabs.includes(routeTab) ? routeTab : 'overview';
   const setTab = (nextTab) => {
+    if (!registrarTabs.includes(nextTab)) return;
+    localStorage.setItem('activeTab', nextTab);
     navigate(nextTab === 'overview'
       ? '/registrar-dashboard/overview'
       : `/registrar-dashboard/${nextTab}`);
   };
+  useEffect(() => {
+    localStorage.setItem('activeTab', tab);
+  }, [tab]);
   useEffect(() => {
     if (routeTab && !registrarTabs.includes(routeTab)) {
       navigate('/registrar-dashboard/overview', { replace: true });
@@ -432,6 +438,8 @@ const RegistrarDashboard = () => {
   const [placementError, setPlacementError] = useState('');
   const [departments, setDepartments] = useState(emptyDepartments);
   const [capacityDrafts, setCapacityDrafts] = useState({});
+  const [editingRowId, setEditingRowId] = useState(null);
+  const capacityInputRef = useRef(null);
   const [departmentStatusDrafts, setDepartmentStatusDrafts] = useState({});
   const [selectedCollegeStatus, setSelectedCollegeStatus] = useState('');
   const [selectedDepartmentStatus, setSelectedDepartmentStatus] = useState('');
@@ -442,6 +450,7 @@ const RegistrarDashboard = () => {
   const [departmentStatusMessage, setDepartmentStatusMessage] = useState('');
   const [departmentStatusError, setDepartmentStatusError] = useState('');
   const [appeals, setAppeals] = useState([]);
+  const [expandedAppealId, setExpandedAppealId] = useState(null);
   const [appealSavingId, setAppealSavingId] = useState(null);
   const [appealDeletingId, setAppealDeletingId] = useState(null);
   const [appealFeedback, setAppealFeedback] = useState(null);
@@ -469,6 +478,7 @@ const RegistrarDashboard = () => {
   const [sentReportsLoading, setSentReportsLoading] = useState(false);
   const [sentReportsError, setSentReportsError] = useState('');
   const [deletingSentReportId, setDeletingSentReportId] = useState(null);
+  const [expandedReportId, setExpandedReportId] = useState(null);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesError, setRulesError] = useState('');
   
@@ -503,6 +513,12 @@ const RegistrarDashboard = () => {
       return 'DTU-2026/1';
     }
   });
+
+  useEffect(() => {
+    if (editingRowId !== null) {
+      capacityInputRef.current?.focus();
+    }
+  }, [editingRowId]);
 
   const fetchAnnouncements = useCallback(async () => {
     setAnnouncementsLoading(true);
@@ -888,6 +904,7 @@ const RegistrarDashboard = () => {
         throw new Error(response.data?.message || 'Unable to delete the Admin message.');
       }
       setAdminReports((current) => current.filter((item) => item.id !== report.id));
+      setExpandedReportId((current) => (current === `admin-${report.id}` ? null : current));
     } catch (error) {
       setAdminReportsError(error.response?.data?.message || error.message || 'Unable to delete the Admin message.');
     } finally {
@@ -906,6 +923,7 @@ const RegistrarDashboard = () => {
         throw new Error(response.data?.message || 'Unable to delete the sent report.');
       }
       setSentReports((current) => current.filter((item) => item.id !== report.id));
+      setExpandedReportId((current) => (current === `sent-${report.id}` ? null : current));
     } catch (error) {
       setSentReportsError(error.response?.data?.message || error.message || 'Unable to delete the sent report.');
     } finally {
@@ -1043,6 +1061,7 @@ const RegistrarDashboard = () => {
       }
 
       setAppeals((current) => current.filter((item) => item.id !== appeal.id));
+      setExpandedAppealId((current) => (current === appeal.id ? null : current));
     } catch (error) {
       setAppealFeedback({ id: appeal.id, type: 'danger', message: error.response?.data?.message || error.message || 'Unable to delete appeal.' });
     } finally {
@@ -2580,6 +2599,7 @@ const RegistrarDashboard = () => {
                               <td>{collegeText}</td>
                               <td className="fw-bold dtu-department-name">{d.name}</td>
                               <td>
+                                <div className="d-flex align-items-center gap-2">
                                 <input
                                   type="number"
                                   min="0"
@@ -2588,14 +2608,30 @@ const RegistrarDashboard = () => {
                                   className="form-control form-control-sm dtu-form-control"
                                   aria-label={`Capacity for ${d.name}`}
                                   value={capacityDrafts[String(d.id)] ?? d.capacity}
+                                  ref={editingRowId === String(d.id) ? capacityInputRef : null}
                                   onChange={(event) => {
                                     setCapacityDrafts((current) => ({ ...current, [String(d.id)]: event.target.value }));
                                     setCapacityMessage('');
                                     setCapacityError('');
                                   }}
-                                  disabled={capacitySaving}
+                                  disabled={capacitySaving || editingRowId !== String(d.id)}
                                 />
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary d-print-none"
+                                  onClick={() => setEditingRowId(
+                                    editingRowId === String(d.id) ? null : String(d.id),
+                                  )}
+                                  disabled={capacitySaving}
+                                  aria-label={`${editingRowId === String(d.id) ? 'Finish editing' : 'Edit'} capacity for ${d.name}`}
+                                  title={editingRowId === String(d.id) ? 'Finish editing' : 'Edit capacity'}
+                                >
+                                  {editingRowId === String(d.id)
+                                    ? <Save size={16} aria-hidden="true" />
+                                    : <Pencil size={16} aria-hidden="true" />}
+                                </button>
                                 <span className="d-none d-print-inline">{capacityDrafts[String(d.id)] ?? d.capacity}</span>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -3537,82 +3573,141 @@ const RegistrarDashboard = () => {
               </div>
             </div>
           ) : tab === 'appeals' ? (
-            <div className="card shadow-sm">
-              <div className="card-body">
-                <h4 className="card-title mb-3">Handle Appeals</h4>
-                <p className="text-muted mb-3">Review and resolve student appeals for placement results.</p>
-                {appeals.length === 0 ? (
-                  <div className="text-muted">No appeals at this time.</div>
-                ) : (
-                  <div className="d-grid gap-3">
-                    {appeals.map((appeal) => (
-                      <div key={appeal.id} className="border rounded-3 p-3">
-                        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-2">
-                          <div>
-                            <div className="fw-bold">{appeal.username || `Student #${appeal.student_id}`}</div>
-                            <div className="small text-muted">{appeal.email}</div>
-                          </div>
-                          <small className="text-muted">{appeal.created_at}</small>
-                        </div>
-                        <h6 className="fw-bold mb-2">{appeal.subject}</h6>
-                        <p className="mb-3">{appeal.message}</p>
-                        <div className="row g-2 align-items-end">
-                          <div className="col-md-3">
-                            <label className="form-label small fw-semibold" htmlFor={`appeal-status-${appeal.id}`}>Status</label>
-                            <select
-                              id={`appeal-status-${appeal.id}`}
-                              className="form-select form-select-sm"
-                              value={appeal.status}
-                              onChange={(event) => setAppeals((current) => current.map((item) => item.id === appeal.id ? { ...item, status: event.target.value } : item))}
-                            >
-                              <option>Received</option>
-                              <option>Under Review</option>
-                              <option>Resolved</option>
-                            </select>
-                          </div>
-                          <div className="col-md-7">
-                            <label className="form-label small fw-semibold" htmlFor={`appeal-response-${appeal.id}`}>Registrar response</label>
-                            <textarea
-                              id={`appeal-response-${appeal.id}`}
-                              className="form-control form-control-sm"
-                              rows="2"
-                              value={appeal.response || ''}
-                              onChange={(event) => setAppeals((current) => current.map((item) => item.id === appeal.id ? { ...item, response: event.target.value } : item))}
-                              placeholder="Write a response to the student"
-                            />
-                          </div>
-                          <div className="col-md-2">
-                            <div className="d-flex gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-primary btn-sm w-100"
-                                onClick={() => updateAppeal(appeal)}
-                                disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
-                              >
-                                {appealSavingId === appeal.id ? 'Saving...' : 'Save'}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline-danger btn-sm w-100"
-                                onClick={() => deleteAppeal(appeal)}
-                                disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
-                              >
-                                {appealDeletingId === appeal.id ? 'Deleting...' : 'Delete'}
-                              </button>
-                            </div>
-                            {appealFeedback?.id === appeal.id && (
-                              <div className={`alert alert-${appealFeedback.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={appealFeedback.type === 'danger' ? 'alert' : 'status'}>
-                                {appealFeedback.message}
+              <div className="card shadow-sm">
+                <div className="card-body">
+                  <h4 className="card-title mb-3">Handle Appeals</h4>
+                  <p className="text-muted mb-3">Review and resolve student appeals for placement results.</p>
+                  {appeals.length === 0 ? (
+                    <div className="text-muted">No appeals at this time.</div>
+                  ) : (
+                    <div className="list-group">
+                      {appeals.map((appeal) => (
+                        <article
+                          key={appeal.id}
+                          className="list-group-item p-0"
+                        >
+                          <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
+                            <div className="flex-grow-1">
+                              <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                <strong>{appeal.username || appeal.name || `Student #${appeal.student_id}`}</strong>
+                                <span className={`badge ${
+                                  appeal.status === 'Resolved'
+                                    ? 'bg-success'
+                                    : appeal.status === 'Under Review'
+                                      ? 'bg-primary'
+                                      : 'bg-warning text-dark'
+                                }`}>
+                                  {appeal.status || 'Received'}
+                                </span>
                               </div>
-                            )}
+                              <div className="small text-muted">
+                                {appeal.email && <span>{appeal.email} · </span>}
+                                {appeal.created_at}
+                              </div>
+                              <div className="fw-semibold mt-2">{appeal.subject || 'Placement appeal'}</div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2"
+                              aria-expanded={expandedAppealId === appeal.id}
+                              aria-controls={`appeal-details-${appeal.id}`}
+                              onClick={() => {
+                                setAppealFeedback(null);
+                                setExpandedAppealId((current) => (
+                                  current === appeal.id ? null : appeal.id
+                                ));
+                              }}
+                            >
+                              <Eye size={16} aria-hidden="true" />
+                              {expandedAppealId === appeal.id ? 'Hide Details' : 'View Details'}
+                            </button>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          {expandedAppealId === appeal.id && (
+                            <section
+                              id={`appeal-details-${appeal.id}`}
+                              className="border-top bg-light p-3"
+                              aria-label={`Details for ${appeal.subject || 'placement appeal'}`}
+                            >
+                              <div className="mb-4">
+                                <h6 className="fw-semibold">Appeal details</h6>
+                                <p className="mb-0 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {appeal.appeal_description || appeal.message || 'No appeal details provided.'}
+                                </p>
+                              </div>
+                              <div className="row g-3">
+                                <div className="col-md-4">
+                                  <label className="form-label small fw-semibold" htmlFor={`appeal-status-${appeal.id}`}>
+                                    Status
+                                  </label>
+                                  <select
+                                    id={`appeal-status-${appeal.id}`}
+                                    className="form-select form-select-sm"
+                                    value={appeal.status || 'Received'}
+                                    onChange={(event) => {
+                                      const status = event.target.value;
+                                      setAppeals((current) => current.map((item) => (
+                                        item.id === appeal.id ? { ...item, status } : item
+                                      )));
+                                    }}
+                                  >
+                                    <option>Received</option>
+                                    <option>Under Review</option>
+                                    <option>Resolved</option>
+                                  </select>
+                                </div>
+                                <div className="col-12">
+                                  <label className="form-label small fw-semibold" htmlFor={`appeal-response-${appeal.id}`}>
+                                    Registrar response
+                                  </label>
+                                  <textarea
+                                    id={`appeal-response-${appeal.id}`}
+                                    className="form-control form-control-sm"
+                                    rows="4"
+                                    value={appeal.response || ''}
+                                    onChange={(event) => {
+                                      const response = event.target.value;
+                                      setAppeals((current) => current.map((item) => (
+                                        item.id === appeal.id ? { ...item, response } : item
+                                      )));
+                                    }}
+                                    placeholder="Write a response to the student"
+                                  />
+                                </div>
+                              </div>
+                              {appealFeedback?.id === appeal.id && (
+                                <div
+                                  className={`alert alert-${appealFeedback.type} mt-3 py-2 px-3 small mb-0`}
+                                  role={appealFeedback.type === 'danger' ? 'alert' : 'status'}
+                                >
+                                  {appealFeedback.message}
+                                </div>
+                              )}
+                              <div className="d-flex justify-content-end gap-2 mt-4">
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-danger btn-sm"
+                                  onClick={() => deleteAppeal(appeal)}
+                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
+                                >
+                                  {appealDeletingId === appeal.id ? 'Deleting...' : 'Delete'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => updateAppeal(appeal)}
+                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
+                                >
+                                  {appealSavingId === appeal.id ? 'Saving...' : 'Save'}
+                                </button>
+                              </div>
+                            </section>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
           ) : (
             <div className="card shadow-sm">
               <div className="card-body">
@@ -3637,47 +3732,95 @@ const RegistrarDashboard = () => {
                   )}
                   {!adminReportsLoading && !adminReportsError && adminReports.length > 0 && (
                     <div className="list-group">
-                      {adminReports.map((report) => (
-                        <article
-                          key={report.id}
-                          className={`list-group-item ${!Number(report.is_read) ? 'fw-semibold' : ''}`}
-                          onClick={() => markAdminReportRead(report)}
-                          role={!Number(report.is_read) ? 'button' : undefined}
-                          tabIndex={!Number(report.is_read) ? 0 : undefined}
-                          onKeyDown={(event) => { if (event.key === 'Enter') markAdminReportRead(report); }}
-                        >
-                          <div className="d-flex justify-content-between align-items-start gap-3">
-                            <div>
-                              {!Number(report.is_read) && <span className="badge bg-primary me-2">New</span>}
-                              <strong>{report.title || 'Message from Admin'}</strong>
-                            </div>
-                            <small className="text-muted text-nowrap">{report.created_at}</small>
-                          </div>
-                          <p className="mb-0 mt-2">{report.message}</p>
-                          {report.file_path && (
-                            <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={(event) => {
-                              event.stopPropagation();
-                              const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
-                              if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
-                            }}>
-                              Open attachment
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger mt-2 ms-2"
-                            title="Delete message from Admin"
-                            aria-label="Delete message from Admin"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              deleteAdminReport(report);
-                            }}
-                            disabled={deletingAdminReportId === report.id}
+                      {adminReports.map((report) => {
+                        const reportKey = `admin-${report.id}`;
+                        const isExpanded = expandedReportId === reportKey;
+                        const summary = String(report.message || '').replace(/\s+/g, ' ').trim();
+
+                        return (
+                          <article
+                            key={report.id}
+                            className={`list-group-item p-0 ${!Number(report.is_read) ? 'border-start border-4 border-primary' : ''}`}
                           >
-                            <FaTrash aria-hidden="true" />
-                          </button>
-                        </article>
-                      ))}
+                            <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
+                              <div className="flex-grow-1 overflow-hidden">
+                                <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                  <strong className="text-truncate">{report.title || 'Message from Admin'}</strong>
+                                  <span className="badge bg-primary text-white">
+                                    {report.file_path ? 'Report' : 'Message'}
+                                  </span>
+                                  {!Number(report.is_read) && <span className="badge bg-info text-dark">Unread</span>}
+                                </div>
+                                <div className="small text-muted mb-1">
+                                  Created {report.created_at || 'date unavailable'} · Generated by Admin
+                                </div>
+                                <div className="small text-muted text-truncate" title={summary}>
+                                  {summary || 'No description provided.'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 flex-shrink-0"
+                                aria-expanded={isExpanded}
+                                aria-controls={`admin-report-details-${report.id}`}
+                                onClick={() => {
+                                  setExpandedReportId(isExpanded ? null : reportKey);
+                                  if (!isExpanded) markAdminReportRead(report);
+                                }}
+                              >
+                                <Eye size={16} aria-hidden="true" />
+                                {isExpanded ? 'Hide Details' : 'View Details'}
+                                {isExpanded
+                                  ? <ChevronUp size={16} aria-hidden="true" />
+                                  : <ChevronDown size={16} aria-hidden="true" />}
+                              </button>
+                            </div>
+                            {isExpanded && (
+                              <section
+                                id={`admin-report-details-${report.id}`}
+                                className="border-top p-3"
+                                aria-label={`Details for ${report.title || 'Admin message'}`}
+                              >
+                                <h6 className="fw-semibold mb-2">Full details</h6>
+                                <p className="mb-3 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {report.message || 'No description provided.'}
+                                </p>
+                                <div className="small text-muted d-flex flex-wrap gap-2 mb-3">
+                                  <span>Direction: Received</span>
+                                  <span>Generated by: Admin</span>
+                                  <span>Created: {report.created_at || 'Date unavailable'}</span>
+                                  <span>Status: {Number(report.is_read) ? 'Read' : 'Unread'}</span>
+                                  <span>Notification ID: {report.id}</span>
+                                </div>
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                  {report.file_path && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-primary"
+                                      onClick={() => {
+                                        const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
+                                        if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                                      }}
+                                    >
+                                      Open attachment
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-2"
+                                    title="Delete message from Admin"
+                                    onClick={() => deleteAdminReport(report)}
+                                    disabled={deletingAdminReportId === report.id}
+                                  >
+                                    <FaTrash aria-hidden="true" />
+                                    {deletingAdminReportId === report.id ? 'Deleting...' : 'Delete'}
+                                  </button>
+                                </div>
+                              </section>
+                            )}
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -3695,36 +3838,89 @@ const RegistrarDashboard = () => {
                   )}
                   {!sentReportsLoading && !sentReportsError && sentReports.length > 0 && (
                     <div className="list-group">
-                      {sentReports.map((report) => (
-                        <article key={report.id} className="list-group-item">
-                          <div className="d-flex justify-content-between align-items-start gap-3">
-                            <div>
-                              <span className="badge bg-secondary me-2">Sent to {report.recipient_role}</span>
-                              <strong>{report.title || 'Registrar Report'}</strong>
+                      {sentReports.map((report) => {
+                        const reportKey = `sent-${report.id}`;
+                        const isExpanded = expandedReportId === reportKey;
+                        const summary = String(report.message || '').replace(/\s+/g, ' ').trim();
+
+                        return (
+                          <article key={report.id} className="list-group-item p-0">
+                            <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
+                              <div className="flex-grow-1 overflow-hidden">
+                                <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                  <strong className="text-truncate">{report.title || 'Registrar Report'}</strong>
+                                  <span className="badge bg-primary text-white">
+                                    {report.file_path ? 'Report' : 'Message'}
+                                  </span>
+                                  <span className="badge bg-secondary">Sent to {report.recipient_role || 'recipient'}</span>
+                                </div>
+                                <div className="small text-muted mb-1">
+                                  Created {report.created_at || 'date unavailable'} · Generated by Registrar
+                                </div>
+                                <div className="small text-muted text-truncate" title={summary}>
+                                  {summary || 'No description provided.'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 flex-shrink-0"
+                                aria-expanded={isExpanded}
+                                aria-controls={`sent-report-details-${report.id}`}
+                                onClick={() => setExpandedReportId(isExpanded ? null : reportKey)}
+                              >
+                                <Eye size={16} aria-hidden="true" />
+                                {isExpanded ? 'Hide Details' : 'View Details'}
+                                {isExpanded
+                                  ? <ChevronUp size={16} aria-hidden="true" />
+                                  : <ChevronDown size={16} aria-hidden="true" />}
+                              </button>
                             </div>
-                            <small className="text-muted text-nowrap">{report.created_at}</small>
-                          </div>
-                          <p className="mb-0 mt-2">{report.message}</p>
-                          {report.file_path && (
-                            <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={() => {
-                              const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
-                              if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
-                            }}>
-                              Open attachment
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger mt-2 ms-2"
-                            title="Delete sent report"
-                            aria-label="Delete sent report"
-                            onClick={() => deleteSentReport(report)}
-                            disabled={deletingSentReportId === report.id}
-                          >
-                            <FaTrash aria-hidden="true" />
-                          </button>
-                        </article>
-                      ))}
+                            {isExpanded && (
+                              <section
+                                id={`sent-report-details-${report.id}`}
+                                className="border-top p-3"
+                                aria-label={`Details for ${report.title || 'Registrar report'}`}
+                              >
+                                <h6 className="fw-semibold mb-2">Full details</h6>
+                                <p className="mb-3 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+                                  {report.message || 'No description provided.'}
+                                </p>
+                                <div className="small text-muted d-flex flex-wrap gap-2 mb-3">
+                                  <span>Direction: Sent</span>
+                                  <span>Generated by: Registrar</span>
+                                  <span>Recipient: {report.recipient_role || 'Not specified'}</span>
+                                  <span>Created: {report.created_at || 'Date unavailable'}</span>
+                                  <span>Notification ID: {report.id}</span>
+                                </div>
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                  {report.file_path && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-primary"
+                                      onClick={() => {
+                                        const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
+                                        if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
+                                      }}
+                                    >
+                                      Open attachment
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-2"
+                                    title="Delete sent report"
+                                    onClick={() => deleteSentReport(report)}
+                                    disabled={deletingSentReportId === report.id}
+                                  >
+                                    <FaTrash aria-hidden="true" />
+                                    {deletingSentReportId === report.id ? 'Deleting...' : 'Delete'}
+                                  </button>
+                                </div>
+                              </section>
+                            )}
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>

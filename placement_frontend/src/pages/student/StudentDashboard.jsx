@@ -170,7 +170,16 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('overview');
+  const [tab, setTabState] = useState(() => {
+    const savedTab = localStorage.getItem('activeTab');
+    return ['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(savedTab)
+      ? savedTab
+      : 'overview';
+  });
+  const setTab = (nextTab) => {
+    localStorage.setItem('activeTab', nextTab);
+    setTabState(nextTab);
+  };
   
   const [allDepartments, setAllDepartments] = useState([]); 
   const [profile, setProfile] = useState(null);

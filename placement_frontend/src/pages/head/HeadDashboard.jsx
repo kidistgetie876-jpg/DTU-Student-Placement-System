@@ -90,7 +90,16 @@ const HeadDashboard = () => {
   const navigate = useNavigate();
   const [leader, setLeader] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('overview');
+  const [tab, setTabState] = useState(() => {
+    const savedTab = localStorage.getItem('activeTab');
+    return ['overview', 'approvals', 'capacity', 'students', 'reports'].includes(savedTab)
+      ? savedTab
+      : 'overview';
+  });
+  const setTab = (nextTab) => {
+    localStorage.setItem('activeTab', nextTab);
+    setTabState(nextTab);
+  };
   const [department, setDepartment] = useState({
     name: 'Computer Science',
     stream: 'Natural',

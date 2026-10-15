@@ -74,6 +74,103 @@ describe('ManageDepartments', () => {
     expect(screen.getAllByText('Engineering').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('loads catalog options and creates and selects new streams and colleges', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === 'api/admin/get_streams.php') {
+        return Promise.resolve({ data: { success: true, streams: [{ id: 1, name: 'Natural' }] } });
+      }
+      if (url === 'api/admin/get_colleges.php') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            colleges: [{ id: 2, name: 'Science College', stream_id: 1, stream_name: 'Natural' }],
+          },
+        });
+      }
+      if (url === 'api/common/departments_api.php') {
+        return Promise.resolve({ data: { departments: [] } });
+      }
+      return Promise.resolve({ data: { users: [] } });
+    });
+
+    api.post.mockImplementation((url) => {
+      if (url === 'api/admin/add_stream.php') {
+        return Promise.resolve({ data: { success: true, stream: { id: 3, name: 'Health' } } });
+      }
+      if (url === 'api/admin/add_college.php') {
+        return Promise.resolve({
+          data: { success: true, college: { id: 4, name: 'Health College', stream_id: 3, stream_name: 'Health' } },
+        });
+      }
+      return Promise.resolve({ data: { success: true } });
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageDepartments />
+      </MemoryRouter>
+    );
+
+    const streamSelect = await screen.findByRole('combobox', { name: 'Stream' });
+    const collegeSelect = screen.getByRole('combobox', { name: 'College' });
+    expect(screen.getByRole('option', { name: 'Natural Science' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Science College' })).toBeInTheDocument();
+
+    fireEvent.change(streamSelect, { target: { value: '__add_new__' } });
+    fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Health' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }));
+
+    await waitFor(() => {
+      expect(streamSelect).toHaveValue('3');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(api.post).toHaveBeenCalledWith('api/admin/add_stream.php', { name: 'Health' });
+
+    fireEvent.change(collegeSelect, { target: { value: '__add_new__' } });
+    fireEvent.change(screen.getByLabelText('College Name'), { target: { value: 'Health College' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }));
+
+    await waitFor(() => expect(collegeSelect).toHaveValue('Health College'));
+    expect(api.post).toHaveBeenCalledWith('api/admin/add_college.php', { name: 'Health College', stream_id: 3 });
+  });
+
+  it('keeps fallback stream and college options when catalog requests fail', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === 'api/admin/get_streams.php' || url === 'api/admin/get_colleges.php') {
+        return Promise.reject({ response: { status: 500, data: { message: 'Server error' } } });
+      }
+      if (url === 'api/common/departments_api.php') {
+        return Promise.resolve({ data: { departments: [] } });
+      }
+      return Promise.resolve({ data: { users: [] } });
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageDepartments />
+      </MemoryRouter>
+    );
+
+    const streamSelect = await screen.findByRole('combobox', { name: 'Stream' });
+    const collegeSelect = screen.getByRole('combobox', { name: 'College' });
+    expect(Array.from(streamSelect.options).map(option => option.textContent)).toEqual([
+      '-- Select Stream --',
+      'Natural Science',
+      'Social Science',
+      '+ Add New Stream',
+    ]);
+    expect(Array.from(collegeSelect.options).map(option => option.textContent)).toEqual([
+      '-- Select College --',
+      'Technology',
+      'Agriculture and Environmental Sciences',
+      'Natural and Computational Sciences',
+      'Health Science',
+      'Freshman Faculty',
+      '+ Add New College',
+    ]);
+    expect(screen.getByRole('alert')).toHaveTextContent('Streams: Server error Colleges: Server error');
+  });
+
   it('shows heads before department selection and prevents assigning a head from another department', async () => {
     api.get.mockImplementation((url) => {
       if (url === 'api/common/departments_api.php') {

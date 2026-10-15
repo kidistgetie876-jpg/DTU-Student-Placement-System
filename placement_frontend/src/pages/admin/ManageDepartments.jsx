@@ -3,6 +3,96 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import './ManageDepartments.css';
 
+const DEFAULT_STREAMS = [
+  { id: 'default-natural', name: 'Natural Science' },
+  { id: 'default-social', name: 'Social Science' },
+];
+
+const DEFAULT_COLLEGES = [
+  { id: 'default-technology', name: 'Technology', stream_id: 'default-natural' },
+  {
+    id: 'default-agriculture',
+    name: 'Agriculture and Environmental Sciences',
+    stream_id: 'default-natural',
+  },
+  {
+    id: 'default-natural-sciences',
+    name: 'Natural and Computational Sciences',
+    stream_id: 'default-natural',
+  },
+  { id: 'default-health', name: 'Health Science', stream_id: 'default-natural' },
+  { id: 'default-freshman', name: 'Freshman Faculty', stream_id: 'default-natural' },
+  {
+    id: 'default-social-sciences',
+    name: 'Social Sciences and Humanities',
+    stream_id: 'default-social',
+  },
+  {
+    id: 'default-business',
+    name: 'Business and Economics',
+    stream_id: 'default-social',
+  },
+  { id: 'default-law', name: 'Law', stream_id: 'default-social' },
+];
+
+const normalizeStreamName = name => {
+  const normalized = String(name || '').trim().toLowerCase();
+  if (normalized === 'natural' || normalized === 'natural science') return 'natural science';
+  if (normalized === 'social' || normalized === 'social science') return 'social science';
+  return normalized;
+};
+
+const normalizeCollegeName = name => String(name || '')
+  .trim()
+  .toLowerCase()
+  .replace(/^(college|school) of\s+/i, '');
+
+const mergeStreams = dynamicStreams => {
+  const streams = DEFAULT_STREAMS.map(stream => ({ ...stream }));
+  const defaultByName = new Map(streams.map(stream => [normalizeStreamName(stream.name), stream]));
+
+  dynamicStreams.forEach(stream => {
+    const normalizedName = normalizeStreamName(stream.name);
+    const matchingDefault = defaultByName.get(normalizedName);
+    if (matchingDefault) {
+      matchingDefault.id = stream.id;
+      return;
+    }
+    if (!streams.some(item => normalizeStreamName(item.name) === normalizedName)) {
+      streams.push(stream);
+    }
+  });
+
+  return streams;
+};
+
+const mergeColleges = (dynamicColleges, streams) => {
+  const defaultStreamId = {
+    'default-natural': streams.find(stream => normalizeStreamName(stream.name) === 'natural science')?.id,
+    'default-social': streams.find(stream => normalizeStreamName(stream.name) === 'social science')?.id,
+  };
+  const colleges = DEFAULT_COLLEGES.map(college => ({
+    ...college,
+    stream_id: defaultStreamId[college.stream_id] ?? college.stream_id,
+  }));
+  const seen = new Set(colleges.map(college => `${college.stream_id}:${normalizeCollegeName(college.name)}`));
+
+  dynamicColleges.forEach(college => {
+    const stream = streams.find(item =>
+      String(item.id) === String(college.stream_id)
+      || normalizeStreamName(item.name) === normalizeStreamName(college.stream_name)
+    );
+    const mappedCollege = { ...college, stream_id: stream?.id ?? college.stream_id };
+    const key = `${mappedCollege.stream_id}:${normalizeCollegeName(mappedCollege.name)}`;
+    if (!seen.has(key)) {
+      colleges.push(mappedCollege);
+      seen.add(key);
+    }
+  });
+
+  return colleges;
+};
+
 const normalizeDepartmentsPayload = (payload) => {
   if (!payload) return [];
   const topLevel = payload.data ?? payload;
@@ -36,23 +126,7 @@ const getDepartmentStream = (department) => {
 };
 
 
-  const collegesByStream = {
-  'Natural': [
-    'Gafat Institute of Technology',
-    'College of Natural and Computational Sciences',
-    'College of Agriculture and Environmental Sciences',
-    'College of Health Science',
-    'Freshman Faculty'
-  ],
-  'Social': [
-    'College of Social Sciences and Humanities',
-    'College of Business and Economics',
-    'School of Law'
-  ]
-};
-
-
-const DepartmentRow = ({ department, index, onEdit }) => (
+  const DepartmentRow = ({ department, index, onEdit }) => (
   <tr>
     <td className="ps-4 text-muted">{index + 1}</td>
     <td className="text-primary fw-semibold">{department.stream}</td>
@@ -145,18 +219,58 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
 const ManageDepartments = () => {
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
+  const [streams, setStreams] = useState(DEFAULT_STREAMS);
+  const [colleges, setColleges] = useState(DEFAULT_COLLEGES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [catalogError, setCatalogError] = useState('');
   
   // የፎርም ስቴቶች (Capacity ተወግዷል)
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [stream, setStream] = useState('Natural');
+  const [selectedStreamId, setSelectedStreamId] = useState('default-natural');
   const [collegeName, setCollegeName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [catalogModalType, setCatalogModalType] = useState('');
+  const [catalogName, setCatalogName] = useState('');
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [catalogModalError, setCatalogModalError] = useState('');
   
   // Validation state
   const [validationErrors, setValidationErrors] = useState({});
+
+  const loadCatalogs = async () => {
+    const [streamsResult, collegesResult] = await Promise.allSettled([
+      api.get('api/admin/get_streams.php'),
+      api.get('api/admin/get_colleges.php'),
+    ]);
+    const errors = [];
+    const readCatalog = (result, key, label) => {
+      if (result.status === 'rejected') {
+        errors.push(`${label}: ${result.reason?.response?.data?.message || result.reason?.message || 'Unable to load options.'}`);
+        return [];
+      }
+      const payload = result.value.data ?? result.value;
+      if (payload?.success === false) {
+        errors.push(`${label}: ${payload.message || 'Unable to load options.'}`);
+        return [];
+      }
+      if (Array.isArray(payload?.[key])) return payload[key];
+      return Array.isArray(payload) ? payload : [];
+    };
+
+    const loadedStreams = readCatalog(streamsResult, 'streams', 'Streams');
+    const loadedColleges = readCatalog(collegesResult, 'colleges', 'Colleges');
+    const mergedStreams = mergeStreams(loadedStreams);
+    setStreams(mergedStreams);
+    setColleges(mergeColleges(loadedColleges, mergedStreams));
+    setSelectedStreamId(currentId => {
+      if (mergedStreams.some(item => String(item.id) === String(currentId))) return String(currentId);
+      const naturalStream = mergedStreams.find(item => normalizeStreamName(item.name) === 'natural science');
+      return String(naturalStream?.id ?? mergedStreams[0]?.id ?? '');
+    });
+    setCatalogError(errors.join(' '));
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -168,7 +282,6 @@ const ManageDepartments = () => {
         stream: getDepartmentStream(department),
       })));
 
-      const resUsers = await api.get('api/admin/users_api.php');
     } catch (err) {
       setError('Backend connection error!');
     } finally {
@@ -176,7 +289,76 @@ const ManageDepartments = () => {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    loadCatalogs();
+  }, []);
+
+  const selectedStream = streams.find(item => String(item.id) === String(selectedStreamId));
+  const streamColleges = colleges.filter(college => String(college.stream_id) === String(selectedStreamId));
+
+  const handleCatalogSelect = (event, type) => {
+    if (event.target.value === '__add_new__') {
+      if (type === 'college' && !Number.isInteger(Number(selectedStreamId))) {
+        setCatalogError('A saved stream is required before adding a college.');
+        return;
+      }
+      setCatalogName('');
+      setCatalogModalError('');
+      setCatalogModalType(type);
+    } else if (type === 'stream') {
+      setSelectedStreamId(event.target.value);
+      setCollegeName('');
+      setValidationErrors(current => ({ ...current, college: '' }));
+    } else {
+      setCollegeName(event.target.value);
+      setValidationErrors(current => ({ ...current, college: '' }));
+    }
+  };
+
+  const handleCatalogSubmit = async event => {
+    event.preventDefault();
+    const trimmedName = catalogName.trim();
+    if (!trimmedName) {
+      setCatalogModalError(`${catalogModalType === 'stream' ? 'Stream' : 'College'} name is required.`);
+      return;
+    }
+
+    setCatalogSaving(true);
+    setCatalogModalError('');
+    const endpoint = catalogModalType === 'stream'
+      ? 'api/admin/add_stream.php'
+      : 'api/admin/add_college.php';
+    const payload = catalogModalType === 'stream'
+      ? { name: trimmedName }
+      : { name: trimmedName, stream_id: Number(selectedStreamId) };
+
+    try {
+      const response = await api.post(endpoint, payload);
+      const result = response.data ?? response;
+      if (!result.success) {
+        throw new Error(result.message || `Unable to add ${catalogModalType}.`);
+      }
+
+      if (catalogModalType === 'stream') {
+        const createdStream = result.stream;
+        setStreams(current => [...current, createdStream]);
+        setSelectedStreamId(String(createdStream.id));
+        setCollegeName('');
+      } else {
+        const createdCollege = result.college;
+        setColleges(current => [...current, createdCollege]);
+        setCollegeName(createdCollege.name);
+      }
+      setCatalogModalType('');
+      setCatalogName('');
+      setValidationErrors(current => ({ ...current, college: '' }));
+    } catch (err) {
+      setCatalogModalError(err.response?.data?.message || err.message || `Unable to add ${catalogModalType}.`);
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
 
   // Validation function
   const validateForm = () => {
@@ -229,7 +411,7 @@ const ManageDepartments = () => {
       const res = await api.post('api/common/departments_api.php', {
         name: name.trim(),
         description: description.trim(),
-        stream,
+        stream: selectedStream?.name || '',
         college_name: collegeName,
         status: 'active',
       });
@@ -268,6 +450,7 @@ const ManageDepartments = () => {
       </div>
 
       {error && <div className="alert alert-danger rounded-3">{error}</div>}
+      {catalogError && <div className="alert alert-danger rounded-3" role="alert">{catalogError}</div>}
 
       <div className="department-form-card card shadow-sm border-0 mb-5 rounded-4 overflow-hidden">
         <div className="card-header py-3 px-4">
@@ -277,16 +460,29 @@ const ManageDepartments = () => {
           <form onSubmit={handleSubmit} className="row g-3 align-items-end">
             <div className="col-md-4">
               <label className="form-label fw-bold small text-muted">1. STREAM</label>
-              <select className="form-select" value={stream} onChange={e => {setStream(e.target.value); setCollegeName('');}}>
-                <option value="Natural">Natural Science</option>
-                <option value="Social">Social Science</option>
+              <select
+                className="form-select"
+                aria-label="Stream"
+                value={selectedStreamId}
+                onChange={event => handleCatalogSelect(event, 'stream')}
+              >
+                <option value="">-- Select Stream --</option>
+                {streams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                <option value="__add_new__">+ Add New Stream</option>
               </select>
             </div>
             <div className="col-md-4">
               <label className="form-label fw-bold small text-muted">2. COLLEGE</label>
-              <select className={`form-select ${validationErrors.college ? 'is-invalid' : ''}`} value={collegeName} onChange={e => setCollegeName(e.target.value)} required>
+              <select
+                className={`form-select ${validationErrors.college ? 'is-invalid' : ''}`}
+                aria-label="College"
+                value={collegeName}
+                onChange={event => handleCatalogSelect(event, 'college')}
+                required
+              >
                 <option value="">-- Select College --</option>
-                {collegesByStream[stream]?.map(c => <option key={c} value={c}>{c.replace(/\t/g, '')}</option>)}
+                {streamColleges.map(college => <option key={college.id} value={college.name}>{college.name}</option>)}
+                <option value="__add_new__" disabled={!Number.isInteger(Number(selectedStreamId))}>+ Add New College</option>
               </select>
               {validationErrors.college && <div className="invalid-feedback d-block">{validationErrors.college}</div>}
             </div>
@@ -326,6 +522,52 @@ const ManageDepartments = () => {
       </div>
 
       <DepartmentTable departments={departments} loading={loading} onEdit={id => navigate(`/edit-department/${id}`)} />
+
+      {catalogModalType && (
+        <div className="modal-backdrop show" role="presentation">
+          <div className="modal show d-block" role="dialog" aria-modal="true" aria-labelledby="catalog-modal-title">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <form onSubmit={handleCatalogSubmit}>
+                  <div className="modal-header">
+                    <h5 className="modal-title" id="catalog-modal-title">
+                      Add New {catalogModalType === 'stream' ? 'Stream' : 'College'}
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      onClick={() => setCatalogModalType('')}
+                      disabled={catalogSaving}
+                    />
+                  </div>
+                  <div className="modal-body">
+                    <label htmlFor="catalog-name" className="form-label">
+                      {catalogModalType === 'stream' ? 'Stream Name' : 'College Name'}
+                    </label>
+                    <input
+                      id="catalog-name"
+                      className="form-control"
+                      value={catalogName}
+                      onChange={event => setCatalogName(event.target.value)}
+                      autoFocus
+                      maxLength={150}
+                      required
+                    />
+                    {catalogModalError && <div className="text-danger small mt-2" role="alert">{catalogModalError}</div>}
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-outline-secondary" onClick={() => setCatalogModalType('')} disabled={catalogSaving}>Cancel</button>
+                    <button type="submit" className="btn btn-primary" disabled={catalogSaving}>
+                      {catalogSaving ? 'Saving...' : 'Add'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
