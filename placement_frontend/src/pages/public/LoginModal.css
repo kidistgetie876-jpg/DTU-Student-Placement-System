@@ -71,8 +71,8 @@
   position: relative;
   inset: auto;
   z-index: auto;
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: auto;
   padding: 2rem 1rem;
   background:
     radial-gradient(ellipse at 15% 10%, rgba(47, 102, 177, 0.12), transparent 38%),
@@ -136,11 +136,15 @@
   min-height: 100vh;
   min-height: 100dvh;
   flex-direction: column;
+  justify-content: space-between;
 }
 
 .login-route-main {
   display: flex;
-  flex: 1;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin: 2rem 0;
 }
 
 @media (min-width: 992px) {

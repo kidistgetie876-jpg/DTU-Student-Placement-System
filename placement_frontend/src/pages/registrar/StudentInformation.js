@@ -39,12 +39,14 @@ const normalizeStream = (value) => {
 const StudentInformation = ({ students: initialStudents = [] }) => {
   const navigate = useNavigate();
   const [students, setStudents] = useState(initialStudents);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [streamFilter, setStreamFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [deletingStudentId, setDeletingStudentId] = useState(null);
   const [deleteError, setDeleteError] = useState('');
+  const itemsPerPage = 5;
 
   const loadStudents = async () => {
     setLoading(true);
@@ -95,6 +97,21 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
       return matchesSearch && matchesStream;
     });
   }, [students, search, streamFilter]);
+
+  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentStudents = filteredStudents.slice(indexOfFirstItem, indexOfLastItem);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, streamFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(totalPages, 1));
+    }
+  }, [currentPage, totalPages]);
 
   const refreshStudents = async () => {
     await loadStudents();
@@ -184,8 +201,9 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
           ) : filteredStudents.length === 0 ? (
             <div className="p-4 text-center text-muted">No student records found.</div>
           ) : (
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0" style={{ minWidth: '1300px' }}>
+            <>
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0" style={{ minWidth: '1300px' }}>
                 <thead className="table-light">
                   <tr>
                     <th>ID</th>
@@ -207,7 +225,7 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
                 </thead>
 
                 <tbody>
-                  {filteredStudents.map((student) => {
+                  {currentStudents.map((student) => {
                     const disabilityFlag = parseYesNo(student?.hasDisability ?? student?.disability ?? student?.specialSupport);
                     const minorityFlag = parseYesNo(student?.minority ?? student?.isMinority ?? student?.minorityStatus);
 
@@ -334,8 +352,48 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
+              <div className="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 border-top px-3 py-3">
+                <p className="mb-0 text-sm text-gray-600">
+                  Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredStudents.length)} of {filteredStudents.length} entries
+                </p>
+                <nav className="d-flex align-items-center gap-1" aria-label="Student records pagination">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm px-3 py-2 rounded-md border-gray-300 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setCurrentPage((previousPage) => Math.max(previousPage - 1, 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </button>
+                  {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      className={`btn btn-sm min-w-9 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${
+                        currentPage === page
+                          ? 'btn-primary border-blue-600 bg-blue-600 text-white'
+                          : 'btn-outline-secondary border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setCurrentPage(page)}
+                      aria-label={`Page ${page}`}
+                      aria-current={currentPage === page ? 'page' : undefined}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm px-3 py-2 rounded-md border-gray-300 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => setCurrentPage((previousPage) => Math.min(previousPage + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </button>
+                </nav>
+              </div>
+            </>
           )}
         </div>
       </div>

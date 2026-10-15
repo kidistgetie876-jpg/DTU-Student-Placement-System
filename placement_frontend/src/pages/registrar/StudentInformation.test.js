@@ -21,6 +21,40 @@ afterEach(() => {
 });
 
 describe('StudentInformation', () => {
+  it('paginates student records five at a time and supports page navigation', () => {
+    const students = Array.from({ length: 12 }, (_, index) => ({
+      id: index + 1,
+      first_name: `Student${index + 1}`,
+      last_name: 'Test',
+      email: `student${index + 1}@example.com`,
+    }));
+
+    render(
+      <MemoryRouter>
+        <StudentInformation students={students} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Showing 1 to 5 of 12 entries')).toBeInTheDocument();
+    expect(screen.getByText('Student1 Test')).toBeInTheDocument();
+    expect(screen.getByText('Student5 Test')).toBeInTheDocument();
+    expect(screen.queryByText('Student6 Test')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Showing 6 to 10 of 12 entries')).toBeInTheDocument();
+    expect(screen.getByText('Student6 Test')).toBeInTheDocument();
+    expect(screen.queryByText('Student1 Test')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page 3' }));
+    expect(screen.getByText('Showing 11 to 12 of 12 entries')).toBeInTheDocument();
+    expect(screen.getByText('Student12 Test')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(screen.getByText('Showing 6 to 10 of 12 entries')).toBeInTheDocument();
+  });
+
   it('displays each student stream and filters the table by stream', () => {
     render(
       <MemoryRouter>

@@ -495,6 +495,7 @@ const RegistrarDashboard = () => {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const reportFileInputRef = useRef(null);
   const PAGE_SIZE = 10;
+  const STUDENT_PAGE_SIZE = 5;
   const [placementBatch, setPlacementBatch] = useState(() => {
     try {
       return localStorage.getItem('dtuPlacementBatch') || 'DTU-2026/1';
@@ -1422,8 +1423,11 @@ const RegistrarDashboard = () => {
       return searchableText.includes(searchTerm);
     });
 
-  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
-  const paginatedStudents = filteredStudents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENT_PAGE_SIZE));
+  const paginatedStudents = filteredStudents.slice(
+    (currentPage - 1) * STUDENT_PAGE_SIZE,
+    currentPage * STUDENT_PAGE_SIZE,
+  );
 
   const handleDeleteStudent = async (student) => {
     const studentId = Number(student.id);
@@ -2243,10 +2247,10 @@ const RegistrarDashboard = () => {
                       </table>
                     </div>
 
-                    {studentRecords.length > PAGE_SIZE && (
+                    {filteredStudents.length > STUDENT_PAGE_SIZE && (
                       <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
                         <div className="text-muted small">
-                          Showing {Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredStudents.length)}-{Math.min(currentPage * PAGE_SIZE, filteredStudents.length)} of {filteredStudents.length}
+                          Showing {Math.min((currentPage - 1) * STUDENT_PAGE_SIZE + 1, filteredStudents.length)}-{Math.min(currentPage * STUDENT_PAGE_SIZE, filteredStudents.length)} of {filteredStudents.length}
                         </div>
                         <div className="btn-group" role="group" aria-label="Student pagination">
                           <button
@@ -2257,9 +2261,18 @@ const RegistrarDashboard = () => {
                           >
                             Previous
                           </button>
-                          <button type="button" className="btn btn-sm btn-light" disabled>
-                            Page {currentPage} of {totalPages}
-                          </button>
+                          {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                            <button
+                              key={page}
+                              type="button"
+                              className={`btn btn-sm ${currentPage === page ? 'btn-primary' : 'btn-outline-secondary'}`}
+                              onClick={() => setCurrentPage(page)}
+                              aria-label={`Page ${page}`}
+                              aria-current={currentPage === page ? 'page' : undefined}
+                            >
+                              {page}
+                            </button>
+                          ))}
                           <button
                             type="button"
                             className="btn btn-outline-secondary btn-sm"
@@ -3644,7 +3657,7 @@ const RegistrarDashboard = () => {
                           {report.file_path && (
                             <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={(event) => {
                               event.stopPropagation();
-                              const attachmentUrl = getAttachmentUrl(report.file_path);
+                              const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
                               if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                             }}>
                               Open attachment
@@ -3694,7 +3707,7 @@ const RegistrarDashboard = () => {
                           <p className="mb-0 mt-2">{report.message}</p>
                           {report.file_path && (
                             <button type="button" className="btn btn-sm btn-outline-primary mt-2" onClick={() => {
-                              const attachmentUrl = getAttachmentUrl(report.file_path);
+                              const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
                               if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                             }}>
                               Open attachment

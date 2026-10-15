@@ -4,8 +4,8 @@ import { FaPaperclip } from 'react-icons/fa';
 import api from '../../services/api';
 import getAttachmentUrl from '../../utils/getAttachmentUrl';
 
-const handleOpenAttachment = (filePath) => {
-  const attachmentUrl = getAttachmentUrl(filePath);
+const handleOpenAttachment = (filePath, notificationId) => {
+  const attachmentUrl = getAttachmentUrl(filePath, notificationId);
   if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
 };
 
@@ -251,7 +251,7 @@ const Reports = ({ leader, department, students = [] }) => {
                     <small className="text-muted text-nowrap">{report.created_at}</small>
                   </div>
                   {report.title && <div className="text-muted small mt-1">{report.title}</div>}
-                  {report.file_path && <button type="button" className="btn btn-sm btn-outline-primary mt-2 me-2" onClick={(event) => { event.stopPropagation(); handleOpenAttachment(report.file_path); }}>Open attachment</button>}
+                  {report.file_path && <button type="button" className="btn btn-sm btn-outline-primary mt-2 me-2" onClick={(event) => { event.stopPropagation(); handleOpenAttachment(report.file_path, report.id); }}>Open attachment</button>}
                   {report.direction === 'sent' && <button type="button" className="btn btn-sm btn-outline-danger mt-2" title="Delete message" aria-label="Delete message" onClick={(event) => { event.stopPropagation(); deleteReport(report); }} disabled={deletingId === report.id}><FaTrash aria-hidden="true" /></button>}
                 </div>
               );

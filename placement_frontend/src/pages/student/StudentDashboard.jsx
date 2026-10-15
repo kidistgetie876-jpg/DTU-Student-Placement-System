@@ -980,7 +980,7 @@ const StudentDashboard = () => {
                               className="btn btn-sm btn-outline-primary mt-2"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                const attachmentUrl = getAttachmentUrl(notification.file_path);
+                                const attachmentUrl = getAttachmentUrl(notification.file_path, notification.id);
                                 if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                               }}
                             >

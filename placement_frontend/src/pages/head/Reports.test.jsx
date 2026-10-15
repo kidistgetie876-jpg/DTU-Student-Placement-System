@@ -40,7 +40,7 @@ describe('Reports attachment', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open attachment' }));
 
     expect(openSpy).toHaveBeenCalledWith(
-      'http://localhost/student-placement/placement_backend/uploads/reports/report.xlsx',
+      'http://localhost/student-placement/placement_backend/api/common/download_report.php?notification_id=1',
       '_blank',
       'noopener,noreferrer'
     );

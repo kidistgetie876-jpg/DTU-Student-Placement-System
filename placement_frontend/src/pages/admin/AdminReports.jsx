@@ -196,7 +196,7 @@ const AdminReports = () => {
                 {report.file_path && (
                   <button type="button" className="btn btn-sm btn-outline-primary me-2" onClick={(event) => {
                     event.stopPropagation();
-                    const attachmentUrl = getAttachmentUrl(report.file_path);
+                    const attachmentUrl = getAttachmentUrl(report.file_path, report.id);
                     if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                   }}>
                     Download Attachment

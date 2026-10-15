@@ -1,14 +1,19 @@
 import api from '../services/api';
 
-const getAttachmentUrl = (filePath) => {
-  if (typeof filePath !== 'string' || !filePath.trim() || !api.defaults.baseURL) return '#';
+const getAttachmentUrl = (filePath, notificationId) => {
+  if (
+    typeof filePath !== 'string'
+    || !filePath.trim()
+    || !api.defaults.baseURL
+    || !Number.isInteger(Number(notificationId))
+    || Number(notificationId) <= 0
+  ) return '#';
 
   const normalizedPath = filePath.trim().replace(/\\/g, '/');
   const attachmentPath = normalizedPath.match(/(?:^|\/)(uploads\/reports\/[^?#]+)/)?.[1];
   if (!attachmentPath) return '#';
 
-  const encodedPath = attachmentPath.split('/').map(encodeURIComponent).join('/');
-  return `${api.defaults.baseURL.replace(/\/+$/, '')}/${encodedPath}`;
+  return `${api.defaults.baseURL.replace(/\/+$/, '')}/api/common/download_report.php?notification_id=${encodeURIComponent(notificationId)}`;
 };
 
 export default getAttachmentUrl;

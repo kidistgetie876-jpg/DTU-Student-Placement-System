@@ -83,7 +83,7 @@ describe('AdminReports', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Download Attachment' }));
     expect(openSpy).toHaveBeenCalledWith(
-      'http://localhost/student-placement/placement_backend/uploads/reports/placement-report.pdf',
+      'http://localhost/student-placement/placement_backend/api/common/download_report.php?notification_id=12',
       '_blank',
       'noopener,noreferrer'
     );

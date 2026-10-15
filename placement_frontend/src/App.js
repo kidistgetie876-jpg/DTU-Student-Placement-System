@@ -119,9 +119,9 @@ function AppRoutes() {
 
   if (isLoginRoute) {
     return (
-      <div className="login-route-shell">
+      <div className="login-route-shell min-h-screen flex flex-col justify-between overflow-y-auto">
         <Header />
-        <main className="login-route-main">{routes}</main>
+        <main className="login-route-main flex-1 flex items-center justify-center my-8">{routes}</main>
         <Footer />
       </div>
     );
