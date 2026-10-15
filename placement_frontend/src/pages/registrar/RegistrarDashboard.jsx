@@ -480,6 +480,8 @@ const RegistrarDashboard = () => {
   const [streamFilter, setStreamFilter] = useState('all');
   const [deptSearch, setDeptSearch] = useState('');
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
+  const [deletingStudentId, setDeletingStudentId] = useState(null);
+  const [studentDeleteError, setStudentDeleteError] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [choiceMatrixSearch, setChoiceMatrixSearch] = useState('');
   const [choiceMatrixSelectedStream, setChoiceMatrixSelectedStream] = useState('All');
@@ -1422,6 +1424,32 @@ const RegistrarDashboard = () => {
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / PAGE_SIZE));
   const paginatedStudents = filteredStudents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleDeleteStudent = async (student) => {
+    const studentId = Number(student.id);
+    if (!Number.isInteger(studentId) || studentId <= 0) {
+      setStudentDeleteError('Unable to delete this student because the student ID is invalid.');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this student?')) return;
+
+    setStudentDeleteError('');
+    setDeletingStudentId(studentId);
+    try {
+      await api.delete('api/registrar/delete_student.php', {
+        data: { student_id: studentId },
+      });
+      setStudentRecords((records) => records.filter((record) => Number(record.id) !== studentId));
+    } catch (error) {
+      setStudentDeleteError(
+        error.response?.data?.message || 'Failed to delete student information. Please try again.',
+      );
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
+
   const filteredCapacityDepartments = (departments || []).filter((department) => {
     const name = String(department.name || '').toLowerCase().trim();
     const college = String(department.college || '').toLowerCase().trim();
@@ -2041,6 +2069,11 @@ const RegistrarDashboard = () => {
                   </div>
                 </div>
 
+                {studentDeleteError && (
+                  <div className="alert alert-danger py-2" role="alert">
+                    {studentDeleteError}
+                  </div>
+                )}
                 {studentInfoLoading ? (
                   <div className="text-muted">Loading student records from the database...</div>
                 ) : studentRecords.length === 0 ? (
@@ -2162,23 +2195,33 @@ const RegistrarDashboard = () => {
                                 <div className="small">{student.department}</div>
                               </td>
 
-                              <td className="text-center">
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm ${needsAcademicScores(student) ? 'btn-warning text-dark' : 'btn-outline-secondary'}`}
-                                  onClick={() => {
-                                    const studentId = student.id ?? student.user_id ?? student.email;
-                                    navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
-                                      state: {
-                                        student,
-                                        returnTo: '/registrar-dashboard',
-                                        returnTab: tab,
-                                      },
-                                    });
-                                  }}
-                                >
-                                  {needsAcademicScores(student) ? 'Fill Scores' : 'Update'}
-                                </button>
+                              <td className="text-center text-nowrap" style={{ minWidth: '135px' }}>
+                                <div className="d-flex justify-content-center align-items-center gap-1 flex-nowrap">
+                                  <button
+                                    type="button"
+                                    className={`btn btn-sm ${needsAcademicScores(student) ? 'btn-warning text-dark' : 'btn-outline-secondary'}`}
+                                    onClick={() => {
+                                      const studentId = student.id ?? student.user_id ?? student.email;
+                                      navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
+                                        state: {
+                                          student,
+                                          returnTo: '/registrar-dashboard',
+                                          returnTab: tab,
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    {needsAcademicScores(student) ? 'Fill Scores' : 'Update'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => handleDeleteStudent(student)}
+                                    disabled={deletingStudentId !== null}
+                                  >
+                                    {deletingStudentId === Number(student.id) ? 'Deleting...' : 'Delete'}
+                                  </button>
+                                </div>
                               </td>
 
                               {/* Placement Status */}

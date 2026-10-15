@@ -43,6 +43,8 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
   const [search, setSearch] = useState('');
   const [streamFilter, setStreamFilter] = useState('all');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [deletingStudentId, setDeletingStudentId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const loadStudents = async () => {
     setLoading(true);
@@ -98,6 +100,35 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
     await loadStudents();
   };
 
+  const handleDelete = async (studentId) => {
+    studentId = Number(studentId);
+    if (!Number.isInteger(studentId) || studentId <= 0) {
+      setDeleteError('Unable to delete this student because the student ID is invalid.');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this student?')) {
+      return;
+    }
+
+    setDeleteError('');
+    setDeletingStudentId(studentId);
+    try {
+      await api.delete('api/registrar/delete_student.php', {
+        data: { student_id: studentId },
+      });
+      setStudents((currentStudents) => currentStudents.filter(
+        (currentStudent) => Number(
+          currentStudent.student_id ?? currentStudent.id ?? currentStudent.user_id,
+        ) !== studentId,
+      ));
+    } catch (error) {
+      setDeleteError(error.response?.data?.message || 'Failed to delete student information. Please try again.');
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
+
   return (
     <div style={{ position: 'relative' }}>
       <div className="card shadow-sm border-0" style={{ borderRadius: '16px', overflow: 'hidden' }}>
@@ -143,6 +174,11 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
         </div>
 
         <div className="card-body p-0">
+          {deleteError && (
+            <div className="alert alert-danger m-3 mb-0" role="alert">
+              {deleteError}
+            </div>
+          )}
           {loading && students.length === 0 ? (
             <div className="p-4 text-muted">Loading student records...</div>
           ) : filteredStudents.length === 0 ? (
@@ -254,18 +290,33 @@ const StudentInformation = ({ students: initialStudents = [] }) => {
                         <td>{student.department || 'Not assigned'}</td>
 
                         <td className="text-center">
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${needsAcademicScores(student) ? 'btn-warning text-dark' : 'btn-outline-secondary'}`}
-                            onClick={() => {
-                              const studentId = student.id ?? student.user_id ?? student.email;
-                              navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
-                                state: { student },
-                              });
-                            }}
-                          >
-                            {needsAcademicScores(student) ? 'Fill Scores' : 'Update'}
-                          </button>
+                          <div className="d-flex justify-content-center gap-2">
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${needsAcademicScores(student) ? 'btn-warning text-dark' : 'btn-outline-secondary'}`}
+                              onClick={() => {
+                                const studentId = student.id ?? student.user_id ?? student.email;
+                                navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
+                                  state: { student },
+                                });
+                              }}
+                            >
+                              {needsAcademicScores(student) ? 'Fill Scores' : 'Update'}
+                            </button>
+                            <button
+                              type="button"
+                              className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/40 dark:hover:bg-red-900/60 dark:text-red-400 rounded-md border border-red-200 dark:border-red-800 text-xs font-semibold transition-all"
+                              onClick={() => handleDelete(
+                                student.student_id ?? student.id ?? student.user_id,
+                                student.first_name,
+                              )}
+                              disabled={deletingStudentId !== null}
+                            >
+                              {deletingStudentId === Number(
+                                student.student_id ?? student.id ?? student.user_id,
+                              ) ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
                         </td>
 
                         <td className="text-center">
