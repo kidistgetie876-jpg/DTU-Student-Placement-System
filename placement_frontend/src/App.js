@@ -3,7 +3,7 @@ import "./App.css";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import api from './services/api.js';
 import Header from "./components/layout/Header.jsx";
-import Footer from "./components/layout/Footer.jsx";
+import PublicLayout from "./components/layout/PublicLayout.jsx";
 import Home from "./pages/public/Home.jsx";
 import Services from "./pages/public/Services.jsx";
 import PlacementInfo from "./pages/public/PlacementInfo.jsx";
@@ -95,6 +95,7 @@ function AppRoutes() {
 
   const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department') || location.pathname.startsWith('/admin/assign-head');
   const isAssignHeadPage = location.pathname === '/admin/assign-head';
+  const isPublicPage = ['/', '/services', '/placement-info', '/announcements', '/contact', '/login'].includes(location.pathname);
   const routes = (
     <Routes>
       <Route path="/" element={<Home />} />
@@ -117,13 +118,14 @@ function AppRoutes() {
     </Routes>
   );
 
-  if (isLoginRoute) {
+  if (isPublicPage) {
     return (
-      <div className="login-route-shell min-h-screen flex flex-col justify-between overflow-y-auto">
-        <Header />
-        <main className="login-route-main flex-1 flex items-center justify-center my-8">{routes}</main>
-        <Footer />
-      </div>
+      <PublicLayout
+        isLogin={isLoginRoute}
+        mainClassName={isLoginRoute ? 'login-route-main' : 'app-main container pt-0'}
+      >
+        {routes}
+      </PublicLayout>
     );
   }
 
@@ -133,7 +135,6 @@ function AppRoutes() {
       <main className={`app-main ${isAdmin && !isAssignHeadPage ? 'dashboard-main' : 'container pt-0'} ${isAssignHeadPage ? 'assign-head-main' : ''}`}>
         {routes}
       </main>
-      {!user && <Footer />}
     </>
   );
 }

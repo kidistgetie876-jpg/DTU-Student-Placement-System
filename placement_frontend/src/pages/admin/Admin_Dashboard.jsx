@@ -62,8 +62,8 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   const [tab, setTabState] = useState(() => {
-    const savedTab = localStorage.getItem('activeTab');
-    return adminTabs.includes(savedTab) ? savedTab : 'dashboard';
+    const initialTab = location.state?.activeTab;
+    return adminTabs.includes(initialTab) ? initialTab : 'dashboard';
   });
   const setTab = (nextTab) => {
     if (!adminTabs.includes(nextTab)) return;

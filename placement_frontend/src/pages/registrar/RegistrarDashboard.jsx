@@ -505,6 +505,10 @@ const RegistrarDashboard = () => {
   const [choiceDetailsStudent, setChoiceDetailsStudent] = useState(null);
   const [selectedStream, setSelectedStream] = useState('all');
   const [placementCollege, setPlacementCollege] = useState('all');
+  const [placementCandidatesData, setPlacementCandidatesData] = useState([]);
+  const [placementCandidatesLoading, setPlacementCandidatesLoading] = useState(false);
+  const [placementCandidatesError, setPlacementCandidatesError] = useState('');
+  const [loadAllStudentsInStream, setLoadAllStudentsInStream] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [capacityPage, setCapacityPage] = useState(1);
@@ -1649,73 +1653,92 @@ const RegistrarDashboard = () => {
     }
   };
 
-  const streamOptions = ['Natural Science', 'Social Science'];
+  const streamOptions = Array.from(
+    new Set(departments.map((department) => String(getDepartmentStream(department) || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
 
   const matchesSelectedStream = (department) => {
     if (selectedStream === 'all') return true;
 
-    const streamName = String(getDepartmentStream(department) || '').toLowerCase();
-    const collegeName = String(department?.college || '').toLowerCase();
-
-    if (selectedStream === 'Natural Science') {
-      return (
-        streamName === 'natural science' ||
-        streamName.includes('natural') ||
-        collegeName.includes('natural') ||
-        collegeName.includes('environment')
-      );
-    }
-
-    if (selectedStream === 'Social Science') {
-      return (
-        streamName === 'humanities' ||
-        streamName === 'social science' ||
-        streamName.includes('social') ||
-        streamName.includes('human') ||
-        collegeName.includes('social') ||
-        collegeName.includes('human') ||
-        collegeName.includes('business') ||
-        collegeName.includes('economics') ||
-        collegeName.includes('law') ||
-        collegeName.includes('education')
-      );
-    }
-
-    return true;
+    return String(getDepartmentStream(department) || '').trim().toLowerCase()
+      === String(selectedStream).trim().toLowerCase();
   };
 
   const placementCollegeOptions = Array.from(
     new Set(
       departments
         .filter((dept) => matchesSelectedStream(dept))
-        .map((dept) => dept.college)
+        .map((dept) => String(dept.college || '').trim())
         .filter(Boolean)
     )
   ).sort((a, b) => a.localeCompare(b));
 
-  const placementCandidates = studentRecords.filter((student) => {
-    if (hasPlacementResult(student)) {
-      return false;
-    }
+  useEffect(() => {
+    if (!registrar || tab !== 'run-placement') return undefined;
 
-    const studentChoices = Array.isArray(student.choices) ? student.choices : [];
-    const departmentMatch = departments.some((dept) => {
-      const matchesStream = matchesSelectedStream(dept);
-      const matchesCollege = placementCollege === 'all' || String(dept.college || '').toLowerCase() === String(placementCollege).toLowerCase();
-      const hasPreference = studentChoices.some((choice) => {
-        const choiceDepartment = String(choice.department || '').toLowerCase().trim();
-        const matchesChoiceName = choiceDepartment === String(dept.name || '').toLowerCase().trim();
-        const matchesChoiceId = choiceDepartment === String(dept.id || '').toLowerCase().trim();
-        return matchesChoiceName || matchesChoiceId;
+    let isCurrent = true;
+    const params = {
+      stream: selectedStream,
+      college: loadAllStudentsInStream ? 'all' : placementCollege,
+    };
+    setPlacementCandidatesLoading(true);
+    setPlacementCandidatesError('');
+    console.debug('[Run Placement] Fetching candidate students', params);
+
+    api.get('api/registrar/candidate_students_api.php', { params })
+      .then((response) => {
+        if (!isCurrent) return;
+        const candidates = Array.isArray(response.data?.students) ? response.data.students : [];
+        console.debug('[Run Placement] Candidate students response', {
+          success: response.data?.success,
+          filters: response.data?.filters,
+          count: candidates.length,
+          candidates: candidates.map(({ id, stream, choices = [] }) => ({
+            id,
+            stream,
+            choices: choices.map(({ department, college_name, stream: choiceStream }) => ({
+              department,
+              college: college_name,
+              stream: choiceStream,
+            })),
+          })),
+        });
+        setPlacementCandidatesData(candidates.filter((student) => !hasPlacementResult(student)));
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        console.error('[Run Placement] Failed to fetch candidate students', {
+          params,
+          response: error.response?.data,
+          error,
+        });
+        setPlacementCandidatesData([]);
+        setPlacementCandidatesError(error.response?.data?.message || error.message || 'Unable to load candidate students.');
+      })
+      .finally(() => {
+        if (isCurrent) setPlacementCandidatesLoading(false);
       });
 
-      return hasPreference && matchesStream && matchesCollege;
-    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [registrar, tab, selectedStream, placementCollege, loadAllStudentsInStream]);
 
-    if (!departmentMatch) {
+  const placementCandidates = placementCandidatesData.filter((student) => {
+    const choices = Array.isArray(student.choices) ? student.choices : [];
+    const streamMatches = (stream) => String(stream || '').trim().toLowerCase()
+      === String(selectedStream).trim().toLowerCase();
+    if (selectedStream !== 'all' && (choices.length > 0
+      ? !choices.some((choice) => streamMatches(choice.stream || student.stream))
+      : !streamMatches(student.stream))) {
       return false;
     }
-
+    if (!loadAllStudentsInStream && placementCollege !== 'all' && !choices.some((choice) => (
+      String(choice.college_name || choice.college || '').trim().toLowerCase()
+        === String(placementCollege).trim().toLowerCase()
+    ))) {
+      return false;
+    }
     return true;
   });
 
@@ -3276,12 +3299,17 @@ const RegistrarDashboard = () => {
                         <select
                           className="form-select form-select-lg"
                           value={selectedStream}
-                          onChange={(e) => setSelectedStream(e.target.value)}
+                          onChange={(e) => {
+                            setSelectedStream(e.target.value);
+                            setPlacementCollege('all');
+                            setLoadAllStudentsInStream(false);
+                            setSelectedStudentIds([]);
+                          }}
                           style={{ borderRadius: '12px' }}
                         >
                           <option value="all">All streams</option>
                           {streamOptions.map((stream) => (
-                            <option key={stream} value={stream}>{stream}</option>
+                            <option key={stream} value={stream}>{formatStudentStream(stream)}</option>
                           ))}
                         </select>
                       </div>
@@ -3291,7 +3319,11 @@ const RegistrarDashboard = () => {
                         <select
                           className="form-select form-select-lg"
                           value={placementCollege}
-                          onChange={(e) => setPlacementCollege(e.target.value)}
+                          onChange={(e) => {
+                            setPlacementCollege(e.target.value);
+                            setLoadAllStudentsInStream(false);
+                            setSelectedStudentIds([]);
+                          }}
                           style={{ borderRadius: '12px' }}
                           disabled={selectedStream === 'all' && placementCollegeOptions.length === 0}
                         >
@@ -3344,10 +3376,38 @@ const RegistrarDashboard = () => {
                       </div>
 
                       <div className="border rounded bg-white" style={{ maxHeight: '280px', overflowY: 'auto', borderRadius: '16px' }}>
-                        {placementCandidates.length === 0 ? (
-                          <div className="p-3 text-muted">No students match the current stream, college, and department filters.</div>
+                        {placementCandidatesLoading ? (
+                          <div className="p-3 text-muted" role="status">Loading candidate students…</div>
+                        ) : placementCandidatesError ? (
+                          <div className="p-3 text-danger" role="alert">{placementCandidatesError}</div>
+                        ) : placementCandidates.length === 0 ? (
+                          <div className="p-3 text-muted">
+                            <div>
+                              {loadAllStudentsInStream
+                                ? 'No students are available for the selected stream.'
+                                : 'No students match the current stream and college filters.'}
+                            </div>
+                            {placementCollege !== 'all' && !loadAllStudentsInStream && (
+                              <button
+                                type="button"
+                                className="btn btn-outline-primary btn-sm mt-2"
+                                onClick={() => {
+                                  setLoadAllStudentsInStream(true);
+                                  setSelectedStudentIds([]);
+                                }}
+                              >
+                                Load All Students in Stream
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          placementCandidates.map((student) => {
+                          <>
+                            {loadAllStudentsInStream && placementCollege !== 'all' && (
+                              <div className="alert alert-warning m-2 py-2" role="status">
+                                Showing all candidates in this stream; the selected college filter is bypassed for this list.
+                              </div>
+                            )}
+                            {placementCandidates.map((student) => {
                             const checked = selectedStudentIds.includes(String(student.id));
 
                             return (
@@ -3378,7 +3438,8 @@ const RegistrarDashboard = () => {
                                 <span className="badge rounded-pill px-2 py-2" style={{ background: '#edf3ff', color: '#123153' }}>{student.status}</span>
                               </label>
                             );
-                          })
+                            })}
+                          </>
                         )}
                       </div>
                     </div>

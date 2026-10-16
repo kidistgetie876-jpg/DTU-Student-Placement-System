@@ -204,7 +204,8 @@ const DataImport = ({ onImportSuccess }) => {
       setPreviewType(importType);
       setPreviewReady(true);
       setStatusType('info');
-      setStatusMessage(`Preview ready: ${normalizedData.length} ${importType === 'user' ? 'users' : 'students'}.`);
+      const itemLabel = importType === 'user' ? 'user' : 'student';
+      setStatusMessage(`Preview ready: ${normalizedData.length} ${itemLabel}${normalizedData.length === 1 ? '' : 's'}.`);
     } catch (error) {
       setStatusType('error');
       setStatusMessage(error.message || 'ፋይሉን ማንበብ አልተቻለም።');
@@ -310,7 +311,11 @@ const DataImport = ({ onImportSuccess }) => {
         
         {statusMessage && (
           <div
-            className={`alert ${statusType === 'error' ? 'alert-danger' : 'alert-success'} mb-4`}
+            className={`alert mb-4 ${
+              statusType === 'error'
+                ? 'alert-danger bg-red-100 text-red-800 border-red-300'
+                : 'alert-success bg-green-100 text-green-800 border-green-300'
+            }`}
             role={statusType === 'error' ? 'alert' : 'status'}
             aria-live={statusType === 'error' ? 'assertive' : 'polite'}
           >

@@ -585,14 +585,14 @@ describe('StudentDashboard', () => {
       });
     }
 
-    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       'api/student/student_preferences.php',
       expect.objectContaining({ choices: expect.any(Array) })
     ));
     expect(api.post.mock.calls[0][1].choices).toHaveLength(10);
-    expect(await screen.findByRole('status')).toHaveTextContent('Preferences saved successfully.');
+    expect(await screen.findByText('Preferences saved successfully. You can update your choices anytime until the Registrar publishes the final results.')).toBeInTheDocument();
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   }, 15000);
@@ -641,30 +641,126 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'Natural' } });
-    fireEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Please select a college first.');
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 
-  it('shows submitted preferences read-only without form controls', async () => {
+  it('allows editing submitted preferences while the deadline is active and results are unpublished', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) {
         return Promise.resolve({ data: [
-          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering' },
-          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering' },
-          { id: 3, name: 'Business Administration', stream: 'Social Science', college_name: 'College of Business' },
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 3, name: 'Business Administration', stream: 'Social Science', college_name: 'College of Business', status: 'active' },
         ] });
       }
       if (url.includes('student_data_api.php')) {
         return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', email: 'alice@example.com', gpa: 3, cgpa: 3 } } });
       }
       if (url.includes('student_preferences.php')) {
-        return Promise.resolve({ data: { success: true, choices: [
-          { id: 1, department: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering' },
-          { id: 2, department: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering' },
-        ] } });
+        return Promise.resolve({ data: {
+          success: true,
+          isDeadlineActive: true,
+          isResultPublished: false,
+          choices: [
+            { id: 1, department: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering' },
+            { id: 2, department: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering' },
+          ],
+        } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    expect(screen.getByText('Preferences submitted')).toBeInTheDocument();
+    expect(screen.getByText('Preferences submitted. You can update or re-order your choices anytime until the placement results are published by the Registrar.')).toBeInTheDocument();
+    expect(screen.getAllByRole('status')[0]).toHaveClass('bg-emerald-50', 'text-emerald-800', 'border-emerald-200');
+    expect(screen.getByText('Natural')).toBeInTheDocument();
+    expect(screen.getAllByText('College of Engineering')).toHaveLength(3);
+    expect(screen.getByText('Rank #1')).toBeInTheDocument();
+    expect(screen.getByText('Computer Science')).toBeInTheDocument();
+    expect(screen.getByText('Rank #2')).toBeInTheDocument();
+    expect(screen.getByText('Electrical Engineering')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update Preferences' }));
+    expect(screen.getAllByRole('combobox')[1]).toBeEnabled();
+    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'Electrical Engineering' } });
+    fireEvent.change(screen.getAllByRole('combobox')[3], { target: { value: 'Computer Science' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Updated Preferences' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { student_id: '1', choices: [{ dept_id: 2, priority: 1 }, { dept_id: 1, priority: 2 }] },
+    ));
+    expect(await screen.findByText('Preferences saved successfully. You can update your choices anytime until the Registrar publishes the final results.')).toBeInTheDocument();
+    expect(screen.getByText(/Preferences saved successfully\./)).toHaveClass('bg-emerald-50', 'text-emerald-800', 'border-emerald-200');
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('allows editing when the API confirms no placement results exist for this student', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('system_settings_api.php')) {
+        return Promise.resolve({ data: { settings: { placement: { submissionDeadline: '2020-01-01' } } } });
+      }
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: {
+          success: true,
+          isDeadlineActive: true,
+          is_published: false,
+          deadline_passed: false,
+          choices: [
+            { id: 1, dept_id: 1, department: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', priority: 1 },
+            { id: 2, dept_id: 2, department: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', priority: 2 },
+          ],
+        } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Update Preferences' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Updated Preferences' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { student_id: '1', choices: [{ dept_id: 1, priority: 1 }, { dept_id: 2, priority: 2 }] },
+    ));
+  });
+
+  it('locks submitted preferences after the registrar publishes placement results', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: {
+          success: true,
+          isDeadlineActive: true,
+          isResultPublished: true,
+          choices: [{ id: 1, department: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering' }],
+        } });
       }
       return Promise.resolve({ data: {} });
     });
@@ -672,16 +768,75 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(screen.getByText(/You have already submitted your department preferences/i)).toBeInTheDocument();
-    expect(screen.getByText('Natural')).toBeInTheDocument();
-    expect(screen.getAllByText('College of Engineering')).toHaveLength(3);
-    expect(screen.getByText('Rank #1')).toBeInTheDocument();
-    expect(screen.getByText('Computer Science')).toBeInTheDocument();
-    expect(screen.getByText('Rank #2')).toBeInTheDocument();
-    expect(screen.getByText('Electrical Engineering')).toBeInTheDocument();
+    expect(await screen.findByText('Placement choices are locked. Results have been published by the Registrar.')).toBeInTheDocument();
+    expect(screen.getByText('Results Published')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update Preferences' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('allows updating submitted preferences after the deadline until results are published', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('system_settings_api.php')) {
+        return Promise.resolve({ data: { settings: { placement: { submissionDeadline: '2020-01-01' } } } });
+      }
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: {
+          success: true,
+          isDeadlineActive: false,
+          isResultPublished: false,
+          choices: [
+            { id: 1, dept_id: 1, department: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', priority: 1 },
+            { id: 2, dept_id: 2, department: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', priority: 2 },
+          ],
+        } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Update Preferences' }));
+    expect(screen.getAllByRole('combobox')[1]).toBeEnabled();
+    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'Electrical Engineering' } });
+    fireEvent.change(screen.getAllByRole('combobox')[3], { target: { value: 'Computer Science' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Updated Preferences' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { student_id: '1', choices: [{ dept_id: 2, priority: 1 }, { dept_id: 1, priority: 2 }] },
+    ));
+  });
+
+  it('shows an active locked notice when no preferences were submitted before the deadline', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('system_settings_api.php')) {
+        return Promise.resolve({ data: { settings: { placement: { submissionDeadline: '2020-01-01' } } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: { success: true, isDeadlineActive: false, isResultPublished: false, choices: [] } });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    expect(await screen.findByText(/deadline closed on 2020-01-01/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^submit$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /undo changes/i })).not.toBeInTheDocument();
   });
 
   it('locks preference submission after the configured deadline', async () => {
@@ -702,12 +857,12 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('The preference submission deadline closed on 2020-01-01.');
-    expect(screen.getAllByRole('combobox').every((select) => select.disabled)).toBe(true);
+    expect(await screen.findByText(/deadline closed on 2020-01-01/)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^submit$/i })).not.toBeInTheDocument();
   });
 
-  it('marks previously submitted choices as recorded after the deadline', async () => {
+  it('keeps previously submitted choices editable after the deadline until results are published', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('system_settings_api.php')) {
         return Promise.resolve({ data: { settings: { placement: { submissionDeadline: '2020-01-01' } } } });
@@ -727,7 +882,8 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(await screen.findByText('Submission Closed (Recorded)')).toBeInTheDocument();
+    expect(await screen.findByText(/Preferences submitted\. You can update or re-order/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Preferences' })).toBeInTheDocument();
     expect(screen.getByText('Computer Science')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   });
@@ -750,14 +906,14 @@ describe('StudentDashboard', () => {
 
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('The preference submission deadline closed');
+    expect(await screen.findByText(/deadline closed on 2020-01-01/)).toBeInTheDocument();
 
     currentDeadline = '2099-01-01';
     window.dispatchEvent(new Event('system-settings-updated'));
 
     await waitFor(() => {
       expect(screen.queryByText(/The preference submission deadline closed/)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^submit$/i })).toBeEnabled();
+      expect(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]).toBeEnabled();
     });
     const [streamSelect, collegeSelect] = screen.getAllByRole('combobox');
     expect(streamSelect).toBeDisabled();

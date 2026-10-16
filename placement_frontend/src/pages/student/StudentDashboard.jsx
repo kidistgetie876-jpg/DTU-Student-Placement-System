@@ -170,12 +170,7 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTabState] = useState(() => {
-    const savedTab = localStorage.getItem('activeTab');
-    return ['overview', 'profile', 'preferences', 'result', 'appeal', 'notifications'].includes(savedTab)
-      ? savedTab
-      : 'overview';
-  });
+  const [tab, setTabState] = useState('overview');
   const setTab = (nextTab) => {
     localStorage.setItem('activeTab', nextTab);
     setTabState(nextTab);
@@ -193,6 +188,9 @@ const StudentDashboard = () => {
   const [placementResult, setPlacementResult] = useState(null);
   const [placementResultLoading, setPlacementResultLoading] = useState(false);
   const [preferencesSubmitted, setPreferencesSubmitted] = useState(false);
+  const [editingPreferences, setEditingPreferences] = useState(false);
+  const [serverDeadlineActive, setServerDeadlineActive] = useState(null);
+  const [isResultPublished, setIsResultPublished] = useState(false);
   const [submissionDeadline, setSubmissionDeadline] = useState('');
   const [deadlineClock, setDeadlineClock] = useState(Date.now());
   const [prefError, setPrefError] = useState('');
@@ -244,6 +242,18 @@ const StudentDashboard = () => {
         }
 
         const resPrefs = await api.get(`api/student/student_preferences.php?student_id=${parsedUser.id}`);
+        const deadlineActive = resPrefs.data?.isDeadlineActive ?? (
+          typeof resPrefs.data?.deadline_passed === 'boolean' ? !resPrefs.data.deadline_passed : null
+        );
+        if (typeof deadlineActive === 'boolean') {
+          setServerDeadlineActive(deadlineActive);
+        }
+        setIsResultPublished(
+          resPrefs.data?.isResultPublished === true || resPrefs.data?.is_published === true
+        );
+        if (typeof resPrefs.data?.submissionDeadline === 'string') {
+          setSubmissionDeadline(resPrefs.data.submissionDeadline);
+        }
         const list = resPrefs.data?.choices || resPrefs.data?.data || [];
         if (resPrefs.data?.success && Array.isArray(list) && list.length > 0) {
           const saved = list;
@@ -299,6 +309,16 @@ const StudentDashboard = () => {
   const isDeadlinePassed = useMemo(() => (
     hasSubmissionDeadlinePassed(submissionDeadline, new Date(deadlineClock))
   ), [submissionDeadline, deadlineClock]);
+  const isDeadlineClosed = serverDeadlineActive === null ? isDeadlinePassed : !serverDeadlineActive;
+  const isPreferencesLocked = preferencesSubmitted
+    ? isResultPublished
+    : isDeadlineClosed || isResultPublished;
+
+  useEffect(() => {
+    if ((preferencesSubmitted && isResultPublished) || (!preferencesSubmitted && isDeadlineClosed)) {
+      setEditingPreferences(false);
+    }
+  }, [editingPreferences, isDeadlineClosed, isResultPublished, preferencesSubmitted]);
   const studentGpa = Number(profile?.gpa || profile?.cgpa || 0);
   const studentStatus = String(profile?.status || '').toUpperCase();
   const minimumGpa = Number(placementRules.minGpa || 1.75);
@@ -340,6 +360,31 @@ const StudentDashboard = () => {
     };
 
     loadPlacementResult();
+  }, [student, tab]);
+
+  useEffect(() => {
+    if (tab !== 'preferences' || !student?.id) return undefined;
+
+    const refreshPublicationStatus = async () => {
+      try {
+        const response = await api.get(`api/student/student_preferences.php?student_id=${encodeURIComponent(student.id)}`);
+        const deadlineActive = response.data?.isDeadlineActive ?? (
+          typeof response.data?.deadline_passed === 'boolean' ? !response.data.deadline_passed : null
+        );
+        if (typeof deadlineActive === 'boolean') {
+          setServerDeadlineActive(deadlineActive);
+        }
+        const resultPublished = response.data?.isResultPublished ?? response.data?.is_published;
+        if (typeof resultPublished === 'boolean') {
+          setIsResultPublished(resultPublished);
+        }
+      } catch (error) {
+        console.error('Failed to refresh placement publication status:', error);
+      }
+    };
+
+    const refreshInterval = window.setInterval(refreshPublicationStatus, 15000);
+    return () => window.clearInterval(refreshInterval);
   }, [student, tab]);
 
   useEffect(() => {
@@ -572,14 +617,18 @@ const StudentDashboard = () => {
       return;
     }
 
-    if (preferencesSubmitted) {
-      setPrefError('You have already submitted preferences. Re-submitting is not allowed.');
+    if (isResultPublished) {
+      setPrefError('Placement results have been published. Changes are no longer permitted.');
       return;
     }
 
-    if (isDeadlinePassed || hasSubmissionDeadlinePassed(submissionDeadline)) {
+    if (!preferencesSubmitted && (isDeadlineClosed || (serverDeadlineActive === null && hasSubmissionDeadlinePassed(submissionDeadline)))) {
       setDeadlineClock(Date.now());
       setPrefError(`The preference submission deadline closed on ${submissionDeadline}. The submission window is now officially closed.`);
+      return;
+    }
+    if (preferencesSubmitted && !editingPreferences) {
+      setPrefError('Select Edit Preferences before updating your submitted choices.');
       return;
     }
 
@@ -635,12 +684,21 @@ const StudentDashboard = () => {
           };
         }));
         setPreferencesSubmitted(true);
-        setPrefSuccess('Preferences saved successfully.');
+        setEditingPreferences(false);
+        setPrefSuccess('Preferences saved successfully. You can update your choices anytime until the Registrar publishes the final results.');
       } else {
         setPrefError(res.data?.message || 'Unable to save preferences. Please try again.');
       }
     } catch (err) {
       setPrefError(err.response?.data?.message || 'Unable to save preferences. Please try again.');
+      if (err.response?.status === 403) {
+        const message = String(err.response?.data?.message || '').toLowerCase();
+        if (message.includes('published')) {
+          setIsResultPublished(true);
+        } else if (message.includes('deadline')) {
+          setServerDeadlineActive(false);
+        }
+      }
     }
   };
 
@@ -877,12 +935,35 @@ const StudentDashboard = () => {
                 </div>
               )}
 
-              {!isIneligible && preferencesSubmitted && (
+              {!isIneligible && preferencesSubmitted && !editingPreferences && (
                 <>
-                  <div className="alert alert-success mb-4" role="alert">
-                    <h5 className="alert-heading fw-bold">&#10003; Preferences submitted</h5>
-                    <p className="mb-0">You have already submitted your department preferences. Re-submitting or changing preferences is not permitted.</p>
-                    {isDeadlinePassed && <span className="badge bg-secondary mt-3">Submission Closed (Recorded)</span>}
+                  <div className="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl p-4 mb-4" role="status">
+                    <h5 className="alert-heading fw-bold">
+                      {isPreferencesLocked ? 'Placement choices are locked' : 'Preferences submitted'}
+                    </h5>
+                    <p className="mb-0">
+                      {isPreferencesLocked
+                        ? 'Placement choices are locked. Results have been published by the Registrar.'
+                        : 'Preferences submitted. You can update or re-order your choices anytime until the placement results are published by the Registrar.'}
+                    </p>
+                    {isPreferencesLocked && (
+                      <span className="badge bg-secondary mt-3">
+                        {isResultPublished ? 'Results Published' : 'Submission Closed'}
+                      </span>
+                    )}
+                    {!isPreferencesLocked && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm mt-3"
+                        onClick={() => {
+                          setPrefError('');
+                          setPrefSuccess('');
+                          setEditingPreferences(true);
+                        }}
+                      >
+                        Update Preferences
+                      </button>
+                    )}
                   </div>
 
                   <div className="row g-3 mb-4">
@@ -925,15 +1006,46 @@ const StudentDashboard = () => {
                       ))
                     )}
                   </div>
-                  {prefSuccess && <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status" aria-live="polite">{prefSuccess}</div>}
+                  {prefSuccess && <div className="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl p-4 mt-2 mb-0" role="status" aria-live="polite">{prefSuccess}</div>}
                 </>
               )}
 
-              {!isIneligible && !preferencesSubmitted && (
+              {!isIneligible && isPreferencesLocked && !preferencesSubmitted && (
+                <div className="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl p-4 mb-4" role="status">
+                  <h5 className="alert-heading fw-bold">
+                    {isResultPublished ? 'Placement choices are locked' : 'Preference submission is closed'}
+                  </h5>
+                  <p className="mb-0">
+                    {isResultPublished
+                      ? 'Placement choices are locked. Results have been published by the Registrar.'
+                      : `The preference submission deadline closed on ${submissionDeadline}. New submissions are no longer accepted.`}
+                  </p>
+                  {isResultPublished && <span className="badge bg-secondary mt-3">Results Published</span>}
+                </div>
+              )}
+
+              {!isIneligible && (!preferencesSubmitted || editingPreferences) && !isPreferencesLocked && (
                 <>
+                  {editingPreferences && (
+                    <div className="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl p-4 d-flex justify-content-between align-items-center gap-3" role="status">
+                      <span>You are editing your submitted preferences.</span>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm flex-shrink-0"
+                        onClick={() => {
+                          setPreferences(savedPreferences);
+                          setEditingPreferences(false);
+                          setPrefError('');
+                          setPrefSuccess('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   <h5 className="fw-bold text-primary mb-4 text-center">Rank Your Department Preferences</h5>
 
-                  {isDeadlinePassed && (
+                  {isDeadlinePassed && !preferencesSubmitted && (
                     <div className="alert alert-warning border-warning border-start border-4 shadow-sm" role="alert">
                       <strong>&#9888;&#65039; The preference submission deadline closed on {submissionDeadline}. New submissions are no longer accepted.</strong>
                     </div>
@@ -955,7 +1067,7 @@ const StudentDashboard = () => {
                       <div className="col-md-6">
                         <label className="form-label fw-bold small text-muted">2. SELECT COLLEGE</label>
                         <select className="form-select" value={preferences.college}
-                          disabled={isDeadlinePassed}
+                          disabled={isPreferencesLocked}
                           onChange={(e) => {
                             setPreferences({ ...preferences, college: e.target.value, depts: [] });
                             setPrefError('');
@@ -974,7 +1086,7 @@ const StudentDashboard = () => {
                         <div className="p-3 border rounded-3 bg-white">
                           <label className="small fw-bold text-primary mb-2 d-block">Preference Rank #{idx + 1}</label>
                           <select className="form-select border-0 bg-light shadow-none" value={choice}
-                            disabled={isDeadlinePassed}
+                            disabled={isPreferencesLocked}
                             onChange={(e) => handleChoiceChange(idx, e.target.value)}>
                             <option value="">-- Select Department --</option>
                             {departmentOptions.map(dName => (
@@ -989,14 +1101,14 @@ const StudentDashboard = () => {
                   </div>
 
                   <div className="text-end mt-4">
-                    {!isDeadlinePassed && (
+                    {!isPreferencesLocked && (
                       <button className="btn px-4 py-2 fw-bold shadow-sm rounded-pill dtu-submit-button" onClick={handleSave}>
-                        submit
+                        {editingPreferences ? 'Save Updated Preferences' : 'Submit Preferences'}
                       </button>
                     )}
                   </div>
                   {prefError && <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert" aria-live="polite">{prefError}</div>}
-                  {prefSuccess && <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status" aria-live="polite">{prefSuccess}</div>}
+                  {prefSuccess && <div className="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl p-4 mt-2 mb-0" role="status" aria-live="polite">{prefSuccess}</div>}
                 </>
               )}
             </div>

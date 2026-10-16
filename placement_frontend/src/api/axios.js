@@ -14,4 +14,7 @@ const api = axios.create({
   withCredentials: true,
 });
 
+api.defaults.withCredentials = true;
+axios.defaults.withCredentials = true;
+
 export default api;

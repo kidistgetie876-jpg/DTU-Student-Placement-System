@@ -269,9 +269,18 @@ try {
         $transactionStarted = false;
         $totalRows = count($data['users']);
         $rowLabel = $totalRows === 1 ? 'row' : 'rows';
-        $message = $totalRows > 0 && $duplicateCount === $totalRows
-            ? "No new accounts added. All {$totalRows} {$rowLabel} were skipped because they already exist in the system."
-            : "No new accounts added. {$skippedCount} rows were skipped; no accounts were imported.";
+        if ($totalRows > 0 && $duplicateCount === $totalRows) {
+            $message = $totalRows === 1
+                ? 'No new accounts added. The row was skipped because it already exists in the system.'
+                : "No new accounts added. All {$totalRows} {$rowLabel} were skipped because they already exist in the system.";
+        } elseif ($duplicateCount > 0) {
+            $skippedLabel = $skippedCount === 1 ? 'row was' : 'rows were';
+            $duplicateLabel = $duplicateCount === 1 ? 'duplicate' : 'duplicates';
+            $message = "No new accounts added. {$skippedCount} {$skippedLabel} skipped, including {$duplicateCount} {$duplicateLabel}.";
+        } else {
+            $skippedLabel = $skippedCount === 1 ? 'row was' : 'rows were';
+            $message = "No new accounts added. {$skippedCount} {$skippedLabel} could not be imported.";
+        }
         importUsersResponse([
             'success' => false,
             'message' => $message,
@@ -299,12 +308,22 @@ try {
         error_log('User import audit logging failed: ' . $auditError->getMessage());
     }
 
+    $skippedLabel = $skippedCount === 1 ? 'row was' : 'rows were';
+    if ($skippedCount === 0) {
+        $message = "Successfully imported {$inserted} users.";
+    } elseif ($duplicateCount === $skippedCount) {
+        $duplicateLabel = $duplicateCount === 1 ? 'duplicate' : 'duplicates';
+        $message = "Successfully imported {$inserted} users. {$duplicateCount} {$skippedLabel} skipped as {$duplicateLabel}.";
+    } elseif ($duplicateCount > 0) {
+        $duplicateLabel = $duplicateCount === 1 ? 'duplicate' : 'duplicates';
+        $message = "Successfully imported {$inserted} users. {$skippedCount} {$skippedLabel} skipped, including {$duplicateCount} {$duplicateLabel}.";
+    } else {
+        $message = "Successfully imported {$inserted} users. {$skippedCount} {$skippedLabel} not imported.";
+    }
+
     importUsersResponse([
         'success' => true,
-        'message' => $duplicateCount > 0
-            ? "Successfully imported {$inserted} users. {$duplicateCount} rows were skipped as duplicates."
-                . ($skippedCount > $duplicateCount ? ' ' . ($skippedCount - $duplicateCount) . ' additional rows were skipped.' : '')
-            : "Successfully imported {$inserted} users. {$skippedCount} rows were skipped.",
+        'message' => $message,
         'inserted_count' => $inserted,
         'skipped_count' => $skippedCount,
         'duplicate_count' => $duplicateCount,
@@ -318,8 +337,7 @@ try {
     error_log('User import failed: ' . $error->getMessage());
     importUsersResponse([
         'success' => false,
-        'message' => 'User import failed: ' . $error->getMessage(),
-        'error' => $error->getMessage(),
+        'message' => 'User import failed. Please check the file and try again.',
         'inserted_count' => 0,
         'skipped_count' => $skippedCount,
         'skipped' => $skipped,

@@ -11,6 +11,8 @@ function sendCorsHeaders(): void
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
     header('Vary: Origin');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token');
     if (in_array($origin, $allowedOrigins, true)) {
         header('Access-Control-Allow-Origin: ' . $origin);
         header('Access-Control-Allow-Credentials: true');

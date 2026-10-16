@@ -202,7 +202,9 @@ describe('parseStudentImportGrid', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Preview File' }));
       await screen.findByText('DTU-004');
       const previewNotice = screen.getByRole('status');
+      expect(previewNotice).toHaveTextContent('Preview ready: 1 student.');
       expect(previewNotice).toHaveClass('alert-success');
+      expect(previewNotice).toHaveClass('bg-green-100', 'text-green-800', 'border-green-300');
       expect(previewNotice).not.toHaveClass('alert-danger');
 
       fireEvent.click(await screen.findByRole('button', { name: 'Save to System' }));
@@ -287,6 +289,8 @@ describe('parseStudentImportGrid', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Save to System' }));
 
       expect(await screen.findByRole('alert')).toHaveTextContent('No new accounts added. All 1 row were skipped because they already exist in the system.');
+      expect(screen.getByRole('alert')).toHaveClass('bg-red-100', 'text-red-800', 'border-red-300');
+      expect(screen.getByRole('alert')).not.toHaveClass('bg-green-100', 'text-green-800', 'border-green-300');
       expect(screen.getByRole('alert')).not.toHaveTextContent('Row 2:');
       expect(screen.getByRole('alert')).not.toHaveTextContent('department assignment were left unchanged.');
       expect(onImportSuccess).not.toHaveBeenCalled();

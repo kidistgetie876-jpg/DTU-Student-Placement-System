@@ -94,6 +94,21 @@ describe('Login', () => {
     expect(screen.queryByRole('heading', { name: /let’s talk about your next step/i })).not.toBeInTheDocument();
   });
 
+  test('renders the public footer for authenticated visitors', async () => {
+    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    localStorage.setItem('user', JSON.stringify({ id: 1, role: 'student' }));
+    window.history.pushState({}, '', '/');
+
+    render(<App />);
+
+    const footer = await screen.findByRole('contentinfo');
+    expect(within(footer).getByText('Student Department Placement System (SDPS)')).toBeInTheDocument();
+    expect(within(footer).getByRole('link', { name: 'Placement Info' })).toHaveAttribute('href', '/placement-info');
+    expect(within(footer).getByRole('link', { name: 'Portal Login' })).toHaveAttribute('href', '/login');
+    expect(within(footer).getByText('placement@dtu.edu.et')).toHaveAttribute('href', 'mailto:placement@dtu.edu.et');
+    expect(within(footer).getByText('© 2026 Debre Tabor University. All Rights Reserved.')).toBeInTheDocument();
+  });
+
   test('updates public navigation language immediately and persists the selection', async () => {
     api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
     window.history.pushState({}, '', '/login');
@@ -128,6 +143,7 @@ describe('Login', () => {
         user: { id: 9, username: 'registrar', email: 'registrar@dtu.edu', role: 'registrar' },
       },
     });
+    localStorage.setItem('activeTab', 'data-import');
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -147,6 +163,44 @@ describe('Login', () => {
     await waitFor(() => {
       expect(screen.getByTestId('current-route')).toHaveTextContent('/registrar-dashboard/overview');
     });
+    expect(localStorage.getItem('activeTab')).toBe('overview');
+  });
+
+  test.each([
+    ['admin', '/admin-dashboard', 'dashboard'],
+    ['student', '/student-dashboard', 'overview'],
+    ['head', '/head-dashboard', 'overview'],
+    ['hod', '/head-dashboard', 'overview'],
+    ['coordinator', '/head-dashboard', 'overview'],
+    ['head of department', '/head-dashboard', 'overview'],
+  ])('routes a %s to its overview after login', async (role, expectedPath, expectedTab) => {
+    api.post.mockResolvedValue({
+      data: {
+        status: 'success',
+        user: { id: 10, username: role, email: `${role}@dtu.edu`, role },
+      },
+    });
+    localStorage.setItem('activeTab', 'data-import');
+
+    render(
+      <MemoryRouter initialEntries={['/login']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+        <CurrentRoute />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText(/username or email/i), {
+      target: { value: role },
+    });
+    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+      target: { value: 'secret123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-route')).toHaveTextContent(expectedPath);
+    });
+    expect(localStorage.getItem('activeTab')).toBe(expectedTab);
   });
 
   test('rejects an invalid email before sending the login request', async () => {

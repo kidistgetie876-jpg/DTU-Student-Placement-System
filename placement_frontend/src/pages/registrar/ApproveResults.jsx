@@ -15,7 +15,9 @@ export default function ApproveResults({ apiBase = DEFAULT_API_BASE, onPublished
     setError('');
 
     try {
-      const response = await fetch(`${apiBase}/get_pending_results.php`);
+      const response = await fetch(`${apiBase}/get_pending_results.php`, {
+        credentials: 'include',
+      });
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.message || 'Unable to load pending results');
@@ -41,6 +43,7 @@ export default function ApproveResults({ apiBase = DEFAULT_API_BASE, onPublished
       const response = await fetch(`${apiBase}/publish_all_results.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
       const data = await response.json();
       if (!response.ok || !data.success) {

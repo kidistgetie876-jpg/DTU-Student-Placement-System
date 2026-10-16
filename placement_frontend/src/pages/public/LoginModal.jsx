@@ -105,14 +105,19 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
       if (response.data.status === 'success' || response.data.success === true) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
         const role = normalizeRole(response.data.user.role);
-        const routeMap = { 
-          admin: '/admin-dashboard', 
-          registrar: '/registrar-dashboard/overview',
-          student: '/student-dashboard', 
-          head: '/head-dashboard' 
+        const dashboardMap = {
+          admin: { path: '/admin-dashboard', tab: 'dashboard' },
+          registrar: { path: '/registrar-dashboard/overview', tab: 'overview' },
+          student: { path: '/student-dashboard', tab: 'overview' },
+          head: { path: '/head-dashboard', tab: 'overview' },
+          hod: { path: '/head-dashboard', tab: 'overview' },
+          coordinator: { path: '/head-dashboard', tab: 'overview' },
+          'head of department': { path: '/head-dashboard', tab: 'overview' },
         };
+        const destination = dashboardMap[role];
+        if (destination) localStorage.setItem('activeTab', destination.tab);
         onClose({ authenticated: true });
-        navigate(routeMap[role] || '/');
+        navigate(destination?.path || '/', { replace: true });
       } else {
         setError(getLoginError(response));
       }
