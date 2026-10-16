@@ -84,6 +84,29 @@ $method = $_SERVER['REQUEST_METHOD'];
 try {
     // GET - Fetch users
     if ($method === 'GET') {
+        if (isset($_GET['id_number']) && trim((string) $_GET['id_number']) !== '') {
+            $idNumber = trim((string) $_GET['id_number']);
+            $stmt = $conn->prepare("SELECT users.id,
+                COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
+                COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
+                users.username, users.email, users.phone_number,
+                users.id_number, student_data.stream AS stream,
+                users.role, users.created_at
+                FROM users
+                LEFT JOIN student_data ON student_data.user_id = users.id
+                WHERE LOWER(TRIM(users.id_number)) = LOWER(TRIM(?)) LIMIT 1");
+            if (!$stmt) throw new Exception($conn->error);
+            $stmt->bind_param('s', $idNumber);
+            if (!$stmt->execute()) throw new Exception($stmt->error);
+            $result = $stmt->get_result();
+
+            if ($result && $result->num_rows === 1) {
+                $user = $result->fetch_assoc();
+                jsonResponse(['success' => true, 'user' => $user]);
+            }
+            jsonResponse(['success' => false, 'message' => 'User not found.'], 404);
+        }
+
         if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             // Get single user
             $id = (int)$_GET['id'];

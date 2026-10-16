@@ -695,43 +695,6 @@
   gap: 0.65rem;
 }
 
-.dashboard-subheader .dashboard-control-button,
-.dashboard-subheader .dashboard-profile-trigger {
-  border-color: #dbe2ea;
-  background: #fff;
-  color: #334155;
-}
-
-.dashboard-subheader .dashboard-control-button:hover,
-.dashboard-subheader .dashboard-profile-trigger:hover,
-.dashboard-subheader .dashboard-control-button[aria-expanded="true"],
-.dashboard-subheader .dashboard-profile-trigger[aria-expanded="true"] {
-  border-color: #b8c7dc;
-  background: #f8fafc;
-  color: #0a2d6d;
-}
-
-.dark-mode .dashboard-subheader {
-  border-bottom-color: #dbe2ea;
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.dark-mode .dashboard-subheader .dashboard-control-button,
-.dark-mode .dashboard-subheader .dashboard-profile-trigger {
-  border-color: #dbe2ea;
-  background: #fff;
-  color: #334155;
-}
-
-.dark-mode .dashboard-subheader .dashboard-control-button:hover,
-.dark-mode .dashboard-subheader .dashboard-profile-trigger:hover,
-.dark-mode .dashboard-subheader .dashboard-control-button[aria-expanded="true"],
-.dark-mode .dashboard-subheader .dashboard-profile-trigger[aria-expanded="true"] {
-  border-color: #b8c7dc;
-  background: #f8fafc;
-  color: #0a2d6d;
-}
-
 .dark-mode .dashboard-settings-form legend {
   color: #a8b6ca;
 }

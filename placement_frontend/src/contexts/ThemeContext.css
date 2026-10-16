@@ -228,11 +228,6 @@ body.eye-care-mode :is(.table, .table-light) {
   --bs-table-hover-bg: #f3e7ce;
 }
 
-body.eye-care-mode .dashboard-subheader {
-  border-color: #dfd0b4;
-  background: rgba(255, 248, 233, 0.96);
-}
-
 body.eye-care-mode .dashboard-control-button,
 body.eye-care-mode .dashboard-profile-trigger {
   border-color: #d8c7a8;

@@ -96,11 +96,19 @@ const DashboardHeader = ({
   useEffect(() => {
     const storedUser = readStoredUser();
     const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
-    if (!showControls || !hasStoredUser) return undefined;
+    if (!showControls || !hasStoredUser || !api || typeof api.get !== 'function') return undefined;
 
     let isCurrent = true;
-    api.get('api/common/get_profile.php')
+    const profileRequest = api.get('api/common/get_profile.php');
+    if (!profileRequest || typeof profileRequest.then !== 'function') {
+      return undefined;
+    }
+
+    profileRequest
       .then((response) => {
+        if (!response?.data) {
+          return;
+        }
         if (!response.data?.success || !response.data?.profile) {
           throw new Error(response.data?.message || 'Unable to load profile.');
         }
@@ -128,7 +136,7 @@ const DashboardHeader = ({
   useEffect(() => {
     const storedUser = readStoredUser();
     const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
-    if (!showControls || !hasStoredUser) return undefined;
+    if (!showControls || !hasStoredUser || !api || typeof api.get !== 'function') return undefined;
 
     let isCurrent = true;
     let requestInProgress = false;
@@ -137,7 +145,12 @@ const DashboardHeader = ({
       if (requestInProgress) return;
       requestInProgress = true;
       try {
-        const response = await api.get('api/common/get_notifications.php');
+        const response = await Promise.resolve(api.get('api/common/get_notifications.php'));
+        if (!response?.data) {
+          setNotifications([]);
+          setNotificationsError('');
+          return;
+        }
         if (!response.data?.success || !Array.isArray(response.data.notifications)) {
           throw new Error(response.data?.message || 'Unable to load notifications.');
         }

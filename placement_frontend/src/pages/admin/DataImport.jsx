@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import api from '../../services/api.js';
 import * as XLSX from 'xlsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const normalizeHeader = (header) => String(header ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -22,7 +23,7 @@ const studentImportHeaders = {
 };
 
 const userImportHeaders = {
-  id: ['userid', 'usernumber', 'useridentifier'],
+  id: ['idnumber', 'userid', 'usernumber', 'useridentifier', 'staffid'],
   email: ['email', 'emailaddress'],
   firstName: ['firstname', 'givenname'],
   lastName: ['lastname', 'surname', 'familyname'],
@@ -30,6 +31,7 @@ const userImportHeaders = {
   username: ['username', 'loginname'],
   phone: ['phone', 'phonenumber', 'mobilenumber', 'mobile'],
   role: ['role', 'userrole', 'accounttype'],
+  password: ['password', 'temppassword'],
 };
 
 const getHeaderIndex = (headerRow, aliases) => headerRow.findIndex((header) => aliases.includes(normalizeHeader(header)));
@@ -47,7 +49,8 @@ export const parseUserImportGrid = (grid) => {
       ...studentImportHeaders.grade12,
       ...studentImportHeaders.coc,
     ].some((alias) => getHeaderIndex(row, [alias]) >= 0);
-    return hasRole && (hasUserId || (hasUserNameOrEmail && !hasStudentFields));
+    const hasUserFields = hasUserId || (hasUserNameOrEmail && !hasStudentFields);
+    return hasUserFields && (hasRole || !hasStudentFields);
   });
 
   if (headerRowIndex < 0) {
@@ -70,17 +73,17 @@ export const parseUserImportGrid = (grid) => {
     }
 
     return {
-      user_id: getCell(row, userImportHeaders.id),
+      id_number: getCell(row, userImportHeaders.id),
       first_name: firstName,
       last_name: lastName,
       username: getCell(row, userImportHeaders.username),
       email: getCell(row, userImportHeaders.email),
       phone: getCell(row, userImportHeaders.phone),
       role: getCell(row, userImportHeaders.role),
+      password: getCell(row, userImportHeaders.password),
     };
   }).filter((row) => (
-    (row.first_name || row.last_name || row.username || row.user_id)
-    && row.role
+    row.first_name || row.last_name || row.username || row.id_number
   ));
 
   return { rows, headersFound: true };
@@ -149,6 +152,7 @@ export const parseStudentImportGrid = (grid) => {
 };
 
 const DataImport = ({ onImportSuccess }) => {
+  const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
@@ -224,8 +228,7 @@ const DataImport = ({ onImportSuccess }) => {
         first_name: row.first_name || '',
         last_name: row.last_name || '',
         username: row.username || (row.email ? row.email.split('@')[0] : ''),
-        id_number: previewType === 'student' ? row.id_number || '' : undefined,
-        user_id: previewType === 'user' ? row.user_id || '' : undefined,
+        id_number: row.id_number || '',
         email: row.email || '',
         phone: row.phone || '',
         ...(previewType === 'student' ? {
@@ -236,7 +239,7 @@ const DataImport = ({ onImportSuccess }) => {
           coc_result: row.coc_result || '',
           disability: row.disability || 'No',
           minority: row.minority || 'No',
-        } : { role: row.role || '' }),
+        } : { role: row.role || '', password: row.password || '' }),
       }));
 
       const isUserImport = previewType === 'user';
@@ -258,6 +261,11 @@ const DataImport = ({ onImportSuccess }) => {
         || responseData.status === 'success'
         || responseData.status === 'ok';
       const importedCount = Number(responseData.imported_count ?? responseData.imported ?? responseData.count ?? 0);
+      const temporaryCredentials = Array.isArray(responseData.temporary_passwords)
+        ? responseData.temporary_passwords
+          .map((item) => `${item.id_number} (${item.username}): ${item.password}`)
+          .join('; ')
+        : '';
 
       if (importSucceeded) {
         setStatusType('success');
@@ -265,15 +273,10 @@ const DataImport = ({ onImportSuccess }) => {
         const updatedCount = Number(responseData.updated_count ?? 0);
         const skippedCount = Number(responseData.skipped_count ?? 0);
         const unchangedCount = Number(responseData.unchanged_count ?? 0);
-        const skippedDetails = Array.isArray(responseData.skipped)
-          ? responseData.skipped
-            .map((item) => `Row ${item.row}: ${item.reason}`)
-            .join(' ')
-          : '';
         const summaryMessage = `Import complete: ${insertedCount} new, ${updatedCount} updated, ${skippedCount} skipped${unchangedCount > 0 ? ` (${unchangedCount} already exist, unchanged)` : ''}.`;
         setStatusMessage([
           responseData.message || summaryMessage,
-          skippedDetails,
+          temporaryCredentials ? `Temporary passwords: ${temporaryCredentials}` : '',
         ].filter(Boolean).join(' '));
         setPreviewRows([]);
         setPreviewType('student');
@@ -283,7 +286,9 @@ const DataImport = ({ onImportSuccess }) => {
         onImportSuccess?.();
       } else {
         setStatusType('error');
-        setStatusMessage(responseData.message || responseData.error || `No ${isUserImport ? 'users' : 'students'} were imported. Check the backend response.`);
+        setStatusMessage([
+          responseData.message || responseData.error || `No ${isUserImport ? 'users' : 'students'} were imported. Check the backend response.`,
+        ].filter(Boolean).join(' '));
       }
     } catch (error) {
       setStatusType('error');
@@ -301,40 +306,44 @@ const DataImport = ({ onImportSuccess }) => {
   return (
     <div className="container mt-4">
       <div className="card p-4 shadow-sm border-0 rounded-4">
-        <h4 className="fw-bold mb-3 text-primary">{previewType === 'user' ? 'User/HOD Data Bulk Import' : 'Student Data Bulk Import'}</h4>
+        <h4 className="fw-bold mb-3 text-primary">{t(previewType === 'user' ? 'User/HOD Data Bulk Import' : 'Student Data Bulk Import')}</h4>
         
         {statusMessage && (
-          <div className={`alert ${statusType === 'success' ? 'alert-success' : 'alert-danger'} mb-4`}>
+          <div
+            className={`alert ${statusType === 'error' ? 'alert-danger' : 'alert-success'} mb-4`}
+            role={statusType === 'error' ? 'alert' : 'status'}
+            aria-live={statusType === 'error' ? 'assertive' : 'polite'}
+          >
             {statusMessage}
           </div>
         )}
         
         <p className="text-muted small mb-2">
-          Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid email address.
+          {t('Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid email address.')}
         </p>
         <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx" className="form-control mb-3" onChange={handleFileChange} />
         
         <div className="d-flex gap-2">
-          <button className="btn btn-outline-primary px-4 rounded-pill" onClick={handlePreview}>Preview File</button>
+          <button className="btn btn-outline-primary px-4 rounded-pill" onClick={handlePreview}>{t('Preview File')}</button>
           <button className="btn btn-primary px-4 rounded-pill shadow" onClick={handleSubmit} disabled={!previewReady || submitting}>
-            {submitting ? 'Saving...' : 'Save to System'}
+            {submitting ? t('Saving...') : t('Save to System')}
           </button>
         </div>
 
         {previewReady && (
           <div className="mt-4">
-            <h5 className="fw-bold">Preview (Sample)</h5>
+            <h5 className="fw-bold">{t('Preview (Sample)')}</h5>
             <div className="table-responsive rounded-3 border">
               <table className="table table-sm table-hover mb-0">
                 <thead className="table-light">
                   <tr>
                     {previewType === 'user' ? (
                       <>
-                        <th>USER ID</th><th>FIRST NAME</th><th>LAST NAME</th><th>USERNAME</th><th>EMAIL</th><th>PHONE</th><th>ROLE</th>
+                        <th>{t('USER ID')}</th><th>{t('FIRST NAME')}</th><th>{t('LAST NAME')}</th><th>{t('USERNAME')}</th><th>{t('EMAIL')}</th><th>{t('PHONE')}</th><th>{t('ROLE')}</th>
                       </>
                     ) : (
                       <>
-                        <th>Student ID</th><th>First Name</th><th>Last Name</th><th>Username</th><th>Email</th><th>Phone</th><th>GPA</th><th>Stream</th><th>Gender</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
+                        <th>{t('Student ID')}</th><th>{t('First Name')}</th><th>{t('Last Name')}</th><th>{t('Username')}</th><th>{t('Email')}</th><th>{t('Phone')}</th><th>GPA</th><th>{t('Stream')}</th><th>{t('Gender')}</th><th>G12</th><th>COC</th><th>Disability</th><th>Minority</th>
                       </>
                     )}
                   </tr>
@@ -344,7 +353,7 @@ const DataImport = ({ onImportSuccess }) => {
                     <tr key={i}>
                       {previewType === 'user' ? (
                         <>
-                          <td>{row.user_id}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.role}</td>
+                          <td>{row.id_number}</td><td>{row.first_name}</td><td>{row.last_name}</td><td>{row.username}</td><td>{row.email}</td><td>{row.phone}</td><td>{row.role}</td>
                         </>
                       ) : (
                         <>

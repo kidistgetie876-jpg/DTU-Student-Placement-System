@@ -1,0 +1,119 @@
+.admin-account-page {
+  max-width: 52rem;
+  width: 100%;
+  margin-right: auto;
+  margin-left: auto;
+  border-radius: 1.5rem;
+  background: #f8f9fc;
+}
+
+.admin-account-card {
+  overflow: hidden;
+  border: 1px solid #e8e6f2;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(30, 18, 80, 0.1);
+}
+
+.admin-account-header {
+  padding: 1.5rem;
+  border: 0;
+  background: linear-gradient(110deg, #6d28d9 0%, #4f46e5 100%);
+  color: #fff;
+}
+
+.admin-account-header h4 {
+  font-size: 1.3rem;
+  letter-spacing: 0.01em;
+}
+
+.admin-account-body {
+  padding: 2rem;
+}
+
+.admin-account-label {
+  margin-bottom: 0.55rem;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.admin-account-input,
+.admin-account-input.form-control {
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background-color: #f8fafc;
+  color: #1e293b;
+  box-shadow: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.admin-account-input:disabled {
+  background-color: #f1f5f9;
+  color: #475569;
+  opacity: 1;
+}
+
+.admin-account-input:focus {
+  border-color: #7c3aed;
+  background-color: #fff;
+  box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.16);
+}
+
+.admin-account-password-section {
+  border-color: #e8e6f2 !important;
+  background: #f8f7fc;
+}
+
+.admin-account-primary-button,
+.admin-account-primary-button.btn {
+  padding: 0.7rem 1.5rem;
+  border: 1px solid #6d28d9;
+  border-radius: 0.75rem;
+  background: #6d28d9;
+  color: #fff;
+  font-weight: 650;
+  box-shadow: 0 6px 14px rgba(109, 40, 217, 0.2);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.admin-account-primary-button:hover:not(:disabled) {
+  border-color: #5b21b6;
+  background: #5b21b6;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(91, 33, 182, 0.24);
+  transform: translateY(-1px);
+}
+
+.admin-account-primary-button:focus-visible,
+.admin-account-cancel-button:focus-visible {
+  outline: 3px solid rgba(124, 58, 237, 0.3);
+  outline-offset: 2px;
+}
+
+.admin-account-cancel-button {
+  padding: 0.7rem 1.25rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #334155;
+  font-weight: 600;
+}
+
+.admin-account-cancel-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+@media (max-width: 575.98px) {
+  .admin-account-body {
+    padding: 1.25rem;
+  }
+
+  .admin-account-header {
+    padding: 1.25rem;
+  }
+}

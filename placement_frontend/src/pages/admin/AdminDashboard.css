@@ -1,16 +1,16 @@
 .admin-dashboard {
   min-height: 100vh;
   background-color: #f4f7ff;
-  padding-top: 172px;
+  padding-top: 112px;
 }
 
 .admin-dashboard .sidebar {
   background: #0f172a !important;
   position: fixed;
   left: 12px;
-  top: 184px;
+  top: 124px;
   width: calc(16.666667% - 24px);
-  height: calc(100vh - 196px);
+  height: calc(100vh - 136px);
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;

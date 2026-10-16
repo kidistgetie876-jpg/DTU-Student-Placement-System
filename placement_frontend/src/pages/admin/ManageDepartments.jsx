@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 import api from '../../services/api.js';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import './ManageDepartments.css';
 
 const DEFAULT_STREAMS = [
@@ -9,7 +11,7 @@ const DEFAULT_STREAMS = [
 ];
 
 const DEFAULT_COLLEGES = [
-  { id: 'default-technology', name: 'Technology', stream_id: 'default-natural' },
+  { id: 'default-technology', name: 'Gafat Institute of Technology', stream_id: 'default-natural' },
   {
     id: 'default-agriculture',
     name: 'Agriculture and Environmental Sciences',
@@ -47,6 +49,20 @@ const normalizeCollegeName = name => String(name || '')
   .toLowerCase()
   .replace(/^(college|school) of\s+/i, '');
 
+const getCollegeKey = name => {
+  const normalized = normalizeCollegeName(name).replace(/\s+/g, ' ');
+  if (['technology', 'gafat institute of technology', 'gefat institute of technology'].includes(normalized)) {
+    return 'gafat institute of technology';
+  }
+  return normalized;
+};
+
+const getCollegeDisplayName = name => (
+  getCollegeKey(name) === 'gafat institute of technology'
+    ? 'Gafat Institute of Technology'
+    : String(name || '').trim()
+);
+
 const mergeStreams = dynamicStreams => {
   const streams = DEFAULT_STREAMS.map(stream => ({ ...stream }));
   const defaultByName = new Map(streams.map(stream => [normalizeStreamName(stream.name), stream]));
@@ -75,19 +91,31 @@ const mergeColleges = (dynamicColleges, streams) => {
     ...college,
     stream_id: defaultStreamId[college.stream_id] ?? college.stream_id,
   }));
-  const seen = new Set(colleges.map(college => `${college.stream_id}:${normalizeCollegeName(college.name)}`));
+  const collegeIndexes = new Map(colleges.map((college, index) => [
+    `${college.stream_id}:${getCollegeKey(college.name)}`,
+    index,
+  ]));
+  const dynamicCollegeKeys = new Set();
 
   dynamicColleges.forEach(college => {
     const stream = streams.find(item =>
       String(item.id) === String(college.stream_id)
       || normalizeStreamName(item.name) === normalizeStreamName(college.stream_name)
     );
-    const mappedCollege = { ...college, stream_id: stream?.id ?? college.stream_id };
-    const key = `${mappedCollege.stream_id}:${normalizeCollegeName(mappedCollege.name)}`;
-    if (!seen.has(key)) {
+    const mappedCollege = {
+      ...college,
+      name: getCollegeDisplayName(college.name),
+      stream_id: stream?.id ?? college.stream_id,
+    };
+    const key = `${mappedCollege.stream_id}:${getCollegeKey(mappedCollege.name)}`;
+    const existingIndex = collegeIndexes.get(key);
+    if (existingIndex !== undefined) {
+      if (!dynamicCollegeKeys.has(key)) colleges[existingIndex] = mappedCollege;
+    } else {
+      collegeIndexes.set(key, colleges.length);
       colleges.push(mappedCollege);
-      seen.add(key);
     }
+    dynamicCollegeKeys.add(key);
   });
 
   return colleges;
@@ -126,31 +154,35 @@ const getDepartmentStream = (department) => {
 };
 
 
-  const DepartmentRow = ({ department, index, onEdit }) => (
-  <tr>
-    <td className="ps-4 text-muted">{index + 1}</td>
-    <td className="text-primary fw-semibold">{department.stream}</td>
-    <td className="small">{department.college_name?.replace(/College of\s+/i, '')}</td>
-    <td className="fw-bold">{department.name}</td>
-    <td className="fw-bold text-center">
-      {department.capacity > 0 ? department.capacity : <span className="text-muted small">Not Set</span>}
-    </td>
-    <td className="text-center">
-      {department.head_name ? (
-        <span className="badge bg-primary-subtle text-primary px-3 py-2 rounded-pill border border-primary-subtle">
-          {department.head_name}
-        </span>
-      ) : <span className="text-muted small">Not Assigned</span>}
-    </td>
-    <td className="department-edit-cell pe-4 text-end">
-      <button type="button" className="department-edit-button btn btn-sm rounded-3" onClick={() => onEdit(department.id)} aria-label={`Edit ${department.name}`}>
-        Edit
-      </button>
-    </td>
-  </tr>
-);
+  const DepartmentRow = ({ department, index, onEdit }) => {
+    const { t } = useLanguage();
+    return (
+      <tr>
+        <td className="ps-4 text-muted">{index + 1}</td>
+        <td className="text-primary fw-semibold">{department.stream}</td>
+        <td className="small">{department.college_name?.replace(/College of\s+/i, '')}</td>
+        <td className="fw-bold">{department.name}</td>
+        <td className="fw-bold text-center">
+          {department.capacity > 0 ? department.capacity : <span className="text-muted small">{t('Not Set')}</span>}
+        </td>
+        <td className="text-center">
+          {department.head_name ? (
+            <span className="badge bg-primary-subtle text-primary px-3 py-2 rounded-pill border border-primary-subtle">
+              {department.head_name}
+            </span>
+          ) : <span className="text-muted small">{t('Not Assigned')}</span>}
+        </td>
+        <td className="department-edit-cell pe-4 text-end">
+          <button type="button" className="department-edit-button btn btn-sm rounded-3" onClick={() => onEdit(department.id)} aria-label={`${t('Edit')} ${department.name}`}>
+            {t('Edit')}
+          </button>
+        </td>
+      </tr>
+    );
+  };
 
 const DepartmentTable = ({ departments, loading, onEdit }) => {
+  const { t } = useLanguage();
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -177,11 +209,11 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
   return (
     <div className="department-table-card card shadow-sm border-0 rounded-4 overflow-hidden">
       <div className="department-table-toolbar d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 p-3">
-        <h5 className="mb-0 fw-bold">Departments</h5>
+        <h5 className="mb-0 fw-bold">{t('Departments')}</h5>
         <form className="department-search d-flex" onSubmit={handleSearch} role="search">
-          <label className="visually-hidden" htmlFor="department-search-input">Search departments</label>
-          <input id="department-search-input" type="search" className="form-control" placeholder="Search departments..." value={searchInput} onChange={event => setSearchInput(event.target.value)} />
-          <button type="submit" className="btn btn-primary ms-2">Search</button>
+          <label className="visually-hidden" htmlFor="department-search-input">{t('Search departments')}</label>
+          <input id="department-search-input" type="search" className="form-control" placeholder={t('Search departments...')} value={searchInput} onChange={event => setSearchInput(event.target.value)} />
+          <button type="submit" className="btn btn-primary ms-2">{t('Search')}</button>
         </form>
       </div>
       <div className="table-responsive">
@@ -189,27 +221,31 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
           <thead>
             <tr>
               <th scope="col" className="ps-4">#</th>
-              <th scope="col">STREAM</th>
-              <th scope="col">COLLEGE</th>
-              <th scope="col">NAME</th>
-              <th scope="col">CAPACITY</th>
-              <th scope="col" className="text-center">HEAD NAME</th>
-              <th scope="col" className="pe-4 text-end">EDIT</th>
+              <th scope="col">{t('STREAM')}</th>
+              <th scope="col">{t('COLLEGE')}</th>
+              <th scope="col">{t('NAME')}</th>
+              <th scope="col">{t('CAPACITY')}</th>
+              <th scope="col" className="text-center">{t('HEAD NAME')}</th>
+              <th scope="col" className="pe-4 text-end">{t('EDIT')}</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? tableMessage('Loading departments...') : visibleDepartments.length === 0 ? tableMessage('No departments found.') : visibleDepartments.map((department, index) => (
+            {loading ? tableMessage(t('Loading departments...')) : visibleDepartments.length === 0 ? tableMessage(t('No departments found.')) : visibleDepartments.map((department, index) => (
               <DepartmentRow key={department.id || `${department.name}-${index}`} department={department} index={index} onEdit={onEdit} />
             ))}
           </tbody>
         </table>
       </div>
       <div className="department-pagination d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2 p-3">
-        <span className="text-muted small">Showing {visibleDepartments.length ? (currentPage - 1) * departmentsPerPage + 1 : 0} - {Math.min(currentPage * departmentsPerPage, filteredDepartments.length)} of {filteredDepartments.length}</span>
+        <span className="text-muted small">{t('Showing {start} - {end} of {total}', {
+          start: visibleDepartments.length ? (currentPage - 1) * departmentsPerPage + 1 : 0,
+          end: Math.min(currentPage * departmentsPerPage, filteredDepartments.length),
+          total: filteredDepartments.length,
+        })}</span>
         <div className="d-flex align-items-center gap-2">
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1}>Previous</button>
-          <span className="small fw-semibold">Page {currentPage} of {totalPages}</span>
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>Next</button>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1}>{t('Previous')}</button>
+          <span className="small fw-semibold">{t('Page {current} of {total}', { current: currentPage, total: totalPages })}</span>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>{t('Next')}</button>
         </div>
       </div>
     </div>
@@ -217,6 +253,7 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
 };
 
 const ManageDepartments = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [streams, setStreams] = useState(DEFAULT_STREAMS);
@@ -295,7 +332,11 @@ const ManageDepartments = () => {
   }, []);
 
   const selectedStream = streams.find(item => String(item.id) === String(selectedStreamId));
-  const streamColleges = colleges.filter(college => String(college.stream_id) === String(selectedStreamId));
+  const streamColleges = [...new Map(
+    colleges
+      .filter(college => String(college.stream_id) === String(selectedStreamId))
+      .map(college => [getCollegeKey(college.name), college])
+  ).values()];
 
   const handleCatalogSelect = (event, type) => {
     if (event.target.value === '__add_new__') {
@@ -323,6 +364,13 @@ const ManageDepartments = () => {
       setCatalogModalError(`${catalogModalType === 'stream' ? 'Stream' : 'College'} name is required.`);
       return;
     }
+    if (catalogModalType === 'college' && colleges.some(college => (
+      String(college.stream_id) === String(selectedStreamId)
+      && getCollegeKey(college.name) === getCollegeKey(trimmedName)
+    ))) {
+      setCatalogModalError('A college with this name already exists for the selected stream.');
+      return;
+    }
 
     setCatalogSaving(true);
     setCatalogModalError('');
@@ -347,8 +395,8 @@ const ManageDepartments = () => {
         setCollegeName('');
       } else {
         const createdCollege = result.college;
-        setColleges(current => [...current, createdCollege]);
-        setCollegeName(createdCollege.name);
+        setColleges(current => mergeColleges([...current, createdCollege], streams));
+        setCollegeName(getCollegeDisplayName(createdCollege.name));
       }
       setCatalogModalType('');
       setCatalogName('');
@@ -433,8 +481,8 @@ const ManageDepartments = () => {
     <div className="department-page container p-0">
       <div className="department-page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 mt-3">
         <div>
-          <h3 className="fw-bold text-primary mb-1">Manage DTU Departments</h3>
-          <p className="text-muted mb-0">Create academic units and assign leadership.</p>
+          <h3 className="fw-bold text-primary mb-1">{t('Manage DTU Departments')}</h3>
+          <p className="text-muted mb-0">{t('Create academic units and assign leadership.')}</p>
         </div>
 
         <div className="d-flex gap-2 mt-3 mt-md-0 align-items-center">
@@ -443,9 +491,9 @@ const ManageDepartments = () => {
             className="department-assign-head-button btn rounded-pill px-4 shadow-sm fw-bold"
             onClick={() => navigate('/admin/assign-head')}
           >
-            + Assign Head
+            {t('+ Assign Head')}
           </button>
-          <span className="badge bg-light text-dark border px-3 py-2 rounded-pill">{departments.length} Depts</span>
+          <span className="badge bg-light text-dark border px-3 py-2 rounded-pill">{departments.length} {t('Depts')}</span>
         </div>
       </div>
 
@@ -454,25 +502,25 @@ const ManageDepartments = () => {
 
       <div className="department-form-card card shadow-sm border-0 mb-5 rounded-4 overflow-hidden">
         <div className="card-header py-3 px-4">
-          <h5 className="mb-0 fw-bold">Add New Department</h5>
+          <h5 className="mb-0 fw-bold">{t('Add New Department')}</h5>
         </div>
         <div className="card-body p-4">
           <form onSubmit={handleSubmit} className="row g-3 align-items-end">
             <div className="col-md-4">
-              <label className="form-label fw-bold small text-muted">1. STREAM</label>
+              <label className="form-label fw-bold small text-muted">1. {t('STREAM')}</label>
               <select
                 className="form-select"
                 aria-label="Stream"
                 value={selectedStreamId}
                 onChange={event => handleCatalogSelect(event, 'stream')}
               >
-                <option value="">-- Select Stream --</option>
+                <option value="">-- {t('Select Stream')} --</option>
                 {streams.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                <option value="__add_new__">+ Add New Stream</option>
+                <option value="__add_new__">+ {t('Add New Stream')}</option>
               </select>
             </div>
             <div className="col-md-4">
-              <label className="form-label fw-bold small text-muted">2. COLLEGE</label>
+              <label className="form-label fw-bold small text-muted">2. {t('COLLEGE')}</label>
               <select
                 className={`form-select ${validationErrors.college ? 'is-invalid' : ''}`}
                 aria-label="College"
@@ -480,18 +528,18 @@ const ManageDepartments = () => {
                 onChange={event => handleCatalogSelect(event, 'college')}
                 required
               >
-                <option value="">-- Select College --</option>
+                <option value="">-- {t('Select College')} --</option>
                 {streamColleges.map(college => <option key={college.id} value={college.name}>{college.name}</option>)}
-                <option value="__add_new__" disabled={!Number.isInteger(Number(selectedStreamId))}>+ Add New College</option>
+                <option value="__add_new__" disabled={!Number.isInteger(Number(selectedStreamId))}>+ {t('Add New College')}</option>
               </select>
               {validationErrors.college && <div className="invalid-feedback d-block">{validationErrors.college}</div>}
             </div>
             <div className="col-md-4">
-              <label className="form-label fw-bold small text-muted">3. DEPARTMENT NAME</label>
+              <label className="form-label fw-bold small text-muted">3. {t('Department Name')}</label>
               <input 
                 type="text" 
                 className={`form-control ${validationErrors.name ? 'is-invalid' : ''}`}
-                placeholder="e.g. Computer Science" 
+                placeholder={t('e.g. Computer Science')}
                 value={name} 
                 onChange={e => setName(e.target.value)} 
                 required 
@@ -499,22 +547,22 @@ const ManageDepartments = () => {
               {validationErrors.name && <div className="invalid-feedback d-block">{validationErrors.name}</div>}
             </div>
             <div className="col-md-12">
-              <label className="form-label fw-bold small text-muted">DESCRIPTION</label>
+              <label className="form-label fw-bold small text-muted">{t('Description')}</label>
               <textarea 
                 className={`form-control ${validationErrors.description ? 'is-invalid' : ''}`}
                 rows={2} 
-                placeholder="Optional details..." 
+                placeholder={t('Optional details...')}
                 value={description} 
                 onChange={e => setDescription(e.target.value)} 
               />
               {validationErrors.description && <div className="invalid-feedback d-block">{validationErrors.description}</div>}
               {description.trim().length > 0 && (
-                <small className="text-muted">{description.length}/500 characters</small>
+                <small className="text-muted">{description.length}/500 {t('characters')}</small>
               )}
             </div>
             <div className="col-md-12 text-end">
               <button className="btn btn-primary px-5 fw-bold rounded-pill shadow" disabled={saving}>
-                {saving ? 'Processing...' : 'Register Department'}
+                {saving ? t('Processing...') : t('Register Department')}
               </button>
             </div>
           </form>
@@ -524,48 +572,70 @@ const ManageDepartments = () => {
       <DepartmentTable departments={departments} loading={loading} onEdit={id => navigate(`/edit-department/${id}`)} />
 
       {catalogModalType && (
-        <div className="modal-backdrop show" role="presentation">
-          <div className="modal show d-block" role="dialog" aria-modal="true" aria-labelledby="catalog-modal-title">
-            <div className="modal-dialog modal-dialog-centered">
-              <div className="modal-content">
-                <form onSubmit={handleCatalogSubmit}>
-                  <div className="modal-header">
-                    <h5 className="modal-title" id="catalog-modal-title">
-                      Add New {catalogModalType === 'stream' ? 'Stream' : 'College'}
-                    </h5>
-                    <button
-                      type="button"
-                      className="btn-close"
-                      aria-label="Close"
-                      onClick={() => setCatalogModalType('')}
-                      disabled={catalogSaving}
-                    />
-                  </div>
-                  <div className="modal-body">
-                    <label htmlFor="catalog-name" className="form-label">
-                      {catalogModalType === 'stream' ? 'Stream Name' : 'College Name'}
-                    </label>
-                    <input
-                      id="catalog-name"
-                      className="form-control"
-                      value={catalogName}
-                      onChange={event => setCatalogName(event.target.value)}
-                      autoFocus
-                      maxLength={150}
-                      required
-                    />
-                    {catalogModalError && <div className="text-danger small mt-2" role="alert">{catalogModalError}</div>}
-                  </div>
-                  <div className="modal-footer">
-                    <button type="button" className="btn btn-outline-secondary" onClick={() => setCatalogModalType('')} disabled={catalogSaving}>Cancel</button>
-                    <button type="submit" className="btn btn-primary" disabled={catalogSaving}>
-                      {catalogSaving ? 'Saving...' : 'Add'}
-                    </button>
-                  </div>
-                </form>
+        <div className="department-catalog-modal-overlay" role="presentation">
+          <div
+            className="department-catalog-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="catalog-modal-title"
+            aria-describedby={catalogModalError ? 'catalog-modal-error' : undefined}
+          >
+            <form onSubmit={handleCatalogSubmit}>
+              <div className="department-catalog-modal-header">
+                <h2 className="department-catalog-modal-title" id="catalog-modal-title">
+                  Add New {catalogModalType === 'stream' ? 'Stream' : 'College'}
+                </h2>
+                <button
+                  type="button"
+                  className="department-catalog-modal-close"
+                  aria-label="Close"
+                  onClick={() => setCatalogModalType('')}
+                  disabled={catalogSaving}
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
               </div>
-            </div>
+              <div className="department-catalog-modal-body">
+                <label htmlFor="catalog-name" className="department-catalog-modal-label">
+                  {catalogModalType === 'stream' ? 'Stream Name' : 'College Name'}
+                </label>
+                <input
+                  id="catalog-name"
+                  className="department-catalog-modal-input"
+                  value={catalogName}
+                  onChange={event => setCatalogName(event.target.value)}
+                  autoFocus
+                  maxLength={150}
+                  required
+                />
+                {catalogModalError && (
+                  <div className="department-catalog-modal-error" id="catalog-modal-error" role="alert">
+                    {catalogModalError}
+                  </div>
+                )}
+              </div>
+              <div className="department-catalog-modal-actions">
+                <button
+                  type="button"
+                  className="department-catalog-modal-cancel"
+                  onClick={() => setCatalogModalType('')}
+                  disabled={catalogSaving}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="department-catalog-modal-submit" disabled={catalogSaving}>
+                  {catalogSaving ? 'Saving...' : 'Add'}
+                </button>
+              </div>
+            </form>
           </div>
+          <button
+            type="button"
+            className="department-catalog-modal-backdrop-dismiss"
+            aria-label="Close add dialog"
+            onClick={() => setCatalogModalType('')}
+            disabled={catalogSaving}
+          />
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import './Header.css';
 import dtuLogo from '../../assets/image.png'; // ሎጎህ እዚህ መሆኑን አረጋግጥ
 import api from '../../services/api.js';
 import DashboardHeader from './DashboardHeader.jsx';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const defaultPublicLinks = [
   { id: 'home', label: 'Home', path: '/', enabled: true },
@@ -37,6 +38,7 @@ function Header() {
     systemSubtitle: 'Student Department Placement System',
   });
   const [publicLinks, setPublicLinks] = useState(defaultPublicLinks);
+  const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin') || 
@@ -53,8 +55,10 @@ function Header() {
   useEffect(() => {
     let isMounted = true;
     const loadSiteSettings = async () => {
+      if (!api || typeof api.get !== 'function') return;
       try {
-        const response = await api.get('api/common/system_settings_api.php');
+        const response = await Promise.resolve(api.get('api/common/system_settings_api.php'));
+        if (!response?.data) return;
         if (!isMounted) return;
         const settings = response.data?.settings || {};
         setSiteBranding({
@@ -95,6 +99,7 @@ function Header() {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
+    window.dispatchEvent(new Event('user-logged-out'));
     setUser(null);
     navigate('/', { replace: true });
     Promise.resolve(api.post('auth/logout.php')).catch((error) => {
@@ -107,28 +112,25 @@ function Header() {
   return (
     <header className="main-header-container">
       {/* TIER 1: University Branding (Sefa yalena Blue) */}
-      <div className="top-branding-tier">
-        <div className="container d-flex align-items-center">
+      <div className={`top-branding-tier${hasDashboardHeader ? ' has-dashboard-utilities' : ''}`}>
+        <div className="container top-branding-content">
           <Link to="/" className="d-flex align-items-center text-decoration-none">
             <img src={dtuLogo} alt="DTU Logo" className="university-logo" />
             <div className="brand-text-wrapper ms-3">
-              <h1 className="university-name">{siteBranding.universityTitle}</h1>
-              <p className="system-subtitle">{siteBranding.systemSubtitle}</p>
+              <h1 className="university-name">{t(siteBranding.universityTitle)}</h1>
+              <p className="system-subtitle">{t(siteBranding.systemSubtitle)}</p>
             </div>
           </Link>
-        </div>
-      </div>
-
-      {hasDashboardHeader ? (
-        <div className="dashboard-subheader">
-          <div className="container">
+          {hasDashboardHeader && (
             <DashboardHeader
               variant="navigation"
               role={user?.role}
             />
-          </div>
+          )}
         </div>
-      ) : (
+      </div>
+
+      {!hasDashboardHeader && (
 
         /* TIER 2: Public navigation (Tebeb yalena Professional) */
         <nav className="navbar navbar-expand-lg navigation-tier">
@@ -155,7 +157,7 @@ function Header() {
                   {publicLinks.filter((link) => link.enabled === true).map((link) => (
                     <li className="nav-item" key={link.id}>
                       <NavLink to={link.path} end={link.path === '/'} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
-                        {link.label}
+                        {t(link.label)}
                       </NavLink>
                     </li>
                   ))}
@@ -163,15 +165,26 @@ function Header() {
               )}
 
               {!hasDashboardHeader && (
-                <div className="auth-action-wrapper ms-auto">
+                <div className="auth-action-wrapper ms-auto d-flex align-items-center gap-3">
+                  <label className="visually-hidden" htmlFor="site-language-select">{t('Select language')}</label>
+                  <select
+                    id="site-language-select"
+                    className="form-select form-select-sm w-auto"
+                    aria-label={t('Select language')}
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                  >
+                    <option value="en">English</option>
+                    <option value="am">አማርኛ</option>
+                  </select>
                   {isAuthenticated && isDashboardRoute ? (
                     <div className="d-flex align-items-center gap-3">
-                      {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">Dashboard</Link>}
-                      <button onClick={handleLogout} className="btn btn-logout-custom">Logout</button>
+                      {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">{t('Dashboard')}</Link>}
+                      <button onClick={handleLogout} className="btn btn-logout-custom">{t('Logout')}</button>
                     </div>
                   ) : (
                     <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
-                      Login
+                      {t('Login')}
                     </button>
                   )}
                 </div>

@@ -25,21 +25,17 @@
   border-bottom: 3.5px solid var(--dtu-gold);
 }
 
-.dashboard-subheader {
-  position: relative;
-  z-index: 1031;
-  min-height: 3.75rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+.top-branding-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
 }
 
-.dashboard-subheader > .container {
-  display: flex;
-  min-height: 3.75rem;
-  align-items: center;
+.top-branding-tier.has-dashboard-utilities {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+  background: linear-gradient(100deg, #2a1b54 0%, #1e1250 52%, #2a1b54 100%);
 }
 
 .university-logo {
@@ -145,6 +141,21 @@
   text-decoration: none;
 }
 
+.auth-action-wrapper {
+  gap: 0.75rem;
+}
+
+.auth-action-wrapper .form-select {
+  width: auto;
+  min-width: 7.25rem;
+  border-radius: 0.75rem;
+}
+
+.auth-action-wrapper .form-select:focus {
+  border-color: #154294;
+  box-shadow: 0 0 0 0.2rem rgba(21, 66, 148, 0.16);
+}
+
 /* Login Button Hover Effect (አስደናቂ ብርሃን እና ከፍታ) */
 .btn-login-custom:hover {
   background: linear-gradient(135deg, #123d8c 0%, #1c52b5 50%, #256be3 100%);
@@ -205,15 +216,15 @@
 }
 
 @media (max-width: 767.98px) {
-  .dashboard-subheader > .container { padding-right: 1rem; padding-left: 1rem; }
-  .dashboard-subheader .dashboard-header-navigation { gap: 0.4rem; }
-  .dashboard-subheader .dashboard-profile-trigger { min-width: 2.65rem; }
-  .dashboard-subheader .dashboard-profile-trigger-copy { display: none; }
-  .dashboard-subheader .dashboard-profile-trigger > svg { display: none; }
+  .top-branding-tier.has-dashboard-utilities .container { padding-right: 1rem; padding-left: 1rem; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation { gap: 0.4rem; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger { min-width: 2.65rem; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger-copy { display: none; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger > svg { display: none; }
 }
 
 @media (max-width: 420px) {
-  .dashboard-subheader .dashboard-header-navigation { gap: 0.25rem; }
-  .dashboard-subheader .dashboard-language-trigger span,
-  .dashboard-subheader .dashboard-language-trigger > svg:last-child { display: none; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation { gap: 0.25rem; }
+  .top-branding-tier.has-dashboard-utilities .dashboard-language-trigger span,
+  .top-branding-tier.has-dashboard-utilities .dashboard-language-trigger > svg:last-child { display: none; }
 }

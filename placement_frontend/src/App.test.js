@@ -94,6 +94,20 @@ describe('Login', () => {
     expect(screen.queryByRole('heading', { name: /let’s talk about your next step/i })).not.toBeInTheDocument();
   });
 
+  test('updates public navigation language immediately and persists the selection', async () => {
+    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    window.history.pushState({}, '', '/login');
+
+    render(<App />);
+
+    const languageSelect = await screen.findByRole('combobox', { name: 'Select language' });
+    fireEvent.change(languageSelect, { target: { value: 'am' } });
+
+    expect(within(screen.getByRole('navigation')).getByRole('link', { name: 'መነሻ' })).toBeInTheDocument();
+    expect(localStorage.getItem('language')).toBe('am');
+    expect(document.documentElement).toHaveAttribute('lang', 'am');
+  });
+
   test('opens the password reset tab from the login page', async () => {
     api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
     window.history.pushState({}, '', '/login');
@@ -285,7 +299,7 @@ describe('Login', () => {
     expect(localStorage.getItem('darkMode')).toBe('true');
   });
 
-  test('removes only the auth entry on logout and leaves other storage values intact', async () => {
+  test('removes only the auth entry when signing out from the profile menu', async () => {
     localStorage.setItem('darkMode', 'true');
     localStorage.setItem('user', JSON.stringify({ id: 1, username: 'alice', role: 'student' }));
 
@@ -298,11 +312,12 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /logout/i }));
+    fireEvent.click(screen.getByRole('button', { name: /alice/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
 
     expect(localStorage.getItem('user')).toBeNull();
-    expect(screen.getByTestId('current-route')).toHaveTextContent('/');
-    expect(api.post).toHaveBeenCalledWith('auth/logout.php');
+    expect(screen.getByTestId('current-route')).toHaveTextContent('/login');
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('auth/logout.php'));
     expect(localStorage.getItem('darkMode')).toBe('true');
     expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^login$/i })).toBeInTheDocument();

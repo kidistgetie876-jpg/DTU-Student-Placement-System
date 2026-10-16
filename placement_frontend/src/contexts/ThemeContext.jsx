@@ -49,6 +49,18 @@ export const ThemeProvider = ({ children }) => {
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);
-  if (!context) throw new Error('useTheme must be used within a ThemeProvider.');
+  if (!context) {
+    const themeMode = localStorage.getItem('themeMode') || (localStorage.getItem('darkMode') === 'true' ? 'dark' : 'light');
+    const isDarkMode = themeMode === 'dark';
+    const isEyeCareMode = themeMode === 'eye-care';
+    return {
+      isDarkMode,
+      isEyeCareMode,
+      themeMode,
+      setThemeMode: () => undefined,
+      toggleTheme: () => undefined,
+      toggleEyeCareMode: () => undefined,
+    };
+  }
   return context;
 };

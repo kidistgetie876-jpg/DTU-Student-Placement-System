@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import api from '../../services/api.js';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import './DashboardHeader.css';
 
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const EditProfileModal = ({ profile, onClose, onSaved }) => {
+  const { t } = useLanguage();
   const [fullName, setFullName] = useState(profile.full_name || profile.username || '');
   const [email, setEmail] = useState(profile.email || '');
   const [photo, setPhoto] = useState(null);
@@ -37,13 +39,13 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
     if (!ACCEPTED_PHOTO_TYPES.includes(selected.type)) {
       setPhoto(null);
       event.target.value = '';
-      setError('Choose a JPEG, PNG, or WebP image.');
+      setError(t('Choose a JPEG, PNG, or WebP image.'));
       return;
     }
     if (selected.size > PHOTO_MAX_BYTES) {
       setPhoto(null);
       event.target.value = '';
-      setError('Profile photos must be 5 MB or smaller.');
+      setError(t('Profile photos must be 5 MB or smaller.'));
       return;
     }
     setPhoto(selected);
@@ -56,11 +58,11 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
     const name = fullName.trim();
     const normalizedEmail = email.trim();
     if (!name) {
-      setError('Enter your full name.');
+      setError(t('Enter your full name.'));
       return;
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
-      setError('Enter a valid email address.');
+      setError(t('Enter a valid email address.'));
       return;
     }
 
@@ -75,12 +77,12 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (!response.data?.success || !response.data?.profile) {
-        throw new Error(response.data?.message || 'Unable to update profile.');
+        throw new Error(response.data?.message || t('Unable to update profile.'));
       }
       onSaved(response.data.profile);
-      setSuccess(response.data.message || 'Profile updated successfully.');
+      setSuccess(response.data.message || t('Profile updated successfully.'));
     } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message || 'Unable to update profile.');
+      setError(requestError.response?.data?.message || requestError.message || t('Unable to update profile.'));
     } finally {
       setSaving(false);
     }
@@ -101,8 +103,8 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
         aria-labelledby="dashboard-modal-title"
       >
         <div className="dashboard-modal-header">
-          <h3 id="dashboard-modal-title">Edit Profile</h3>
-          <button type="button" className="dashboard-modal-close" aria-label="Close" onClick={onClose} disabled={saving}>
+          <h3 id="dashboard-modal-title">{t('Edit Profile')}</h3>
+          <button type="button" className="dashboard-modal-close" aria-label={t('Close')} onClick={onClose} disabled={saving}>
             <X size={20} aria-hidden="true" />
           </button>
         </div>
@@ -114,11 +116,11 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
           <div className="dashboard-profile-photo-field">
             <div className="dashboard-profile-photo-preview">
               {photoPreview || currentPhoto
-                ? <img src={photoPreview || currentPhoto} alt="Profile preview" />
+                ? <img src={photoPreview || currentPhoto} alt={t('Profile preview')} />
                 : <span aria-hidden="true">{(fullName || '?').slice(0, 1).toUpperCase()}</span>}
             </div>
             <div className="dashboard-profile-photo-input">
-              <label className="form-label" htmlFor="dashboard-profile-photo">Profile Photo</label>
+              <label className="form-label" htmlFor="dashboard-profile-photo">{t('Profile Photo')}</label>
               <input
                 id="dashboard-profile-photo"
                 className="form-control"
@@ -127,11 +129,11 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
                 onChange={selectPhoto}
                 disabled={saving}
               />
-              <small className="text-muted">JPEG, PNG, or WebP; up to 5 MB.</small>
+              <small className="text-muted">{t('JPEG, PNG, or WebP; up to 5 MB.')}</small>
             </div>
           </div>
 
-          <label className="form-label" htmlFor="dashboard-profile-name">Full Name</label>
+          <label className="form-label" htmlFor="dashboard-profile-name">{t('Full Name')}</label>
           <input
             id="dashboard-profile-name"
             className="form-control mb-3"
@@ -143,7 +145,7 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
             onChange={(event) => setFullName(event.target.value)}
             disabled={saving}
           />
-          <label className="form-label" htmlFor="dashboard-profile-email">Email</label>
+          <label className="form-label" htmlFor="dashboard-profile-email">{t('Email')}</label>
           <input
             id="dashboard-profile-email"
             className="form-control mb-3"
@@ -156,9 +158,9 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
             disabled={saving}
           />
           <div className="dashboard-modal-actions">
-            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>{t('Cancel')}</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Save Profile'}
+              {saving ? t('Saving…') : t('Save Profile')}
             </button>
           </div>
         </form>

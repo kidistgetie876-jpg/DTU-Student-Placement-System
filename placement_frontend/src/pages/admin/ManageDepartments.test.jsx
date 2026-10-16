@@ -83,7 +83,10 @@ describe('ManageDepartments', () => {
         return Promise.resolve({
           data: {
             success: true,
-            colleges: [{ id: 2, name: 'Science College', stream_id: 1, stream_name: 'Natural' }],
+            colleges: [
+              { id: 2, name: 'Science College', stream_id: 1, stream_name: 'Natural' },
+              { id: 5, name: '  SCIENCE COLLEGE ', stream_id: 1, stream_name: 'Natural' },
+            ],
           },
         });
       }
@@ -115,6 +118,7 @@ describe('ManageDepartments', () => {
     const collegeSelect = screen.getByRole('combobox', { name: 'College' });
     expect(screen.getByRole('option', { name: 'Natural Science' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Science College' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: 'Science College' })).toHaveLength(1);
 
     fireEvent.change(streamSelect, { target: { value: '__add_new__' } });
     fireEvent.change(screen.getByLabelText('Stream Name'), { target: { value: 'Health' } });
@@ -124,6 +128,7 @@ describe('ManageDepartments', () => {
       expect(streamSelect).toHaveValue('3');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
+
     expect(api.post).toHaveBeenCalledWith('api/admin/add_stream.php', { name: 'Health' });
 
     fireEvent.change(collegeSelect, { target: { value: '__add_new__' } });
@@ -132,6 +137,48 @@ describe('ManageDepartments', () => {
 
     await waitFor(() => expect(collegeSelect).toHaveValue('Health College'));
     expect(api.post).toHaveBeenCalledWith('api/admin/add_college.php', { name: 'Health College', stream_id: 3 });
+  });
+
+  it('deduplicates the Technology aliases and blocks adding an existing college alias', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === 'api/admin/get_streams.php') {
+        return Promise.resolve({ data: { success: true, streams: [{ id: 1, name: 'Natural' }] } });
+      }
+      if (url === 'api/admin/get_colleges.php') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            colleges: [
+              { id: 2, name: 'Technology', stream_id: 1, stream_name: 'Natural' },
+              { id: 3, name: 'Gefat Institute of Technology', stream_id: 1, stream_name: 'Natural' },
+            ],
+          },
+        });
+      }
+      if (url === 'api/common/departments_api.php') return Promise.resolve({ data: { departments: [] } });
+      return Promise.resolve({ data: { users: [] } });
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageDepartments />
+      </MemoryRouter>
+    );
+
+    const collegeSelect = await screen.findByRole('combobox', { name: 'College' });
+    expect(screen.getAllByRole('option', { name: 'Gafat Institute of Technology' })).toHaveLength(1);
+    expect(screen.getByRole('option', { name: '-- Select College --' })).toBeInTheDocument();
+
+    fireEvent.change(collegeSelect, { target: { value: '__add_new__' } });
+    fireEvent.change(screen.getByLabelText('College Name'), {
+      target: { value: ' GAFAT INSTITUTE OF TECHNOLOGY ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A college with this name already exists for the selected stream.'
+    );
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('keeps fallback stream and college options when catalog requests fail', async () => {
@@ -161,7 +208,7 @@ describe('ManageDepartments', () => {
     ]);
     expect(Array.from(collegeSelect.options).map(option => option.textContent)).toEqual([
       '-- Select College --',
-      'Technology',
+      'Gafat Institute of Technology',
       'Agriculture and Environmental Sciences',
       'Natural and Computational Sciences',
       'Health Science',

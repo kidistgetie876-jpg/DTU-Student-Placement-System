@@ -279,13 +279,13 @@ describe('DashboardHeader', () => {
     expect(api.get).not.toHaveBeenCalled();
   });
 
-  it('places dashboard controls in one secondary bar below university branding', async () => {
+  it('places dashboard controls alongside university branding in one top bar', async () => {
     const { container } = renderGlobalDashboardHeader();
 
     expect(screen.getByRole('heading', { name: 'DEBRE TABOR UNIVERSITY' })).toBeInTheDocument();
-    expect(container.querySelector('.dashboard-subheader')).toBeInTheDocument();
-    expect(container.querySelector('.top-branding-tier .dashboard-header-navigation')).toBeNull();
-    expect(container.querySelector('.dashboard-subheader .dashboard-header-navigation')).toBeInTheDocument();
+    expect(container.querySelector('.top-branding-tier.has-dashboard-utilities')).toBeInTheDocument();
+    expect(container.querySelector('.top-branding-tier .dashboard-header-navigation')).toBeInTheDocument();
+    expect(container.querySelector('.dashboard-subheader')).toBeNull();
     expect(container.querySelector('.navigation-tier')).toBeNull();
     expect(screen.getByRole('button', { name: 'Select language' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch to dark mode' })).toBeInTheDocument();

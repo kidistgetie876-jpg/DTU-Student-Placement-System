@@ -707,9 +707,9 @@ const StudentDashboard = () => {
               <div className="col-12">
                 <section className="card border-0 shadow-sm rounded-4 bg-primary text-white">
                   <div className="card-body p-4 p-lg-5">
-                    <p className="small text-uppercase fw-semibold mb-2">Student dashboard</p>
-                    <h1 className="h2 fw-bold mb-2">Welcome, {studentFirstName}!</h1>
-                    <p className="mb-0 text-white-50">Your academic progress and placement updates at a glance.</p>
+                    <p className="small text-uppercase fw-semibold mb-2">{t('Student dashboard')}</p>
+                    <h1 className="h2 fw-bold mb-2">{t('Welcome')}, {studentFirstName}!</h1>
+                    <p className="mb-0 text-white-50">{t('Your academic progress and placement updates at a glance.')}</p>
                     <p className="small text-white-50 mt-2 mb-0">ID: {studentProfileId}</p>
                   </div>
                 </section>
@@ -725,7 +725,7 @@ const StudentDashboard = () => {
                   >
                     <span className="text-muted small fw-bold text-uppercase">{t(card.title)}</span>
                     <h2 className={`fw-bold m-0 text-${card.color}`}>{card.value}</h2>
-                    <span className="small text-muted mt-2">Click to view details</span>
+                    <span className="small text-muted mt-2">{t('Click to view details')}</span>
                   </button>
                 </div>
               ))}
@@ -734,17 +734,17 @@ const StudentDashboard = () => {
                   <div className="card-body p-4">
                     <div className="d-flex justify-content-between align-items-start gap-3">
                       <div>
-                        <h5 className="fw-bold mb-1">Placement status</h5>
-                        <p className="small text-muted mb-3">Your current placement progress</p>
+                        <h5 className="fw-bold mb-1">{t('Placement status')}</h5>
+                        <p className="small text-muted mb-3">{t('Your current placement progress')}</p>
                       </div>
                       <span className={`badge ${studentAssignmentStatus === 'Approved' ? 'bg-success' : 'bg-warning text-dark'}`}>
-                        {studentAssignmentStatus === 'Approved' ? 'Approved' : 'Pending'}
+                        {t(studentAssignmentStatus === 'Approved' ? 'Approved' : 'Pending')}
                       </span>
                     </div>
                     <p className="mb-0 text-muted">
                       {studentAssignmentStatus === 'Approved'
-                        ? `Your placement in ${studentDepartment} is approved.`
-                        : 'Your placement is awaiting review or publication.'}
+                        ? t('Your placement in {department} is approved.', { department: studentDepartment })
+                        : t('Your placement is awaiting review or publication.')}
                     </p>
                   </div>
                 </section>
@@ -754,29 +754,29 @@ const StudentDashboard = () => {
                   <div className="card-body p-4">
                     <div className="d-flex justify-content-between align-items-center gap-3 mb-3">
                       <div>
-                        <h5 className="fw-bold mb-1">Recent announcements</h5>
-                        <p className="small text-muted mb-0">Latest system notifications</p>
+                        <h5 className="fw-bold mb-1">{t('Recent announcements')}</h5>
+                        <p className="small text-muted mb-0">{t('Latest system notifications')}</p>
                       </div>
                       <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setTab('notifications')}>
-                        View all
+                        {t('View all')}
                       </button>
                     </div>
                     {notificationsLoading ? (
-                      <p className="text-muted mb-0" role="status">Loading recent notifications...</p>
+                      <p className="text-muted mb-0" role="status">{t('Loading recent notifications...')}</p>
                     ) : notificationsError ? (
                       <p className="text-danger mb-0" role="alert">{notificationsError}</p>
                     ) : recentNotifications.length === 0 ? (
-                      <p className="text-muted mb-0">There are no recent announcements or notifications.</p>
+                      <p className="text-muted mb-0">{t('There are no recent announcements or notifications.')}</p>
                     ) : (
                       <div className="list-group list-group-flush">
                         {recentNotifications.map((notification, index) => (
                           <div className="list-group-item px-0" key={notification.id || index}>
                             <div className="d-flex justify-content-between align-items-start gap-3">
                               <div>
-                                <div className="fw-semibold">{notification.title || 'System notification'}</div>
-                                <div className="small text-muted">{notification.message || 'New notification'}</div>
+                                <div className="fw-semibold">{notification.title || t('System notification')}</div>
+                                <div className="small text-muted">{notification.message || t('New notification')}</div>
                               </div>
-                              {isNotificationUnread(notification) && <span className="badge bg-primary">New</span>}
+                              {isNotificationUnread(notification) && <span className="badge bg-primary">{t('New')}</span>}
                             </div>
                           </div>
                         ))}
@@ -791,23 +791,23 @@ const StudentDashboard = () => {
           {tab === 'profile' && (
             <div className="row g-4">
               <div className="col-12">
-                <h2 className="h4 fw-bold mb-1">Profile &amp; Preferences</h2>
-                <p className="text-muted">Review your personal details and update your placement profile information.</p>
+                <h2 className="h4 fw-bold mb-1">{t('Profile & Preferences')}</h2>
+                <p className="text-muted">{t('Review your personal details and update your placement profile information.')}</p>
               </div>
               <div className="col-lg-7">
                 <section className="card border-0 shadow-sm rounded-4 h-100">
                   <div className="card-body p-4">
-                    <h5 className="fw-bold mb-3">Personal details</h5>
+                    <h5 className="fw-bold mb-3">{t('Personal details')}</h5>
                     <dl className="row mb-0">
-                      <dt className="col-sm-4 text-muted">Student ID</dt>
+                      <dt className="col-sm-4 text-muted">{t('Student ID')}</dt>
                       <dd className="col-sm-8">{studentProfileId}</dd>
-                      <dt className="col-sm-4 text-muted">Full name</dt>
+                      <dt className="col-sm-4 text-muted">{t('Full name')}</dt>
                       <dd className="col-sm-8">{studentFullName}</dd>
-                      <dt className="col-sm-4 text-muted">Email</dt>
+                      <dt className="col-sm-4 text-muted">{t('Email')}</dt>
                       <dd className="col-sm-8 text-break">{studentProfileEmail}</dd>
-                      <dt className="col-sm-4 text-muted">Gender</dt>
+                      <dt className="col-sm-4 text-muted">{t('Gender')}</dt>
                       <dd className="col-sm-8">{studentProfileGender}</dd>
-                      <dt className="col-sm-4 text-muted">Stream</dt>
+                      <dt className="col-sm-4 text-muted">{t('Stream')}</dt>
                       <dd className="col-sm-8">{studentProfileStream}</dd>
                     </dl>
                   </div>
@@ -816,12 +816,12 @@ const StudentDashboard = () => {
               <div className="col-lg-5">
                 <section className="card border-0 shadow-sm rounded-4">
                   <div className="card-body p-4">
-                    <h5 className="fw-bold mb-1">Profile preferences</h5>
-                    <p className="text-muted mb-3">Keep these placement details up to date. Your Registrar can also update them.</p>
+                    <h5 className="fw-bold mb-1">{t('Profile preferences')}</h5>
+                    <p className="text-muted mb-3">{t('Keep these placement details up to date. Your Registrar can also update them.')}</p>
                     {studentAttributesError && <div className="alert alert-danger py-2" role="alert">{studentAttributesError}</div>}
                     {studentAttributesSuccess && <div className="alert alert-success py-2" role="status">{studentAttributesSuccess}</div>}
                     <div className="mb-3">
-                      <label className="form-label" htmlFor="student-disability">Disability</label>
+                      <label className="form-label" htmlFor="student-disability">{t('Disability')}</label>
                       <select
                         id="student-disability"
                         className="form-select"
@@ -832,12 +832,12 @@ const StudentDashboard = () => {
                           setStudentAttributesSuccess('');
                         }}
                       >
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
+                        <option value="Yes">{t('Yes')}</option>
+                        <option value="No">{t('No')}</option>
                       </select>
                     </div>
                     <div className="mb-3">
-                      <label className="form-label" htmlFor="student-minority">Minority status</label>
+                      <label className="form-label" htmlFor="student-minority">{t('Minority status')}</label>
                       <select
                         id="student-minority"
                         className="form-select"

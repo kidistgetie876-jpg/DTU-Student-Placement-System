@@ -15,6 +15,7 @@ const initialForm = {
   grade12: '',
   coc: '',
   stream: '',
+  department: '',
   disability: 'No',
   minority: 'No',
 };
@@ -127,6 +128,8 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
         gender: form.gender,
         gpa: Number(form.gpa) || 0,
         stream: form.stream || null,
+        department: form.department || null,
+        department_id: form.department || null,
         grade_12_result: Number(form.grade12) || 0,
         coc_result: form.coc.trim() !== '' ? form.coc.trim() : null,
         disability: form.disability,
@@ -214,6 +217,17 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                     <select className="form-select" name="stream" value={form.stream} onChange={handleChange} required>
                       <option value="">Select Stream</option>
                       {streamOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-md-6">
+                    <label htmlFor="student-department" className="form-label fw-semibold">Department</label>
+                    <select id="student-department" className="form-select" name="department" value={form.department} onChange={handleChange}>
+                      <option value="">Select Department</option>
+                      {departments.map((department, index) => (
+                        <option key={department.id ?? `${department.name || 'department'}-${index}`} value={department.id ?? department.name ?? ''}>
+                          {department.name || 'Unnamed department'}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="col-md-3">

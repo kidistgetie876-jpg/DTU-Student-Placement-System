@@ -30,13 +30,6 @@ body {
   background: linear-gradient(110deg, #1e3a8a 0%, #312e81 52%, #0f172a 100%);
 }
 
-.dashboard-subheader {
-  border-color: rgba(226, 232, 240, 0.8);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
 .navigation-tier {
   border-color: #e2e8f0;
   background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
@@ -381,17 +374,6 @@ body.dark-mode {
   color: #cbd5e1;
 }
 
-.dark-mode .dashboard-subheader {
-  border-color: #1e293b;
-  background: rgba(15, 23, 42, 0.84);
-}
-
-.dark-mode .dashboard-subheader :is(.dashboard-control-button, .dashboard-profile-trigger) {
-  border-color: #334155;
-  background: #111827;
-  color: #e2e8f0;
-}
-
 .dark-mode .dashboard-modal-backdrop {
   background: rgba(2, 6, 23, 0.64);
 }
@@ -652,4 +634,258 @@ body.eye-care-mode .dashboard-header-navigation .dashboard-accent-teal,
 body.eye-care-mode .dashboard-topbar-actions .dashboard-accent-teal {
   background-color: #e1f2e8;
   color: #35624c;
+}
+
+.top-branding-tier.has-dashboard-utilities {
+  background: linear-gradient(100deg, #2a1b54 0%, #1e1250 52%, #2a1b54 100%);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 8px 25px rgba(15, 10, 42, 0.22);
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation {
+  width: auto;
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-control-button, .dashboard-profile-trigger) {
+  border-color: rgba(196, 181, 253, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-control-button, .dashboard-profile-trigger):hover,
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-control-button, .dashboard-profile-trigger)[aria-expanded="true"] {
+  border-color: rgba(221, 214, 254, 0.55);
+  background: #33236f;
+  color: #fff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger-copy small {
+  color: #cbd5e1;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-profile-avatar {
+  background: #ddd6fe;
+  color: #312e81;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown {
+  border-color: rgba(221, 214, 254, 0.22);
+  background: #21164f;
+  color: #f8fafc;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown button:hover {
+  background: #382878;
+  color: #fff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown button[aria-checked="true"],
+.top-branding-tier.has-dashboard-utilities .dashboard-role-pill {
+  background: #43318b;
+  color: #e9e2ff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-dropdown-user strong, .dashboard-notifications-header strong, .dashboard-notification-item-heading strong) {
+  color: #f8fafc;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-dropdown-user-identity > span, .dashboard-notifications-header span, .dashboard-notification-message, .dashboard-notification-item small, .dashboard-notifications-empty) {
+  color: #cbd5e1;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-dropdown-divider, .dashboard-notifications-header, .dashboard-notifications-list li + li) {
+  border-color: rgba(221, 214, 254, 0.18);
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown-divider {
+  background: rgba(221, 214, 254, 0.18);
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown .dashboard-notification-item.is-unread {
+  background: #30225f;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown .dashboard-signout-item {
+  color: #fca5a5;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-dropdown .dashboard-signout-item:hover {
+  background: #451a2b;
+  color: #fecaca;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation :is(.dashboard-control-button, .dashboard-profile-trigger):focus-visible {
+  outline-color: rgba(221, 214, 254, 0.8);
+}
+
+@media (max-width: 991.98px) {
+  .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation {
+    justify-content: center;
+  }
+}
+
+body.dark-mode {
+  --bs-body-color: #e2e8f0;
+  --bs-body-bg: #0f172a;
+  --bs-border-color: #334155;
+  --bs-secondary-color: #cbd5e1;
+  color: #e2e8f0;
+  background-color: #0f172a;
+}
+
+body.dark-mode :is(
+  .admin-dashboard,
+  .head-dashboard,
+  .student-dashboard,
+  .registrar-dashboard,
+  .app-main
+) {
+  color: #e2e8f0;
+}
+
+body.dark-mode :is(
+  .admin-dashboard,
+  .head-dashboard,
+  .student-dashboard,
+  .registrar-dashboard,
+  .app-main
+) :is(h1, h2, h3, h4, h5, h6, .card-title, .page-title) {
+  color: #f8fafc !important;
+}
+
+body.dark-mode :is(
+  .admin-dashboard,
+  .head-dashboard,
+  .student-dashboard,
+  .registrar-dashboard,
+  .app-main
+) :is(p, label, legend, dt, dd, .form-label, .text-dark, .text-body, .fw-semibold, .fw-bold) {
+  color: #e2e8f0;
+}
+
+body.dark-mode :is(
+  .admin-dashboard,
+  .head-dashboard,
+  .student-dashboard,
+  .registrar-dashboard,
+  .app-main
+) :is(.text-muted, .text-secondary, small, .small, .summary-label) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.card, .card-body, .table-responsive, .department-table-card, .department-table-toolbar) {
+  border-color: #334155;
+  background-color: #111827;
+  color: #e2e8f0;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main) .table {
+  --bs-table-color: #f1f5f9;
+  --bs-table-bg: rgba(15, 23, 42, 0.9);
+  --bs-table-border-color: #334155;
+  --bs-table-striped-bg: #172033;
+  --bs-table-striped-color: #f1f5f9;
+  --bs-table-hover-bg: #1e293b;
+  --bs-table-hover-color: #fff;
+  border-color: #334155;
+  color: #f1f5f9;
+  background-color: rgba(15, 23, 42, 0.9);
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .table > :not(caption) > * > * {
+  border-color: #334155 !important;
+  background-color: transparent;
+  color: #f1f5f9 !important;
+  box-shadow: none;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .table thead th,
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .table-light th {
+  border-color: #334155 !important;
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .table-hover > tbody > tr:hover > * {
+  background-color: #1e293b !important;
+  color: #fff !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main) .sidebar {
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.role-sidebar-item, .dashboard-nav-btn) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.role-sidebar-item, .dashboard-nav-btn):hover {
+  color: #fff !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.btn-outline-secondary, .btn-outline-dark, .btn-outline-primary, .btn-outline-info, .btn-outline-success, .btn-outline-danger) {
+  border-color: #64748b !important;
+  color: #f1f5f9 !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.btn-outline-secondary, .btn-outline-dark, .btn-outline-primary, .btn-outline-info, .btn-outline-success, .btn-outline-danger):hover:not(:disabled) {
+  border-color: #94a3b8 !important;
+  background-color: #334155 !important;
+  color: #fff !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  border-color: #475569;
+  background-color: #172033;
+  color: #f1f5f9;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  :is(.form-control, input, textarea)::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .badge.bg-primary-subtle {
+  background-color: #312e81 !important;
+  color: #e0e7ff !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .badge.bg-info-subtle {
+  background-color: #164e63 !important;
+  color: #cffafe !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .badge.bg-warning-subtle {
+  background-color: #713f12 !important;
+  color: #fef3c7 !important;
+}
+
+body.dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard, .registrar-dashboard, .app-main)
+  .badge.bg-success-subtle {
+  background-color: #14532d !important;
+  color: #dcfce7 !important;
 }

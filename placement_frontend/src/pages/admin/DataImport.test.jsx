@@ -113,15 +113,47 @@ describe('parseStudentImportGrid', () => {
       expect(result).toEqual({
         headersFound: true,
         rows: [{
-          user_id: 'DTU-HOD-001',
+          id_number: 'DTU-HOD-001',
           first_name: 'Aster',
           last_name: 'Mekonnen',
           username: 'aster.hod',
           email: 'aster@example.edu',
           phone: '0911000000',
           role: 'Head of Department',
+          password: '',
         }],
       });
+    });
+
+    it('accepts role header variations and rows with an inferred role', () => {
+      const roleHeaderResult = parseUserImportGrid([
+        ['User ID', 'First Name', 'Last Name', 'Username', 'Email', 'User_Role'],
+        ['DTU-REG-003', 'Ruth', 'Tadesse', 'ruth.reg', 'ruth@example.edu', ''],
+      ]);
+      const rolelessResult = parseUserImportGrid([
+        ['User ID', 'First Name', 'Last Name', 'Username', 'Email'],
+        ['DTU16R1001', 'Dawit', 'Kebede', 'dawit.student', 'dawit@example.edu'],
+      ]);
+
+      expect(roleHeaderResult.rows).toEqual([
+        expect.objectContaining({ id_number: 'DTU-REG-003', role: '', password: '' }),
+      ]);
+      expect(rolelessResult.rows).toEqual([
+        expect.objectContaining({ id_number: 'DTU16R1001', role: '', password: '' }),
+      ]);
+    });
+
+    it('maps an ID Number header to id_number for user imports', () => {
+      const result = parseUserImportGrid([
+        ['ID Number', 'Full Name', 'Username', 'Email', 'Role'],
+        ['DTU-HOD-027', 'Abebe Kebede', 'abebe.hod', 'abebe@example.edu', 'Head of Department'],
+      ]);
+
+      expect(result.rows).toEqual([expect.objectContaining({
+        id_number: 'DTU-HOD-027',
+        first_name: 'Abebe',
+        last_name: 'Kebede',
+      })]);
     });
 
     it('does not classify student sheets with a role column as user imports', () => {
@@ -169,10 +201,14 @@ describe('parseStudentImportGrid', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Preview File' }));
       await screen.findByText('DTU-004');
+      const previewNotice = screen.getByRole('status');
+      expect(previewNotice).toHaveClass('alert-success');
+      expect(previewNotice).not.toHaveClass('alert-danger');
+
       fireEvent.click(await screen.findByRole('button', { name: 'Save to System' }));
 
       expect(await screen.findByText(/0 new, 0 updated, 1 skipped \(1 already exist, unchanged\)/i)).toBeInTheDocument();
-      expect(await screen.findByText(/Already exists; imported values are unchanged/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Already exists; imported values are unchanged/i)).not.toBeInTheDocument();
       await waitFor(() => expect(onImportSuccess).toHaveBeenCalledTimes(1));
       expect(api.post).toHaveBeenCalledWith('api/admin/import_api.php', {
         students: [expect.objectContaining({ id_number: 'DTU-004', gpa: '', stream: 'Natural Science' })],
@@ -185,7 +221,11 @@ describe('parseStudentImportGrid', () => {
         ['DTU-HOD-001', 'Aster', 'Mekonnen', 'aster.hod', 'aster@example.edu', '0911000000', 'Head of Department'],
       ]);
       api.post.mockResolvedValue({
-        data: { success: true, message: 'User import complete: 1 new, 0 skipped.' },
+        data: {
+          success: true,
+          message: 'User import complete: 1 new, 0 skipped.',
+          temporary_passwords: [{ id_number: 'DTU-HOD-001', username: 'aster.hod', password: 'temporary-secret' }],
+        },
       });
 
       const { container } = render(<DataImport />);
@@ -205,12 +245,51 @@ describe('parseStudentImportGrid', () => {
           first_name: 'Aster',
           last_name: 'Mekonnen',
           username: 'aster.hod',
-          user_id: 'DTU-HOD-001',
+          id_number: 'DTU-HOD-001',
           email: 'aster@example.edu',
           phone: '0911000000',
           role: 'Head of Department',
+          password: '',
         }],
       }));
+      expect(await screen.findByText(/Temporary passwords: DTU-HOD-001 \(aster\.hod\): temporary-secret/)).toBeInTheDocument();
+    });
+
+    it('shows skipped row details and does not report success when no HOD records were inserted', async () => {
+      XLSX.utils.sheet_to_json.mockReturnValue([
+        ['User ID', 'First Name', 'Last Name', 'Username', 'Email', 'Phone', 'Role'],
+        ['DTU-HOD-005', 'Existing', 'Head', 'existing.hod', 'head@example.edu', '', 'Head of Department'],
+      ]);
+      api.post.mockRejectedValue({
+        response: {
+          status: 422,
+          data: {
+          success: false,
+          message: 'No new accounts added. All 1 row were skipped because they already exist in the system.',
+          inserted_count: 0,
+          skipped_count: 1,
+          skipped: [{
+            row: 2,
+            id_number: 'DTU-HOD-005',
+            reason: 'Skipped because user ID already exists. Existing HOD account DTU-HOD-005 and its department assignment were left unchanged.',
+          }],
+          },
+        },
+      });
+      const onImportSuccess = jest.fn();
+
+      const { container } = render(<DataImport onImportSuccess={onImportSuccess} />);
+      fireEvent.change(container.querySelector('input[type="file"]'), {
+        target: { files: [{ name: 'users.csv', arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(0)) }] },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Preview File' }));
+      await screen.findByText('DTU-HOD-005');
+      fireEvent.click(await screen.findByRole('button', { name: 'Save to System' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('No new accounts added. All 1 row were skipped because they already exist in the system.');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Row 2:');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('department assignment were left unchanged.');
+      expect(onImportSuccess).not.toHaveBeenCalled();
     });
   });
 
