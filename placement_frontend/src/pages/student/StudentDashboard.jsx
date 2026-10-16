@@ -172,7 +172,7 @@ const StudentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTabState] = useState(() => {
     const savedTab = localStorage.getItem('activeTab');
-    return ['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(savedTab)
+    return ['overview', 'profile', 'preferences', 'result', 'appeal', 'notifications'].includes(savedTab)
       ? savedTab
       : 'overview';
   });
@@ -203,6 +203,9 @@ const StudentDashboard = () => {
   const [notificationsReadFeedback, setNotificationsReadFeedback] = useState(null);
   const [markingNotificationsRead, setMarkingNotificationsRead] = useState(false);
   const [markingNotificationId, setMarkingNotificationId] = useState(null);
+  const [savingStudentAttributes, setSavingStudentAttributes] = useState(false);
+  const [studentAttributesError, setStudentAttributesError] = useState('');
+  const [studentAttributesSuccess, setStudentAttributesSuccess] = useState('');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -340,7 +343,7 @@ const StudentDashboard = () => {
   }, [student, tab]);
 
   useEffect(() => {
-    if (tab !== 'notifications' || !student?.id) return;
+    if (!['overview', 'notifications'].includes(tab) || !student?.id) return;
 
     const loadNotifications = async () => {
       setNotificationsLoading(true);
@@ -493,6 +496,21 @@ const StudentDashboard = () => {
       color: 'warning',
     },
   ];
+  const studentFirstName = profile?.first_name
+    || student?.first_name
+    || String(student?.username || '').trim().split(/\s+/)[0]
+    || 'Student';
+  const studentFullName = [
+    profile?.first_name || student?.first_name,
+    profile?.last_name || student?.last_name,
+  ].filter(Boolean).join(' ') || student?.name || student?.username || 'Not available';
+  const studentProfileId = student?.id_number || profile?.id_number || student?.id || 'Not available';
+  const studentProfileEmail = profile?.email || student?.email || 'Not available';
+  const studentProfileGender = profile?.gender || student?.gender || 'Not available';
+  const studentProfileStream = profile?.stream
+    ? `${normalizeStream(profile.stream)} Science`
+    : 'Not available';
+  const recentNotifications = notifications.slice(0, 3);
 
   // --- Dynamic Cascading Logic (Purely from allDepartments state) ---
   const streamOptions = ['Natural', 'Social'];
@@ -626,6 +644,34 @@ const StudentDashboard = () => {
     }
   };
 
+  const handleSaveStudentAttributes = async () => {
+    setStudentAttributesError('');
+    setStudentAttributesSuccess('');
+    setSavingStudentAttributes(true);
+    try {
+      const response = await api.post('api/common/student_attributes_api.php', {
+        disability: parseYesNo(profile?.disability) ? 'Yes' : 'No',
+        minority: parseYesNo(profile?.minority) ? 'Yes' : 'No',
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to save your student details.');
+      }
+      setProfile((current) => ({
+        ...current,
+        ...response.data.student,
+        disability: parseYesNo(response.data.student?.disability),
+        minority: parseYesNo(response.data.student?.minority),
+      }));
+      setStudentAttributesSuccess(response.data.message || 'Student details updated successfully.');
+    } catch (error) {
+      setStudentAttributesError(
+        error.response?.data?.message || error.message || 'Unable to save your student details.',
+      );
+    } finally {
+      setSavingStudentAttributes(false);
+    }
+  };
+
   if (loading) return <div className="text-center mt-5">Loading DTU Portal...</div>;
 
   return (
@@ -644,18 +690,30 @@ const StudentDashboard = () => {
         />
 
         <main className="col-md-10 p-5 main-content">
-          <DashboardHeader
-            variant="welcome"
-            username={student?.username}
-            role="Student"
-            greeting="Welcome"
-            subtitle="Profile, preferences, and placement updates."
-            profileDetail={`ID: ${student?.id_number || student?.id}`}
-            dashboardPath="/student-dashboard"
-          />
+          {tab !== 'overview' && (
+            <DashboardHeader
+              variant="welcome"
+              username={student?.username}
+              role="Student"
+              greeting="Welcome"
+              subtitle="Profile, preferences, and placement updates."
+              profileDetail={`ID: ${student?.id_number || student?.id}`}
+              dashboardPath="/student-dashboard"
+            />
+          )}
 
           {tab === 'overview' && (
             <div className="row g-4">
+              <div className="col-12">
+                <section className="card border-0 shadow-sm rounded-4 bg-primary text-white">
+                  <div className="card-body p-4 p-lg-5">
+                    <p className="small text-uppercase fw-semibold mb-2">Student dashboard</p>
+                    <h1 className="h2 fw-bold mb-2">Welcome, {studentFirstName}!</h1>
+                    <p className="mb-0 text-white-50">Your academic progress and placement updates at a glance.</p>
+                    <p className="small text-white-50 mt-2 mb-0">ID: {studentProfileId}</p>
+                  </div>
+                </section>
+              </div>
               {overviewCards.map((card) => (
                 <div className="col-md-4" key={card.key}>
                   <button
@@ -671,6 +729,140 @@ const StudentDashboard = () => {
                   </button>
                 </div>
               ))}
+              <div className="col-lg-4">
+                <section className="card border-0 shadow-sm rounded-4 h-100">
+                  <div className="card-body p-4">
+                    <div className="d-flex justify-content-between align-items-start gap-3">
+                      <div>
+                        <h5 className="fw-bold mb-1">Placement status</h5>
+                        <p className="small text-muted mb-3">Your current placement progress</p>
+                      </div>
+                      <span className={`badge ${studentAssignmentStatus === 'Approved' ? 'bg-success' : 'bg-warning text-dark'}`}>
+                        {studentAssignmentStatus === 'Approved' ? 'Approved' : 'Pending'}
+                      </span>
+                    </div>
+                    <p className="mb-0 text-muted">
+                      {studentAssignmentStatus === 'Approved'
+                        ? `Your placement in ${studentDepartment} is approved.`
+                        : 'Your placement is awaiting review or publication.'}
+                    </p>
+                  </div>
+                </section>
+              </div>
+              <div className="col-lg-8">
+                <section className="card border-0 shadow-sm rounded-4 h-100">
+                  <div className="card-body p-4">
+                    <div className="d-flex justify-content-between align-items-center gap-3 mb-3">
+                      <div>
+                        <h5 className="fw-bold mb-1">Recent announcements</h5>
+                        <p className="small text-muted mb-0">Latest system notifications</p>
+                      </div>
+                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setTab('notifications')}>
+                        View all
+                      </button>
+                    </div>
+                    {notificationsLoading ? (
+                      <p className="text-muted mb-0" role="status">Loading recent notifications...</p>
+                    ) : notificationsError ? (
+                      <p className="text-danger mb-0" role="alert">{notificationsError}</p>
+                    ) : recentNotifications.length === 0 ? (
+                      <p className="text-muted mb-0">There are no recent announcements or notifications.</p>
+                    ) : (
+                      <div className="list-group list-group-flush">
+                        {recentNotifications.map((notification, index) => (
+                          <div className="list-group-item px-0" key={notification.id || index}>
+                            <div className="d-flex justify-content-between align-items-start gap-3">
+                              <div>
+                                <div className="fw-semibold">{notification.title || 'System notification'}</div>
+                                <div className="small text-muted">{notification.message || 'New notification'}</div>
+                              </div>
+                              {isNotificationUnread(notification) && <span className="badge bg-primary">New</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
+          )}
+
+          {tab === 'profile' && (
+            <div className="row g-4">
+              <div className="col-12">
+                <h2 className="h4 fw-bold mb-1">Profile &amp; Preferences</h2>
+                <p className="text-muted">Review your personal details and update your placement profile information.</p>
+              </div>
+              <div className="col-lg-7">
+                <section className="card border-0 shadow-sm rounded-4 h-100">
+                  <div className="card-body p-4">
+                    <h5 className="fw-bold mb-3">Personal details</h5>
+                    <dl className="row mb-0">
+                      <dt className="col-sm-4 text-muted">Student ID</dt>
+                      <dd className="col-sm-8">{studentProfileId}</dd>
+                      <dt className="col-sm-4 text-muted">Full name</dt>
+                      <dd className="col-sm-8">{studentFullName}</dd>
+                      <dt className="col-sm-4 text-muted">Email</dt>
+                      <dd className="col-sm-8 text-break">{studentProfileEmail}</dd>
+                      <dt className="col-sm-4 text-muted">Gender</dt>
+                      <dd className="col-sm-8">{studentProfileGender}</dd>
+                      <dt className="col-sm-4 text-muted">Stream</dt>
+                      <dd className="col-sm-8">{studentProfileStream}</dd>
+                    </dl>
+                  </div>
+                </section>
+              </div>
+              <div className="col-lg-5">
+                <section className="card border-0 shadow-sm rounded-4">
+                  <div className="card-body p-4">
+                    <h5 className="fw-bold mb-1">Profile preferences</h5>
+                    <p className="text-muted mb-3">Keep these placement details up to date. Your Registrar can also update them.</p>
+                    {studentAttributesError && <div className="alert alert-danger py-2" role="alert">{studentAttributesError}</div>}
+                    {studentAttributesSuccess && <div className="alert alert-success py-2" role="status">{studentAttributesSuccess}</div>}
+                    <div className="mb-3">
+                      <label className="form-label" htmlFor="student-disability">Disability</label>
+                      <select
+                        id="student-disability"
+                        className="form-select"
+                        value={parseYesNo(profile?.disability) ? 'Yes' : 'No'}
+                        onChange={(event) => {
+                          setProfile((current) => ({ ...current, disability: event.target.value === 'Yes' }));
+                          setStudentAttributesError('');
+                          setStudentAttributesSuccess('');
+                        }}
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label" htmlFor="student-minority">Minority status</label>
+                      <select
+                        id="student-minority"
+                        className="form-select"
+                        value={parseYesNo(profile?.minority) ? 'Yes' : 'No'}
+                        onChange={(event) => {
+                          setProfile((current) => ({ ...current, minority: event.target.value === 'Yes' }));
+                          setStudentAttributesError('');
+                          setStudentAttributesSuccess('');
+                        }}
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleSaveStudentAttributes}
+                      disabled={savingStudentAttributes || !student?.id}
+                    >
+                      {savingStudentAttributes ? 'Saving...' : 'Save profile details'}
+                    </button>
+                  </div>
+                </section>
+              </div>
             </div>
           )}
 

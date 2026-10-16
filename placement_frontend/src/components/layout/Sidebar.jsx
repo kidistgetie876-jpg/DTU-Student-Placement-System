@@ -72,7 +72,8 @@ const roleNavigation = {
     title: 'DTU Student Portal',
     subtitle: 'Profile, preferences, and placement updates.',
     items: [
-      { key: 'overview', label: 'Profile & Preferences', Icon: Users },
+      { key: 'overview', label: 'Overview', Icon: LayoutDashboard },
+      { key: 'profile', label: 'Profile & Preferences', Icon: Users },
       { key: 'preferences', label: 'Submit Preferences', Icon: Grid },
       { key: 'result', label: 'Placement Result', Icon: CheckCircle },
       { key: 'appeal', label: 'Submit Complaints / Help', Icon: HelpCircle },

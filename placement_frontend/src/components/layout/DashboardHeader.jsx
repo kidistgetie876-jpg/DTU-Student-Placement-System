@@ -94,7 +94,10 @@ const DashboardHeader = ({
   )).length;
 
   useEffect(() => {
-    if (!showControls) return undefined;
+    const storedUser = readStoredUser();
+    const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
+    if (!showControls || !hasStoredUser) return undefined;
+
     let isCurrent = true;
     api.get('api/common/get_profile.php')
       .then((response) => {
@@ -107,6 +110,10 @@ const DashboardHeader = ({
       })
       .catch((error) => {
         if (!isCurrent) return;
+        if (error.response?.status === 401 || error.response?.status === 404) {
+          localStorage.removeItem('user');
+          return;
+        }
         console.error('Unable to load the current user profile:', error);
       });
 
@@ -119,7 +126,10 @@ const DashboardHeader = ({
   }, [showControls]);
 
   useEffect(() => {
-    if (!showControls) return undefined;
+    const storedUser = readStoredUser();
+    const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
+    if (!showControls || !hasStoredUser) return undefined;
+
     let isCurrent = true;
     let requestInProgress = false;
 
@@ -137,6 +147,11 @@ const DashboardHeader = ({
         }
       } catch (error) {
         if (!isCurrent) return;
+        if (error.response?.status === 401 || error.response?.status === 404) {
+          setNotifications([]);
+          setNotificationsError('');
+          return;
+        }
         setNotificationsError(error.response?.data?.message || error.message || 'Unable to load notifications.');
         console.error('Unable to load dashboard notifications:', error);
       } finally {

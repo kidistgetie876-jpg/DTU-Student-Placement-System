@@ -492,6 +492,12 @@ const RegistrarDashboard = () => {
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
   const [deletingStudentId, setDeletingStudentId] = useState(null);
   const [studentDeleteError, setStudentDeleteError] = useState('');
+  const [studentDeleteSuccess, setStudentDeleteSuccess] = useState('');
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [studentEditForm, setStudentEditForm] = useState(null);
+  const [savingStudentAttributes, setSavingStudentAttributes] = useState(false);
+  const [studentAttributesError, setStudentAttributesError] = useState('');
+  const [studentAttributesSuccess, setStudentAttributesSuccess] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [choiceMatrixSearch, setChoiceMatrixSearch] = useState('');
   const [choiceMatrixSelectedStream, setChoiceMatrixSelectedStream] = useState('All');
@@ -1309,7 +1315,8 @@ const RegistrarDashboard = () => {
               minority: minority,
               cumulativeScore: cumulativeScore,
               placement_result_score: profile?.placement_result_score ?? null,
-              department: profile?.placement_result_department || profile?.department || profile?.program || profile?.department_name || user?.department || '',
+              department: profile?.department || profile?.placement_result_department || profile?.program || profile?.department_name || user?.department || '',
+              department_id: profile?.department_id ?? null,
               status: profile?.placement_result_department
                 ? (profile?.placement_result_status === 'Approved' ? 'Approved' : 'Placed')
                 : (profile?.placement_status || profile?.status || profile?.placementStatus || 'Pending'),
@@ -1332,6 +1339,17 @@ const RegistrarDashboard = () => {
       fetchStudentRecords();
     }
   }, [placementRules, registrar, studentRecordsRefreshToken]);
+
+  useEffect(() => {
+    if (!registrar || tab !== 'student-info') return undefined;
+    const refreshRecordsOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        setStudentRecordsRefreshToken((current) => current + 1);
+      }
+    };
+    window.addEventListener('focus', refreshRecordsOnFocus);
+    return () => window.removeEventListener('focus', refreshRecordsOnFocus);
+  }, [registrar, tab]);
 
   // Refresh overview counts from the database-backed dashboard API when Overview opens.
   useEffect(() => {
@@ -1449,27 +1467,106 @@ const RegistrarDashboard = () => {
   );
 
   const handleDeleteStudent = async (student) => {
-    const studentId = Number(student.id);
+    const studentId = Number(student.id ?? student.student_id);
     if (!Number.isInteger(studentId) || studentId <= 0) {
       setStudentDeleteError('Unable to delete this student because the student ID is invalid.');
+      setStudentDeleteSuccess('');
       return;
     }
 
     if (!window.confirm('Are you sure you want to delete this student?')) return;
 
     setStudentDeleteError('');
+    setStudentDeleteSuccess('');
     setDeletingStudentId(studentId);
     try {
-      await api.delete('api/registrar/delete_student.php', {
-        data: { student_id: studentId },
+      const response = await api.delete('api/registrar/delete_student.php', {
+        params: { student_id: studentId },
       });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to delete student information. Please try again.');
+      }
       setStudentRecords((records) => records.filter((record) => Number(record.id) !== studentId));
+      setStudentDeleteSuccess(response.data.message || 'Student deleted successfully.');
     } catch (error) {
       setStudentDeleteError(
-        error.response?.data?.message || 'Failed to delete student information. Please try again.',
+        error.response?.data?.message || error.message || 'Failed to delete student information. Please try again.',
       );
     } finally {
       setDeletingStudentId(null);
+    }
+  };
+
+  const openStudentAttributeEditor = (student) => {
+    setEditingStudent(student);
+    setStudentEditForm({
+      first_name: student.first_name || '',
+      last_name: student.last_name || '',
+      gpa: String(student.gpa ?? student.cgpa ?? ''),
+      g12_result: String(student.g12 ?? student.grade_12_result ?? 0),
+      coc_score: String(student.coc ?? student.coc_result ?? 0),
+      gender: String(student.gender || '').toLowerCase() === 'female' ? 'Female' : 'Male',
+      disability: parseYesNo(student.hasDisability ?? student.disability) ? 'Yes' : 'No',
+      minority: parseYesNo(student.minority ?? student.isMinority) ? 'Yes' : 'No',
+      stream: formatStudentStream(student.stream) === 'Social Science' ? 'Social' : 'Natural',
+    });
+    setStudentAttributesError('');
+    setStudentAttributesSuccess('');
+  };
+
+  const handleSaveStudentAttributes = async (event) => {
+    event.preventDefault();
+    const studentId = Number(editingStudent?.id ?? editingStudent?.student_id);
+    if (!Number.isInteger(studentId) || studentId <= 0) {
+      setStudentAttributesError('Unable to update this student because the student ID is invalid.');
+      return;
+    }
+
+    setSavingStudentAttributes(true);
+    setStudentAttributesError('');
+    setStudentAttributesSuccess('');
+    try {
+      const response = await api.post('api/registrar/update_student.php', {
+        student_id: studentId,
+      first_name: studentEditForm.first_name,
+      last_name: studentEditForm.last_name,
+      gpa: studentEditForm.gpa,
+      g12_result: studentEditForm.g12_result,
+      coc_score: studentEditForm.coc_score,
+      gender: studentEditForm.gender,
+      stream: studentEditForm.stream,
+      disability: studentEditForm.disability,
+      minority: studentEditForm.minority,
+    });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to update student record.');
+      }
+      const updatedStudent = response.data.student;
+      setStudentRecords((records) => records.map((record) => (
+        Number(record.id) === studentId
+          ? {
+              ...record,
+              ...updatedStudent,
+              gpa: Number(updatedStudent.gpa).toFixed(2),
+              cgpa: Number(updatedStudent.gpa).toFixed(2),
+              g12: updatedStudent.g12_result,
+              coc: updatedStudent.coc_score,
+              stream: formatStudentStream(updatedStudent.stream),
+              hasDisability: parseYesNo(updatedStudent.disability),
+              name: `${updatedStudent.first_name} ${updatedStudent.last_name}`.trim(),
+              cumulativeScore: Number(updatedStudent.cumulative_avg ?? record.cumulativeScore),
+            }
+          : record
+      )));
+      setEditingStudent(null);
+      setStudentEditForm(null);
+      setStudentAttributesSuccess(response.data.message || 'Student record updated successfully.');
+    } catch (error) {
+      setStudentAttributesError(
+        error.response?.data?.message || error.message || 'Unable to update student record.',
+      );
+    } finally {
+      setSavingStudentAttributes(false);
     }
   };
 
@@ -2027,19 +2124,20 @@ const RegistrarDashboard = () => {
               )}
             </>
           ) : tab === 'student-info' ? (
+            <>
             <div className="card shadow-sm">
               <div className="card-body">
                 <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                   <h4 className="card-title mb-0">Student Information</h4>
                   <div className="d-flex gap-2 flex-wrap">
-                    {/* <button
+                    <button
                       type="button"
                       className="btn btn-outline-secondary btn-sm"
-                      onClick={() => window.location.reload()}
-                      title="Reload student records from the database"
+                      onClick={() => setStudentRecordsRefreshToken((current) => current + 1)}
+                      disabled={studentInfoLoading}
                     >
-                      Refresh data
-                    </button> */}
+                      {studentInfoLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
                     <button
                       className="btn btn-outline-info btn-sm"
                       onClick={() => setTab('choice-matrix')}
@@ -2095,6 +2193,16 @@ const RegistrarDashboard = () => {
                 {studentDeleteError && (
                   <div className="alert alert-danger py-2" role="alert">
                     {studentDeleteError}
+                  </div>
+                )}
+                {studentDeleteSuccess && (
+                  <div className="alert alert-success py-2" role="status">
+                    {studentDeleteSuccess}
+                  </div>
+                )}
+                {studentAttributesSuccess && (
+                  <div className="alert alert-success py-2" role="status">
+                    {studentAttributesSuccess}
                   </div>
                 )}
                 {studentInfoLoading ? (
@@ -2222,20 +2330,25 @@ const RegistrarDashboard = () => {
                                 <div className="d-flex justify-content-center align-items-center gap-1 flex-nowrap">
                                   <button
                                     type="button"
-                                    className={`btn btn-sm ${needsAcademicScores(student) ? 'btn-warning text-dark' : 'btn-outline-secondary'}`}
-                                    onClick={() => {
-                                      const studentId = student.id ?? student.user_id ?? student.email;
-                                      navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
-                                        state: {
-                                          student,
-                                          returnTo: '/registrar-dashboard',
-                                          returnTab: tab,
-                                        },
-                                      });
-                                    }}
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => openStudentAttributeEditor(student)}
                                   >
-                                    {needsAcademicScores(student) ? 'Fill Scores' : 'Update'}
+                                    Update
                                   </button>
+                                  {needsAcademicScores(student) && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-warning text-dark"
+                                      onClick={() => {
+                                        const studentId = student.id ?? student.user_id ?? student.email;
+                                        navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
+                                          state: { student, returnTo: '/registrar-dashboard', returnTab: tab },
+                                        });
+                                      }}
+                                    >
+                                      Fill Scores
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     className="btn btn-sm btn-outline-danger"
@@ -2307,6 +2420,181 @@ const RegistrarDashboard = () => {
                 )}
               </div>
             </div>
+            {editingStudent && (
+              <div
+                className="modal d-block"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="student-attributes-modal-title"
+                style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}
+              >
+                <div className="modal-dialog modal-dialog-centered">
+                  <form className="modal-content" onSubmit={handleSaveStudentAttributes}>
+                    <div className="modal-header">
+                      <h5 className="modal-title" id="student-attributes-modal-title">
+                        Update student details
+                      </h5>
+                      <button
+                        type="button"
+                        className="btn-close"
+                        aria-label="Close"
+                        onClick={() => setEditingStudent(null)}
+                        disabled={savingStudentAttributes}
+                      />
+                    </div>
+                    <div className="modal-body">
+                      <p className="text-muted">
+                        {editingStudent.name || `${editingStudent.first_name || ''} ${editingStudent.last_name || ''}`.trim()}
+                      </p>
+                      {studentAttributesError && (
+                        <div className="alert alert-danger py-2" role="alert">{studentAttributesError}</div>
+                      )}
+                      <div className="mb-3">
+                        <label className="form-label" htmlFor="registrar-student-first-name">First name</label>
+                        <input
+                          id="registrar-student-first-name"
+                          className="form-control"
+                          value={studentEditForm?.first_name || ''}
+                          onChange={(event) => setStudentEditForm((current) => ({ ...current, first_name: event.target.value }))}
+                          maxLength={50}
+                          required
+                          disabled={savingStudentAttributes}
+                        />
+                      </div>
+                      <div className="mb-3">
+                        <label className="form-label" htmlFor="registrar-student-last-name">Last name</label>
+                        <input
+                          id="registrar-student-last-name"
+                          className="form-control"
+                          value={studentEditForm?.last_name || ''}
+                          onChange={(event) => setStudentEditForm((current) => ({ ...current, last_name: event.target.value }))}
+                          maxLength={50}
+                          required
+                          disabled={savingStudentAttributes}
+                        />
+                      </div>
+                      <div className="row g-3 mb-3">
+                        <div className="col-md-4">
+                          <label className="form-label" htmlFor="registrar-student-gpa">GPA</label>
+                          <input
+                            id="registrar-student-gpa"
+                            className="form-control"
+                            type="number"
+                            min="0"
+                            max="4"
+                            step="0.01"
+                            value={studentEditForm?.gpa || ''}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, gpa: event.target.value }))}
+                            required
+                            disabled={savingStudentAttributes}
+                          />
+                        </div>
+                        <div className="col-md-4">
+                          <label className="form-label" htmlFor="registrar-student-g12">Grade 12 result</label>
+                          <input
+                            id="registrar-student-g12"
+                            className="form-control"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={studentEditForm?.g12_result || ''}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, g12_result: event.target.value }))}
+                            required
+                            disabled={savingStudentAttributes}
+                          />
+                        </div>
+                        <div className="col-md-4">
+                          <label className="form-label" htmlFor="registrar-student-coc">COC score</label>
+                          <input
+                            id="registrar-student-coc"
+                            className="form-control"
+                            type="number"
+                            min="0"
+                            max="30"
+                            step="0.01"
+                            value={studentEditForm?.coc_score || ''}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, coc_score: event.target.value }))}
+                            required
+                            disabled={savingStudentAttributes}
+                          />
+                        </div>
+                      </div>
+                      <div className="row g-3 mb-3">
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="registrar-student-gender">Gender</label>
+                          <select
+                            id="registrar-student-gender"
+                            className="form-select"
+                            value={studentEditForm?.gender || 'Male'}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, gender: event.target.value }))}
+                            disabled={savingStudentAttributes}
+                          >
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="registrar-student-stream">Stream</label>
+                          <select
+                            id="registrar-student-stream"
+                            className="form-select"
+                            value={studentEditForm?.stream || 'Natural'}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, stream: event.target.value }))}
+                            disabled={savingStudentAttributes}
+                          >
+                            <option value="Natural">Natural Science</option>
+                            <option value="Social">Social Science</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="row g-3 mb-3">
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="registrar-student-disability">Disability</label>
+                          <select
+                            id="registrar-student-disability"
+                            className="form-select"
+                            value={studentEditForm?.disability || 'No'}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, disability: event.target.value }))}
+                            disabled={savingStudentAttributes}
+                          >
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="registrar-student-minority">Minority status</label>
+                          <select
+                            id="registrar-student-minority"
+                            className="form-select"
+                            value={studentEditForm?.minority || 'No'}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, minority: event.target.value }))}
+                            disabled={savingStudentAttributes}
+                          >
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setEditingStudent(null)}
+                        disabled={savingStudentAttributes}
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={savingStudentAttributes}>
+                        {savingStudentAttributes ? 'Saving...' : 'Save changes'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+            </>
           ) : tab === 'choice-matrix' ? (
             <div className="card shadow-sm">
               <div className="card-body">

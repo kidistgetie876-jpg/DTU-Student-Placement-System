@@ -1,7 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as testingLibraryRender, screen, waitFor } from '@testing-library/react';
 import StudentDashboard from './StudentDashboard';
 import api from '../../services/api.js';
+import { LanguageProvider } from '../../contexts/LanguageContext.jsx';
+import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
 
 const mockNavigate = jest.fn();
 
@@ -16,6 +18,12 @@ jest.mock('../../services/api.js', () => ({
     post: jest.fn(),
   },
 }));
+
+const render = (ui) => testingLibraryRender(
+  <ThemeProvider>
+    <LanguageProvider>{ui}</LanguageProvider>
+  </ThemeProvider>,
+);
 
 describe('StudentDashboard', () => {
   beforeEach(() => {
@@ -38,14 +46,83 @@ describe('StudentDashboard', () => {
   it('shows the student overview and opens the preference form', async () => {
     render(<StudentDashboard />);
 
-    expect(await screen.findByText(/Welcome, /i)).toBeInTheDocument();
+    expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
     expect(screen.getByText(/GPA/i)).toBeInTheDocument();
     expect(screen.getByText(/Stream/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Placement status' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Disability' })).not.toBeInTheDocument();
     expect(screen.getByText('ID: 1')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /submit preferences/i }));
 
     expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
+  });
+
+  it('saves disability and minority profile details from the student portal', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Student details updated successfully.',
+        student: { disability: 'Yes', minority: 'No', cumulative_avg: 52.25 },
+      },
+    });
+    render(<StudentDashboard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Profile & Preferences' }));
+    await screen.findByRole('combobox', { name: 'Disability' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Disability' }), {
+      target: { value: 'Yes' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile details' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/common/student_attributes_api.php',
+      { disability: 'Yes', minority: 'No' },
+    ));
+    expect(await screen.findByRole('status')).toHaveTextContent('Student details updated successfully.');
+  });
+
+  it('shows personal details and profile settings on the dedicated profile tab', async () => {
+    localStorage.setItem('user', JSON.stringify({
+      id: '1',
+      id_number: 'DTU16R1001',
+      username: 'Alice',
+      first_name: 'Alice',
+      last_name: 'Student',
+      email: 'alice@example.com',
+      role: 'student',
+    }));
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: {
+              id: '1',
+              id_number: 'DTU16R1001',
+              first_name: 'Alice',
+              last_name: 'Student',
+              email: 'alice@example.com',
+              gender: 'Female',
+              stream: 'Social',
+              gpa: 3,
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Profile & Preferences' }));
+
+    expect(await screen.findByText('DTU16R1001')).toBeInTheDocument();
+    expect(screen.getByText('Alice Student')).toBeInTheDocument();
+    expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Female')).toBeInTheDocument();
+    expect(screen.getByText('Social Science')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save profile details' })).toBeInTheDocument();
   });
 
   it('shows the calculated cumulative score when the student has no published placement yet', async () => {
@@ -150,7 +227,7 @@ describe('StudentDashboard', () => {
     api.post.mockResolvedValue({ data: { success: true, message: 'All notifications marked as read.' } });
 
     render(<StudentDashboard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
 
     expect(await screen.findByRole('button', { name: 'Mark all as read' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
@@ -179,7 +256,7 @@ describe('StudentDashboard', () => {
     api.post.mockResolvedValue({ data: { success: true, message: 'Notification marked as read.' } });
 
     render(<StudentDashboard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
 
     const markReadButton = await screen.findByRole('button', { name: 'Mark as read' });
     fireEvent.click(markReadButton);
@@ -219,7 +296,7 @@ describe('StudentDashboard', () => {
     });
 
     render(<StudentDashboard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
 
     expect(await screen.findByText('Unassigned student meeting')).toBeInTheDocument();
     expect(screen.getByText('Please attend to discuss remediation options.')).toBeInTheDocument();
@@ -256,7 +333,7 @@ describe('StudentDashboard', () => {
     api.post.mockResolvedValue({ data: { success: true, message: 'Notification marked as read.' } });
 
     render(<StudentDashboard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Mark as read' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -730,7 +807,7 @@ describe('StudentDashboard', () => {
 
     render(<StudentDashboard />);
 
-    expect(await screen.findByText(/Welcome, /i)).toBeInTheDocument();
+    expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
     expect(screen.getByText(/GPA/i)).toBeInTheDocument();
     expect(screen.getAllByText('0.00').length).toBeGreaterThan(0);
   });
