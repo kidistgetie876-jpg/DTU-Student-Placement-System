@@ -93,7 +93,10 @@ function getDepartmentInfo(mysqli $db, int $deptId): array
 
 function normalizeChoiceRow(array $row): array
 {
-    $studentId = isset($row['student_id']) && is_numeric($row['student_id']) ? (int) $row['student_id'] : 0;
+    $studentId = trim((string) ($row['student_id'] ?? ''));
+    if ($studentId !== '' && is_numeric($studentId)) {
+        $studentId = (int) $studentId;
+    }
     $deptId = isset($row['dept_id']) && is_numeric($row['dept_id']) ? (int) $row['dept_id'] : 0;
     $priority = isset($row['priority']) && is_numeric($row['priority']) ? (int) $row['priority'] : 0;
 
@@ -109,10 +112,14 @@ function normalizeChoiceRow(array $row): array
     ];
 }
 
-function fetchChoiceMatrix(mysqli $db, ?int $studentId = null): array
+function fetchChoiceMatrix(mysqli $db, ?string $studentId = null): array
 {
-    $sql = "SELECT sc.id, sc.student_id, sc.dept_id, sc.priority, sc.dept_name, sc.college_name, sc.stream,
-                   d.name AS department_name, d.capacity, d.status
+    $sql = "SELECT sc.id, sc.student_id, sc.dept_id, sc.priority,
+                   COALESCE(NULLIF(sc.dept_name, ''), d.name) AS dept_name,
+                   d.name AS department_name,
+                   COALESCE(NULLIF(sc.college_name, ''), d.college_name, '') AS college_name,
+                   COALESCE(NULLIF(sc.stream, ''), d.stream, '') AS stream,
+                   d.capacity, d.status
             FROM student_choices sc
             LEFT JOIN departments d ON d.id = sc.dept_id";
 
@@ -122,7 +129,7 @@ function fetchChoiceMatrix(mysqli $db, ?int $studentId = null): array
     if ($studentId !== null) {
         $sql .= ' WHERE sc.student_id = ?';
         $params[] = $studentId;
-        $types .= 'i';
+        $types .= 's';
     }
 
     $sql .= ' ORDER BY sc.student_id ASC, sc.priority ASC';
@@ -251,7 +258,10 @@ try {
     $method = $_SERVER['REQUEST_METHOD'];
 
     if ($method === 'GET') {
-        $studentId = isset($_GET['student_id']) && is_numeric($_GET['student_id']) ? (int) $_GET['student_id'] : null;
+        $studentId = isset($_GET['student_id']) ? trim((string) $_GET['student_id']) : null;
+        if ($studentId === '') {
+            $studentId = null;
+        }
         $matrix = fetchChoiceMatrix($db, $studentId);
 
         sendJson([

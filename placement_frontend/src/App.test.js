@@ -419,6 +419,6 @@ describe('Login', () => {
       { id: 3, name: 'Cora', status: 'Pending' },
     ]);
 
-    expect(filterStudentIdsForPlacement(records, [])).toEqual(records);
+    expect(filterStudentIdsForPlacement(records, [])).toEqual([]);
   });
 });

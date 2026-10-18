@@ -15,13 +15,14 @@ function refreshUnassignedStudentRoster(mysqli $db): void
         "INSERT INTO unassigned_students
             (student_id, id_number, full_name, email, stream, college_name, status, placement_run_at)
          SELECT sd.user_id,
-                COALESCE(NULLIF(sd.id_number, ''), u.id_number, ''),
+                COALESCE(NULLIF(sd.admission_number, ''), NULLIF(sd.id_number, ''), u.id_number, ''),
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', sd.first_name, sd.last_name)), ''), u.username, 'Student'),
                 COALESCE(NULLIF(sd.email, ''), u.email, ''),
                 COALESCE(NULLIF(sd.stream, ''), (
                     SELECT sc.stream
                     FROM student_choices sc
                     WHERE sc.student_id = sd.user_id
+                       OR TRIM(sc.student_id) = TRIM(sd.admission_number)
                     ORDER BY sc.priority ASC
                     LIMIT 1
                 ), ''),
@@ -29,6 +30,7 @@ function refreshUnassignedStudentRoster(mysqli $db): void
                     SELECT sc.college_name
                     FROM student_choices sc
                     WHERE sc.student_id = sd.user_id
+                       OR TRIM(sc.student_id) = TRIM(sd.admission_number)
                     ORDER BY sc.priority ASC
                     LIMIT 1
                 ), ''),
@@ -56,7 +58,7 @@ function refreshUnassignedStudentRoster(mysqli $db): void
     }
 }
 
-function resolveUnassignedReason(mysqli $db, int $studentId): array
+function resolveUnassignedReason(mysqli $db, int $studentId, string $admissionNumber): array
 {
     $statement = $db->prepare(
         "SELECT sc.dept_name AS selected_department, d.name AS department_name,
@@ -69,14 +71,15 @@ function resolveUnassignedReason(mysqli $db, int $studentId): array
          LEFT JOIN departments d
            ON d.id = sc.dept_id
            OR ((sc.dept_id IS NULL OR sc.dept_id = 0) AND LOWER(TRIM(d.name)) = LOWER(TRIM(sc.dept_name)))
-         WHERE sc.student_id = ?
+         WHERE sc.student_id = ? OR TRIM(sc.student_id) = TRIM(?)
          ORDER BY sc.priority ASC"
     );
     if (!$statement) {
         throw new RuntimeException('Unable to prepare unassigned student reason lookup: ' . $db->error);
     }
 
-    $statement->bind_param('i', $studentId);
+    $studentIdentifier = (string) $studentId;
+    $statement->bind_param('ss', $studentIdentifier, $admissionNumber);
     if (!$statement->execute()) {
         $error = $statement->error;
         $statement->close();
@@ -188,7 +191,11 @@ try {
                 $reasonDetails = $decodedDetails;
             }
             if ($reasonCode === '' || $reasonCode === 'UNKNOWN') {
-                $resolvedReason = resolveUnassignedReason($db, (int) $row['student_id']);
+                $resolvedReason = resolveUnassignedReason(
+                    $db,
+                    (int) $row['student_id'],
+                    (string) $row['id_number']
+                );
                 $reasonCode = $resolvedReason['reasonCode'];
                 $reasonDetails = $resolvedReason['reasonDetails'];
             }

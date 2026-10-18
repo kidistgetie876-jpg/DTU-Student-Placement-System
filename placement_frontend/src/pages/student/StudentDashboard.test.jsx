@@ -58,38 +58,11 @@ describe('StudentDashboard', () => {
     expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
   });
 
-  it('saves disability and minority profile details from the student portal', async () => {
-    api.post.mockResolvedValue({
-      data: {
-        success: true,
-        message: 'Student details updated successfully.',
-        student: { disability: 'Yes', minority: 'No', cumulative_avg: 52.25 },
-      },
-    });
-    render(<StudentDashboard />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Profile & Preferences' }));
-    await screen.findByRole('combobox', { name: 'Disability' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Disability' }), {
-      target: { value: 'Yes' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save profile details' }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      'api/common/student_attributes_api.php',
-      { disability: 'Yes', minority: 'No' },
-    ));
-    expect(await screen.findByRole('status')).toHaveTextContent('Student details updated successfully.');
-  });
-
-  it('shows personal details and profile settings on the dedicated profile tab', async () => {
+  it('uses the database CGPA when the legacy GPA field is zero', async () => {
     localStorage.setItem('user', JSON.stringify({
-      id: '1',
-      id_number: 'DTU16R1001',
+      id: 'DTU16R2001',
+      id_number: 'DTU16R2001',
       username: 'Alice',
-      first_name: 'Alice',
-      last_name: 'Student',
-      email: 'alice@example.com',
       role: 'student',
     }));
     api.get.mockImplementation((url) => {
@@ -98,31 +71,42 @@ describe('StudentDashboard', () => {
         return Promise.resolve({
           data: {
             success: true,
-            student: {
-              id: '1',
-              id_number: 'DTU16R1001',
-              first_name: 'Alice',
-              last_name: 'Student',
-              email: 'alice@example.com',
-              gender: 'Female',
-              stream: 'Social',
-              gpa: 3,
-            },
+            student: { id: '1', username: 'Alice', gpa: 0, cgpa: '3.80', status: 'Active' },
           },
         });
       }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      if (url.includes('get_placement_settings.php')) return Promise.resolve({ data: { min_gpa: 1.75 } });
       return Promise.resolve({ data: {} });
     });
 
     render(<StudentDashboard />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Profile & Preferences' }));
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(await screen.findByText('DTU16R1001')).toBeInTheDocument();
-    expect(screen.getByText('Alice Student')).toBeInTheDocument();
-    expect(screen.getByText('alice@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Female')).toBeInTheDocument();
-    expect(screen.getByText('Social Science')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save profile details' })).toBeInTheDocument();
+    expect(screen.getByText('3.80')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(
+      'api/student/student_data_api.php?student_id=DTU16R2001&email=',
+    );
+  });
+
+  it('removes the profile tab from the dashboard navigation and views', async () => {
+    render(<StudentDashboard />);
+
+    expect(await screen.findByRole('button', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Profile & Preferences' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Student Profile' })).not.toBeInTheDocument();
+  });
+
+  it('renders the student appeal form and appeal history view', async () => {
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Submit Appeal' }));
+
+    expect(await screen.findByRole('heading', { name: 'Submit Appeal' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Subject' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Complaint details' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My Appeals' })).toBeInTheDocument();
   });
 
   it('shows the calculated cumulative score when the student has no published placement yet', async () => {
@@ -646,6 +630,142 @@ describe('StudentDashboard', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Please select a college first.');
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
+  });
+
+  it('filters departments already selected in other preference choices and submits numeric IDs with ordered priorities', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: '12', name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: '14', name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: '19', name: 'Mechanical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '42', username: 'Alice', stream: 'Natural Science' } } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true, message: 'Preferences saved.' } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'College of Engineering' } });
+
+    const firstChoice = screen.getAllByRole('combobox')[1];
+    fireEvent.change(firstChoice, { target: { value: 'Computer Science' } });
+    expect(screen.getAllByRole('combobox')[2].querySelector('option[value="Computer Science"]')).toBeNull();
+
+    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'Electrical Engineering' } });
+    expect(screen.getAllByRole('combobox')[3].querySelector('option[value="Computer Science"]')).toBeNull();
+    expect(screen.getAllByRole('combobox')[3].querySelector('option[value="Electrical Engineering"]')).toBeNull();
+    fireEvent.change(screen.getAllByRole('combobox')[3], { target: { value: 'Mechanical Engineering' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      {
+        student_id: '42',
+        choices: [
+          { dept_id: 12, priority: 1 },
+          { dept_id: 14, priority: 2 },
+          { dept_id: 19, priority: 3 },
+        ],
+      },
+    ));
+  });
+
+  it('shows a clear error and does not submit when a required preference choice is empty', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: 'DTU16R1001', username: 'Alice', id_number: 'DTU16R1001', stream: 'Natural Science' } } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'College of Engineering' } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'Computer Science' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choice #2');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate departments loaded from existing preference data', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+          { id: 3, name: 'Mechanical Engineering', stream: 'Natural Science', college_name: 'College of Engineering', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '42', username: 'Alice', stream: 'Natural Science' } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: {
+          success: true,
+          choices: [1, 2, 3].map((priority) => ({
+            dept_id: 1,
+            department_name: 'Computer Science',
+            college_name: 'College of Engineering',
+            priority,
+          })),
+        } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update Preferences' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Each department can only be selected once');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('submits an admission number when the profile has no numeric account ID', async () => {
+    localStorage.setItem('user', JSON.stringify({
+      id: 'DTU16R2001',
+      id_number: 'DTU16R2001',
+      username: 'Alice',
+      role: 'student',
+    }));
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 8, name: 'Biology', stream: 'Natural Science', college_name: 'College of Science', status: 'active' },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id_number: 'DTU16R2001', username: 'Alice', stream: 'Natural Science' } } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'College of Science' } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'Biology' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { student_id: 'DTU16R2001', choices: [{ dept_id: 8, priority: 1 }] },
+    ));
   });
 
   it('allows editing submitted preferences while the deadline is active and results are unpublished', async () => {

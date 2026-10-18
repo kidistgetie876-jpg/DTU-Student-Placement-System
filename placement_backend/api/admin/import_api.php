@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/../../config/logger.php';
 require_once __DIR__ . '/../../config/id_number.php';
+require_once __DIR__ . '/../../config/placement_scoring.php';
 
 function importResponse(array $payload, int $status = 200): void
 {
@@ -30,25 +31,15 @@ function calculateImportedCumulativeScore(
     string $minority,
     array $weights
 ): float {
-    $scores = [
-        'gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)),
-        'grade12' => min(100, max(0, $grade12)),
-        'coc' => min(100, max(0, ($coc / 30) * 100)),
-        'gender' => strtolower($gender) === 'female' ? 100 : 0,
-        'disability' => in_array(strtolower($disability), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0,
-        'minority' => in_array(strtolower($minority), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0,
-    ];
-    $totalWeight = array_sum($weights);
-    if ($totalWeight <= 0) {
-        throw new RuntimeException('Placement score weights must total more than zero.');
-    }
-
-    $weightedTotal = 0.0;
-    foreach ($scores as $key => $score) {
-        $weightedTotal += $score * (float) $weights[$key];
-    }
-
-    return round(min(100, max(0, $weightedTotal / $totalWeight)), 2);
+    return calculatePlacementCumulativeScore(
+        $gpa,
+        $grade12,
+        $coc,
+        $gender,
+        $disability,
+        $minority,
+        $weights
+    );
 }
 
 function normalizeImportedStream(string $stream): ?string
@@ -145,7 +136,7 @@ try {
     $db->begin_transaction();
 
     $weightsResult = $db->query(
-        'SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight
+        'SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, gender_weight, disability_weight, minority_weight
          FROM placement_settings WHERE id = 1 LIMIT 1'
     );
     if (!$weightsResult) {
@@ -159,6 +150,7 @@ try {
         'gpa' => (float) $weightRow['gpa_weight'],
         'grade12' => (float) $weightRow['grade_12_weight'],
         'coc' => (float) $weightRow['coc_weight'],
+        'g12_total_base' => (float) ($weightRow['g12_total_base'] ?? 600),
         'gender' => (float) $weightRow['gender_weight'],
         'disability' => (float) $weightRow['disability_weight'],
         'minority' => (float) $weightRow['minority_weight'],
@@ -304,8 +296,8 @@ try {
         $gpa = $gpaValue ?? (float) ($existingUser['gpa'] ?? 0);
         $grade12 = $grade12Value ?? (float) ($existingUser['grade_12_result'] ?? 0);
         $coc = $cocValue ?? (float) ($existingUser['coc_result'] ?? 0);
-        if ($gpa < 0 || $gpa > 4 || $grade12 < 0 || $grade12 > 100 || $coc < 0 || $coc > 30) {
-            $skipped[] = ['row' => $rowNumber, 'reason' => 'Scores are outside their allowed ranges (GPA 0-4, Grade 12 0-100, COC 0-30).'];
+        if ($gpa < 0 || $gpa > 4 || $grade12 < 0 || $grade12 > $weights['g12_total_base'] || $coc < 0 || $coc > 30) {
+            $skipped[] = ['row' => $rowNumber, 'reason' => 'Scores are outside their allowed ranges (GPA 0-4, Grade 12 0-' . $weights['g12_total_base'] . ', COC 0-30).'];
             continue;
         }
         $requestedStream = normalizeImportedStream(trim((string) (getImportField($student, ['stream', 'student_stream']) ?? '')));

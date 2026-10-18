@@ -135,8 +135,10 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
     setSuccess('');
 
     try {
+      const editableFields = { ...form };
+      delete editableFields.grade_12_result;
       const response = await api.post('api/common/profile_update.php', {
-        ...form,
+        ...editableFields,
         user_id: form.user_id || studentId,
       });
 
@@ -207,7 +209,7 @@ const MissingScoresForm = ({ student, onClose, onSaved }) => {
                 </div>
                 <div className="col-md-3">
                   <label className="form-label fw-bold" htmlFor="student-grade-12">Grade 12 Result</label>
-                  <input id="student-grade-12" type="number" step="0.01" min="0" max="100" className="form-control" name="grade_12_result" value={form.grade_12_result} onChange={handleChange} required />
+                  <input id="student-grade-12" type="text" className="form-control" name="grade_12_result" value={form.grade_12_result || 'Not available'} readOnly />
                 </div>
                 <div className="col-md-3">
                   <label className="form-label fw-bold" htmlFor="student-coc">COC Result</label>

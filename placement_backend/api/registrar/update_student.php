@@ -18,6 +18,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_scoring.php';
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -43,69 +44,23 @@ if (!is_array($input)) {
 $studentId = filter_var($input['student_id'] ?? $input['id'] ?? null, FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1],
 ]);
-$firstName = trim((string) ($input['first_name'] ?? ''));
-$lastName = trim((string) ($input['last_name'] ?? ''));
-$gpaInput = $input['gpa'] ?? null;
-$grade12Input = $input['g12_result'] ?? $input['grade_12_result'] ?? null;
+$allowedFields = ['student_id', 'id', 'gpa', 'cgpa', 'coc_score', 'coc_result'];
+if (array_diff(array_keys($input), $allowedFields)) {
+    updateStudentResponse(['success' => false, 'message' => 'Only CGPA and COC score may be updated by the registrar.'], 400);
+}
+$gpaInput = $input['cgpa'] ?? $input['gpa'] ?? null;
 $cocInput = $input['coc_score'] ?? $input['coc_result'] ?? null;
-$gender = trim((string) ($input['gender'] ?? ''));
-$disabilityInput = $input['disability'] ?? null;
-$minorityInput = $input['minority'] ?? null;
-$streamInput = strtolower(trim((string) ($input['stream'] ?? '')));
 
 if ($studentId === false || $studentId === null) {
     updateStudentResponse(['success' => false, 'message' => 'A valid student_id is required.'], 400);
 }
-if ($firstName === '' || strlen($firstName) > 50 || $lastName === '' || strlen($lastName) > 50) {
-    updateStudentResponse(['success' => false, 'message' => 'First and last name are required and must be no longer than 50 characters.'], 400);
-}
 if (!is_numeric($gpaInput) || (float) $gpaInput < 0 || (float) $gpaInput > 4) {
     updateStudentResponse(['success' => false, 'message' => 'GPA must be between 0 and 4.'], 400);
-}
-if (!is_numeric($grade12Input) || (float) $grade12Input < 0 || (float) $grade12Input > 100) {
-    updateStudentResponse(['success' => false, 'message' => 'Grade 12 result must be between 0 and 100.'], 400);
 }
 if (!is_numeric($cocInput) || (float) $cocInput < 0 || (float) $cocInput > 30) {
     updateStudentResponse(['success' => false, 'message' => 'COC score must be between 0 and 30.'], 400);
 }
-if (!in_array($gender, ['Male', 'Female'], true)) {
-    updateStudentResponse(['success' => false, 'message' => 'Gender must be Male or Female.'], 400);
-}
-
-$normalizeYesNo = static function ($value): ?string {
-    if (is_bool($value)) {
-        return $value ? 'Yes' : 'No';
-    }
-    if (is_int($value) || is_float($value)) {
-        return $value === 1 ? 'Yes' : ($value === 0 ? 'No' : null);
-    }
-    $normalized = strtolower(trim((string) $value));
-    if (in_array($normalized, ['yes', 'y', 'true', '1', 'on'], true)) {
-        return 'Yes';
-    }
-    if (in_array($normalized, ['no', 'n', 'false', '0', 'off'], true)) {
-        return 'No';
-    }
-    return null;
-};
-
-$disability = $normalizeYesNo($disabilityInput);
-$minority = $normalizeYesNo($minorityInput);
-if ($disability === null || $minority === null) {
-    updateStudentResponse(['success' => false, 'message' => 'Disability and minority must each be Yes or No.'], 400);
-}
-
-$stream = match (preg_replace('/[^a-z]/', '', $streamInput)) {
-    'natural', 'naturalscience', 'naturalsciences' => 'Natural',
-    'social', 'socialscience', 'socialsciences' => 'Social',
-    default => '',
-};
-if ($stream === '') {
-    updateStudentResponse(['success' => false, 'message' => 'Stream must be Natural Science or Social Science.'], 400);
-}
-
 $gpa = (float) $gpaInput;
-$grade12 = (float) $grade12Input;
 $coc = (float) $cocInput;
 $db = getDbConnection();
 if (!$db instanceof mysqli) {
@@ -121,9 +76,14 @@ try {
 
     $studentQuery = $db->prepare(
         "SELECT u.id, u.username, u.email, u.phone_number,
-                sd.user_id AS profile_user_id
+            u.first_name AS account_first_name, u.last_name AS account_last_name,
+            sd.user_id AS profile_user_id, sd.first_name AS profile_first_name,
+            sd.last_name AS profile_last_name, m.total_mark AS grade_12_result,
+            m.sex AS official_gender, m.benefit_group, m.region, s.stream AS sims_stream
          FROM users u
          LEFT JOIN student_data sd ON sd.user_id = u.id
+         LEFT JOIN moshe_students m ON TRIM(m.admission_number) = TRIM(COALESCE(NULLIF(sd.id_number, ''), u.id_number))
+         LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM(m.admission_number)
          WHERE u.id = ? AND LOWER(u.role) = 'student'
          LIMIT 1
          FOR UPDATE"
@@ -143,54 +103,41 @@ try {
         $db->close();
         updateStudentResponse(['success' => false, 'message' => 'Student not found.'], 404);
     }
-    $weights = [
-        'gpa' => 40.0,
-        'grade12' => 20.0,
-        'coc' => 30.0,
-        'gender' => 3.0,
-        'disability' => 3.0,
-        'minority' => 4.0,
-    ];
-    $weightsResult = $db->query(
-        'SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight
-         FROM placement_settings WHERE id = 1 LIMIT 1'
+    $firstName = trim((string) ($student['profile_first_name'] ?? ''));
+    $lastName = trim((string) ($student['profile_last_name'] ?? ''));
+    if ($firstName === '') {
+        $firstName = trim((string) ($student['account_first_name'] ?? ''));
+    }
+    if ($lastName === '') {
+        $lastName = trim((string) ($student['account_last_name'] ?? ''));
+    }
+    if ($student['grade_12_result'] === null) {
+        throw new RuntimeException('MoSHE data is required before updating placement scores.');
+    }
+    $grade12 = (float) $student['grade_12_result'];
+    $gender = (string) ($student['official_gender'] ?? '');
+    $benefitGroup = strtolower((string) ($student['benefit_group'] ?? ''));
+    $region = strtolower((string) ($student['region'] ?? ''));
+    $disability = preg_match('/disability|disabled/', $benefitGroup) ? 'Yes' : 'No';
+    $developingRegion = preg_match('/developing|emerging/', $benefitGroup . ' ' . $region)
+        || preg_match('/\b(afar|somali|gambella|benishangul[\s-]*gumuz|benishangul|harari)\b/', $region);
+    $scoreSettings = $db->query('SELECT g12_total_base FROM placement_settings WHERE id = 1 LIMIT 1');
+    if (!$scoreSettings) {
+        throw new RuntimeException('Unable to load Grade 12 scoring base: ' . $db->error);
+    }
+    $scoreRules = $scoreSettings->fetch_assoc() ?: [];
+    $scoreSettings->free();
+    $cumulativeAverage = calculatePlacementCumulativeScore(
+        $gpa,
+        $grade12,
+        $coc,
+        $gender,
+        $disability,
+        $developingRegion,
+        ['g12_total_base' => (float) ($scoreRules['g12_total_base'] ?? 600)]
     );
-    if (!$weightsResult) {
-        throw new RuntimeException('Unable to load placement weights: ' . $db->error);
-    }
-    $storedWeights = $weightsResult->fetch_assoc();
-    $weightsResult->free();
-    if ($storedWeights) {
-        foreach ([
-            'gpa' => 'gpa_weight',
-            'grade12' => 'grade_12_weight',
-            'coc' => 'coc_weight',
-            'gender' => 'gender_weight',
-            'disability' => 'disability_weight',
-            'minority' => 'minority_weight',
-        ] as $key => $column) {
-            if (isset($storedWeights[$column]) && is_numeric($storedWeights[$column]) && (float) $storedWeights[$column] >= 0) {
-                $weights[$key] = (float) $storedWeights[$column];
-            }
-        }
-    }
-
-    $scores = [
-        'gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)),
-        'grade12' => min(100, max(0, $grade12)),
-        'coc' => min(100, max(0, ($coc / 30) * 100)),
-        'gender' => $gender === 'Female' ? 100 : 0,
-        'disability' => $disability === 'Yes' ? 100 : 0,
-        'minority' => $minority === 'Yes' ? 100 : 0,
-    ];
-    $totalWeight = array_sum($weights);
-    $cumulativeAverage = 0.0;
-    if ($totalWeight > 0) {
-        foreach ($scores as $key => $score) {
-            $cumulativeAverage += $score * $weights[$key];
-        }
-        $cumulativeAverage = round(min(100, max(0, $cumulativeAverage / $totalWeight)), 2);
-    }
+    $stream = (string) ($student['sims_stream'] ?? '');
+    $minority = $developingRegion ? 'Yes' : 'No';
 
     if ($student['profile_user_id'] === null) {
         $profileInsert = $db->prepare(
@@ -230,41 +177,23 @@ try {
 
     $studentUpdate = $db->prepare(
         'UPDATE student_data
-         SET first_name = ?, last_name = ?, gpa = ?, stream = ?, grade_12_result = ?,
-             coc_result = ?, cumulative_avg = ?, gender = ?, disability = ?, minority = ?
+         SET gpa = ?, coc_result = ?, cumulative_avg = ?
          WHERE user_id = ?'
     );
     if (!$studentUpdate) {
         throw new RuntimeException('Unable to prepare student profile update: ' . $db->error);
     }
     $studentUpdate->bind_param(
-        'ssdsdddsssi',
-        $firstName,
-        $lastName,
+        'dddi',
         $gpa,
-        $stream,
-        $grade12,
         $coc,
         $cumulativeAverage,
-        $gender,
-        $disability,
-        $minority,
         $studentId
     );
     if (!$studentUpdate->execute()) {
         throw new RuntimeException('Unable to update student profile: ' . $studentUpdate->error);
     }
     $studentUpdate->close();
-
-    $userUpdate = $db->prepare('UPDATE users SET first_name = ?, last_name = ? WHERE id = ?');
-    if (!$userUpdate) {
-        throw new RuntimeException('Unable to prepare account name update: ' . $db->error);
-    }
-    $userUpdate->bind_param('ssi', $firstName, $lastName, $studentId);
-    if (!$userUpdate->execute()) {
-        throw new RuntimeException('Unable to update student account name: ' . $userUpdate->error);
-    }
-    $userUpdate->close();
 
     if (!$db->commit()) {
         throw new RuntimeException('Unable to commit student update: ' . $db->error);

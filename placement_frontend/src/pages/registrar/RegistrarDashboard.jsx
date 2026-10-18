@@ -4,7 +4,8 @@ import api from '../../services/api.js';
 import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentRegistration from './StudentRegistration';
 import UnassignedStudents from './UnassignedStudents.jsx';
-import DataImport from '../admin/DataImport.jsx';
+import MinistryImport from './MinistryImport.jsx';
+import SIMSImport from './SIMSImport.jsx';
 import BulkUploadModal from '../../components/common/BulkUploadModal.jsx';
 import '../admin/AdminDashboard.css';
 import * as XLSX from 'xlsx';
@@ -28,37 +29,39 @@ export const parseYesNo = (value) => {
   return ['yes', 'y', 'true', '1', 'on'].includes(normalized);
 };
 
-const calculateCumulativeScore = (student, rules) => {
+const formatCumulativeScore = (value) => {
+  const score = Number(value);
+  return Number.isFinite(score) ? score.toFixed(2) : '0.00';
+};
+
+const calculateCumulativeScore = (student, rules = {}) => {
   const gpa = Number(student.gpa ?? student.cgpa ?? 0);
   const grade12 = Number(student.grade12 ?? student.grade_12_result ?? 0);
   const coc = Number(student.coc ?? student.coc_result ?? 0);
-  const normalizedScores = {
-    gpaWeight: Math.min(100, Math.max(0, (gpa <= 4 ? gpa / 4 : gpa / 100) * 100)),
-    grade12Weight: Math.min(100, Math.max(0, grade12)),
-    cocWeight: Math.min(100, Math.max(0, (coc / 30) * 100)),
-    genderWeight: String(student.gender || '').toLowerCase() === 'female' ? 100 : 0,
-    disabilityWeight: parseYesNo(student.disability ?? student.hasDisability) ? 100 : 0,
-    minorityWeight: parseYesNo(student.minority ?? student.isMinority) ? 100 : 0,
-  };
-  const totalWeight = Object.keys(normalizedScores).reduce(
-    (total, key) => total + Number(rules[key] || 0),
-    0
+  const benefitGroup = String(student.benefitGroup ?? student.benefit_group ?? '').toLowerCase();
+  const region = String(student.region ?? '').toLowerCase();
+  const isFemale = String(student.gender ?? student.sex ?? '').toLowerCase() === 'female';
+  const hasDisability = parseYesNo(student.disability ?? student.hasDisability)
+    || /disability|disabled/.test(benefitGroup);
+  const developingRegion = parseYesNo(student.developingRegion ?? student.minority ?? student.isMinority)
+    || /developing|emerging/.test(`${region} ${benefitGroup}`)
+    || /\b(afar|somali|gambella|benishangul[\s-]*gumuz|benishangul|harari)\b/.test(region);
+  const grade12TotalBase = Math.max(0.01, Number(rules.g12TotalBase ?? 600));
+  const baseScore = Math.min(grade12TotalBase, Math.max(0, grade12)) / grade12TotalBase * Number(rules.grade12Weight ?? 20)
+    + Math.min(100, Math.max(0, (gpa <= 4 ? gpa / 4 : gpa / 100) * 100)) * Number(rules.gpaWeight ?? 30) / 100
+    + Math.min(100, Math.max(0, (coc / 30) * 100)) * Number(rules.cocWeight ?? 50) / 100;
+  const developingBonus = Math.max(
+    Number(rules.developingRegionFemaleBonusPoints ?? 10),
+    Number(rules.developingRegionDisabilityBonusPoints ?? 10),
   );
-  if (totalWeight <= 0) return 0;
-
-  const weightedScore = Object.entries(normalizedScores).reduce(
-    (total, [key, score]) => total + score * Number(rules[key] || 0),
-    0
-  );
-  return Math.round(Math.min(100, Math.max(0, weightedScore / totalWeight)) * 100) / 100;
+  const bonus = (isFemale ? Number(rules.femaleBonusPoints ?? 5) : 0)
+    + (hasDisability ? Number(rules.disabilityBonusPoints ?? 5) : 0)
+    + (developingRegion ? developingBonus : 0);
+  return Math.round(Math.min(100, Number(rules.maxScoreCap ?? 100), Math.max(0, baseScore + bonus)) * 100) / 100;
 };
 
 export const filterStudentIdsForPlacement = (studentRecords, selectedStudentIds) => {
-  if (!Array.isArray(studentRecords)) return [];
-
-  if (!Array.isArray(selectedStudentIds) || selectedStudentIds.length === 0) {
-    return studentRecords;
-  }
+  if (!Array.isArray(studentRecords) || !Array.isArray(selectedStudentIds) || selectedStudentIds.length === 0) return [];
 
   const selectedSet = new Set(selectedStudentIds.map((id) => String(id)));
   return studentRecords.filter((student) => selectedSet.has(String(student?.id)));
@@ -228,22 +231,22 @@ const downloadPdf = async (filename, title, headers, rows) => {
 };
 
 export const exportStudentInformation = (students, format = 'csv') => {
-  const headers = [' Student ID', 'First Name', 'Last Name', 'Username', 'GPA', 'G12 Result', 'COC', 'Gender', 'Disability', 'Minority', 'Stream', 'Cumulative Score', 'Department', 'Status'];
+  const headers = ['Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Cumulative Score', 'Disability', 'Minority', 'Placement Status'];
   const rows = students.map((student) => ({
-    ID: student.id_number || student.id,
-    'First Name': student.first_name || '',
-    'Last Name': student.last_name || '',
-    Username: student.username || '',
-    GPA: student.cgpa ?? '',
-    'G12 Result': student.g12 ?? '',
-    COC: student.coc ?? '',
-    Gender: student.gender || '',
-    Disability: parseYesNo(student.hasDisability ?? student.disability ?? student.specialSupport) ? 'Yes' : 'No',
-    Minority: parseYesNo(student.minority ?? student.isMinority ?? student.minorityStatus) ? 'Yes' : 'No',
-    Stream: student.stream || '',
-    'Cumulative Score': student.cumulativeScore ?? '',
-    Department: student.department || '',
-    Status: student.status || '',
+    'Admission Number': student.admission_number || '',
+    'First Name': student.given_name || '',
+    'Father Name': student.father_name || '',
+    'Grandfather Name': student.grandfather_name || '',
+    Region: student.region || '',
+    Sex: student.sex || '',
+    'Field of Study': student.field_of_study || '',
+    'Total Mark (G12)': student.total_mark ?? '',
+    CGPA: student.cgpa ?? '',
+    'COC Score': student.coc_score ?? '',
+    'Cumulative Score': formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score),
+    Disability: parseYesNo(student.disability) ? 'Yes' : 'No',
+    Minority: parseYesNo(student.minority) ? 'Yes' : 'No',
+    'Placement Status': student.placement_status || '',
   }));
 
   if (format === 'pdf') {
@@ -406,21 +409,33 @@ const RegistrarDashboard = () => {
   });
   const [placementRules, setPlacementRules] = useState(() => {
     const defaultRules = {
-      gpaWeight: 40,
+      gpaWeight: 30,
       grade12Weight: 20,
-      cocWeight: 30,
-      genderWeight: 3,
-      disabilityWeight: 3,
-      minorityWeight: 4,
+      g12TotalBase: 600,
+      cocWeight: 50,
+      maxScoreCap: 100,
+      femaleBonusPoints: 5,
+      disabilityBonusPoints: 5,
+      developingRegionFemaleBonusPoints: 10,
+      developingRegionDisabilityBonusPoints: 10,
+      generalQuotaPercent: 80,
+      reservedFemaleQuotaPercent: 20,
       minGpa: 1.75,
     };
     try {
       const raw = localStorage.getItem('placementRules');
-      return raw ? { ...defaultRules, ...JSON.parse(raw), minGpa: Number(JSON.parse(raw).minGpa ?? 1.75) } : defaultRules;
+      const savedRules = raw ? JSON.parse(raw) : {};
+      return {
+        ...defaultRules,
+        ...savedRules,
+        minGpa: Number(savedRules.minGpa ?? 1.75),
+      };
     } catch (e) {
       return defaultRules;
     }
   });
+  const [isEditingPlacementRules, setIsEditingPlacementRules] = useState(false);
+  const placementRulesSnapshot = useRef(null);
   const [rulesSaved, setRulesSaved] = useState(false);
   const [placementDates, setPlacementDates] = useState(defaultPlacementDates);
   const [deadlineLoading, setDeadlineLoading] = useState(false);
@@ -490,9 +505,6 @@ const RegistrarDashboard = () => {
   const [streamFilter, setStreamFilter] = useState('all');
   const [deptSearch, setDeptSearch] = useState('');
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
-  const [deletingStudentId, setDeletingStudentId] = useState(null);
-  const [studentDeleteError, setStudentDeleteError] = useState('');
-  const [studentDeleteSuccess, setStudentDeleteSuccess] = useState('');
   const [editingStudent, setEditingStudent] = useState(null);
   const [studentEditForm, setStudentEditForm] = useState(null);
   const [savingStudentAttributes, setSavingStudentAttributes] = useState(false);
@@ -508,6 +520,9 @@ const RegistrarDashboard = () => {
   const [placementCandidatesData, setPlacementCandidatesData] = useState([]);
   const [placementCandidatesLoading, setPlacementCandidatesLoading] = useState(false);
   const [placementCandidatesError, setPlacementCandidatesError] = useState('');
+  const [placementPreviewData, setPlacementPreviewData] = useState([]);
+  const [placementPreviewLoading, setPlacementPreviewLoading] = useState(false);
+  const [placementPreviewError, setPlacementPreviewError] = useState('');
   const [loadAllStudentsInStream, setLoadAllStudentsInStream] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -521,7 +536,7 @@ const RegistrarDashboard = () => {
       return localStorage.getItem('dtuPlacementBatch') || 'DTU-2026/1';
     } catch (error) {
       return 'DTU-2026/1';
-    }
+    };
   });
 
   useEffect(() => {
@@ -785,21 +800,6 @@ const RegistrarDashboard = () => {
     }
   };
 
-  const needsAcademicScores = (student) => {
-    const gpa = student?.gpa ?? student?.cgpa ?? null;
-    const g12 = student?.g12 ?? student?.grade_12_result ?? null;
-    const coc = student?.coc ?? student?.coc_result ?? null;
-
-    const isMissing = (value) => {
-      if (value === null || value === undefined) return true;
-      const normalized = String(value).trim().toLowerCase();
-      if (normalized === '' || normalized === 'n/a' || normalized === 'na') return true;
-      const numericValue = Number(normalized);
-      return Number.isFinite(numericValue) && numericValue <= 0;
-    };
-    return isMissing(gpa) || isMissing(g12) || isMissing(coc);
-  };
-
   useEffect(() => {
     const data = localStorage.getItem('user');
     if (!data) {
@@ -947,22 +947,24 @@ const RegistrarDashboard = () => {
     const loadPlacementRules = async () => {
       try {
         const response = await api.get('api/registrar/get_placement_settings.php');
-        const settings = response.data || {};
+        const settings = response.data?.data || response.data || {};
+        const loadedRules = {
+          gpaWeight: Number(settings.gpa_weight ?? 30),
+          grade12Weight: Number(settings.grade_12_weight ?? 20),
+          g12TotalBase: Number(settings.g12_total_base ?? 600),
+          cocWeight: Number(settings.coc_weight ?? 50),
+          maxScoreCap: Number(settings.max_score_cap ?? 100),
+          femaleBonusPoints: Number(settings.female_bonus_points ?? 5),
+          disabilityBonusPoints: Number(settings.disability_bonus_points ?? 5),
+          developingRegionFemaleBonusPoints: Number(settings.developing_region_female_bonus_points ?? 10),
+          developingRegionDisabilityBonusPoints: Number(settings.developing_region_disability_bonus_points ?? 10),
+          generalQuotaPercent: Number(settings.general_quota_percent ?? 80),
+          reservedFemaleQuotaPercent: Number(settings.reserved_female_quota_percent ?? 20),
+          minGpa: Number(settings.min_gpa ?? 1.75),
+        };
 
-        if (settings.id) {
-          const loadedRules = {
-            gpaWeight: Number(settings.gpa_weight ?? 40),
-            grade12Weight: Number(settings.grade_12_weight ?? 20),
-            cocWeight: Number(settings.coc_weight ?? 30),
-            genderWeight: Number(settings.gender_weight ?? 3),
-            disabilityWeight: Number(settings.disability_weight ?? 3),
-            minorityWeight: Number(settings.minority_weight ?? 4),
-            minGpa: Number(settings.min_gpa ?? 1.75),
-          };
-
-          setPlacementRules(loadedRules);
-          localStorage.setItem('placementRules', JSON.stringify(loadedRules));
-        }
+        setPlacementRules(loadedRules);
+        localStorage.setItem('placementRules', JSON.stringify(loadedRules));
       } catch (error) {
         console.error('Failed to load placement rules:', error);
       }
@@ -1216,7 +1218,228 @@ const RegistrarDashboard = () => {
               ? usersResponse.data.data
               : [];
 
-        const studentUsers = usersPayload.filter((user) => {
+        const usersByAdmissionNumber = new Map(usersPayload
+          .filter((user) => String(user?.role || '').trim().toLowerCase() === 'student')
+          .filter((user) => String(user?.id_number || '').trim() !== '')
+          .map((user) => [String(user.id_number).trim(), user]));
+        const officialResponse = await api.get('api/registrar/student_information.php');
+        const officialStudents = Array.isArray(officialResponse.data?.students)
+          ? officialResponse.data.students
+          : [];
+        const studentRecordsFromOfficialData = officialStudents.map((official) => ({
+          official,
+          user: usersByAdmissionNumber.get(String(official.admission_number || '').trim()) || {},
+        }));
+
+        const records = await Promise.all(
+          studentRecordsFromOfficialData.map(async ({ official, user }) => {
+            const studentId = user?.id ?? user?.student_id;
+            const email = user?.email || '';
+            let profile = {};
+
+            if (studentId || email) {
+              try {
+                const lookup = studentId
+                  ? `student_id=${encodeURIComponent(studentId)}`
+                  : `email=${encodeURIComponent(email)}`;
+                const profileResponse = await api.get(`api/student/student_profile.php?${lookup}`);
+                profile = profileResponse.data?.student || profileResponse.data?.data || {};
+              } catch (error) {
+                profile = {};
+              }
+            }
+
+            const cgpaValue = Number(official.cgpa ?? profile?.cgpa ?? profile?.gpa ?? user?.cgpa ?? 0);
+            const numericCgpa = Number.isFinite(cgpaValue) ? cgpaValue : 0;
+            const g12 = official.total_mark ?? null;
+            const cocValue = official.coc_score === null || official.coc_score === undefined
+              ? null
+              : Number(official.coc_score);
+            const gender = String(official.sex || '');
+            const hasDisability = parseYesNo(official.disability);
+            const minority = parseYesNo(official.minority);
+            const fullName = [
+              official.given_name,
+              official.father_name,
+              official.grandfather_name,
+            ].filter(Boolean).join(' ');
+            const cumulativeScore = calculateCumulativeScore({
+              gpa: numericCgpa,
+              grade12: g12,
+              coc: cocValue,
+              gender,
+              disability: hasDisability,
+              minority,
+            }, placementRules);
+
+            let choices = [];
+            const admissionNumber = String(official.admission_number || official.id_number || '').trim();
+            if (studentId || admissionNumber) {
+              try {
+                const preferenceParams = new URLSearchParams();
+                if (studentId) preferenceParams.set('student_id', String(studentId));
+                if (admissionNumber) preferenceParams.set('admission_number', admissionNumber);
+                const preferencesResponse = await api.get(`api/student/student_preferences.php?${preferenceParams.toString()}`);
+                const preferencesPayload = preferencesResponse.data || {};
+                const preferences = Array.isArray(preferencesPayload.choices)
+                  ? preferencesPayload.choices
+                  : Array.isArray(preferencesPayload.data)
+                    ? preferencesPayload.data
+                    : Array.isArray(preferencesPayload)
+                      ? preferencesPayload
+                      : [];
+
+                choices = preferences
+                  .map((preference, index) => {
+                    const departmentId = preference?.dept_id ?? preference?.department_id ?? null;
+                    const name = preference?.dept_name || preference?.department || preference?.name || preference?.department_name || preference?.label
+                      || (departmentId !== null ? `Department #${departmentId}` : '');
+                    if (!name) return null;
+                    return {
+                      dept_id: departmentId,
+                      priority: Number(preference?.priority ?? preference?.rank ?? index + 1),
+                      department: name,
+                      college: preference?.college_name || preference?.collegeName || preference?.college || '',
+                      stream: preference?.stream || '',
+                    };
+                  })
+                  .filter(Boolean)
+                  .sort((a, b) => (Number(a.priority) || 99) - (Number(b.priority) || 99));
+              } catch (error) {
+                console.error(`Failed to fetch preferences for student ${admissionNumber || studentId}:`, error);
+                choices = [];
+              }
+            }
+
+            return {
+              id: studentId ?? official.admission_number,
+              id_number: official.admission_number,
+              admission_number: official.admission_number,
+              given_name: official.given_name || '',
+              father_name: official.father_name || '',
+              first_name: official.given_name || '',
+              last_name: official.father_name || '',
+              grandfather_name: official.grandfather_name || '',
+              region: official.region || official.Region || '',
+              username: user?.username || '',
+              name: fullName || 'Unknown Student',
+              email,
+              phone: user?.phone_number || '',
+              gpa: numericCgpa.toFixed(2),
+              cgpa: numericCgpa.toFixed(2),
+              stream: formatStudentStream(official.field_of_study || ''),
+              field_of_study: String(
+                official.field_of_study
+                  || official.fieldOfStudy
+                  || official.FieldOfStudy
+                  || official.Fieldofstudy
+                  || ''
+              ).trim(),
+              g12,
+              total_mark: g12,
+              coc: cocValue,
+              coc_score: cocValue,
+              gender,
+              sex: gender,
+              hasDisability,
+              disability: official.disability,
+              minority: official.minority,
+              placement_status: profile?.placement_result_department
+                ? (profile?.placement_result_status === 'Approved' ? 'Approved' : 'Placed')
+                : (official.placement_status || 'Pending'),
+              cumulativeScore,
+              cumulative_score: cumulativeScore,
+              placement_result_score: profile?.placement_result_score ?? null,
+              department: profile?.department || profile?.placement_result_department || '',
+              department_id: profile?.department_id ?? null,
+              status: profile?.placement_result_department
+                ? (profile?.placement_result_status === 'Approved' ? 'Approved' : 'Placed')
+                : (official.placement_status || 'Pending'),
+              placementResult: profile?.placement_result_department || profile?.placement_result || null,
+              choices,
+            };
+          })
+        );
+        setStudentRecords(records.filter((record) => record.name.trim()));
+      } catch (error) {
+        console.error('Failed to fetch student records:', error);
+        setStudentRecords([]);
+      } finally {
+        setStudentInfoLoading(false);
+      }
+    };
+
+    if (registrar) {
+      fetchStudentRecords();
+    }
+  }, [placementRules, registrar, studentRecordsRefreshToken]);
+
+  /*
+  useEffect(() => {
+    if (!registrar || tab !== 'student-info') return undefined;
+    const refreshRecordsOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        setStudentRecordsRefreshToken((current) => current + 1);
+      }
+    };
+    window.addEventListener('focus', refreshRecordsOnFocus);
+    return () => window.removeEventListener('focus', refreshRecordsOnFocus);
+  }, [registrar, tab]);
+
+  // Refresh overview counts from the database-backed dashboard API when Overview opens.
+  useEffect(() => {
+    const fetchDashboardOverview = async () => {
+      try {
+        const response = await api.get('api/common/dashboard_overview_api.php');
+        
+        if (response.data?.success && response.data?.data) {
+          const { departments, activeStudents, placementsCompleted, unplacedStudents, pendingApprovals } = response.data.data;
+          setSummary({
+            departments: Number(departments ?? 0),
+            activeStudents: Number(activeStudents ?? 0),
+            placementsCompleted: Number(placementsCompleted ?? 0),
+            unplacedStudents: Number(unplacedStudents ?? 0),
+            pendingApprovals: Number(pendingApprovals ?? 0),
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch dashboard overview:', error);
+      }
+    };
+
+    if (registrar && tab === 'overview') {
+      fetchDashboardOverview();
+    }
+  }, [registrar, tab]);
+
+  const departmentPreferenceCounts = studentRecords.reduce((accumulator, student) => {
+    (student.choices || []).forEach((choice) => {
+      const departmentName = String(choice.department || '').trim();
+      if (!departmentName) return;
+      accumulator[departmentName] = (accumulator[departmentName] || 0) + 1;
+    });
+    return accumulator;
+  }, {});
+
+  const maxChoicesCount = useMemo(() => {
+    const counts = studentRecords.map((student) => (student.choices || []).length);
+    return counts.length > 0 ? Math.max(...counts, 1) : 5;
+  }, [studentRecords]);
+
+  const choiceMatrixRows = studentRecords
+    .map((student) => {
+      const prioritySlots = Array.from({ length: maxChoicesCount }, (_, index) => {
+        const preferredChoice = (student.choices || []).find((choice) => Number(choice.priority || 0) === index + 1);
+        return preferredChoice?.department || '—';
+      });
+
+      return {
+        ...student,
+        prioritySlots,
+      };
+    });
+  */
+  /*
           const role = String(user?.role || '').trim().toLowerCase();
           return role === 'student';
         });
@@ -1344,6 +1567,7 @@ const RegistrarDashboard = () => {
     }
   }, [placementRules, registrar, studentRecordsRefreshToken]);
 
+  */
   useEffect(() => {
     if (!registrar || tab !== 'student-info') return undefined;
     const refreshRecordsOnFocus = () => {
@@ -1449,13 +1673,9 @@ const RegistrarDashboard = () => {
       if (!searchTerm) return true;
 
       const searchableText = [
-        student.name,
-        student.email,
-        student.department,
-        student.status,
-        student.id,
-        student.gender,
-        student.stream,
+        student.admission_number,
+        student.given_name,
+        student.father_name,
       ]
         .filter(Boolean)
         .join(' ')
@@ -1470,49 +1690,11 @@ const RegistrarDashboard = () => {
     currentPage * STUDENT_PAGE_SIZE,
   );
 
-  const handleDeleteStudent = async (student) => {
-    const studentId = Number(student.id ?? student.student_id);
-    if (!Number.isInteger(studentId) || studentId <= 0) {
-      setStudentDeleteError('Unable to delete this student because the student ID is invalid.');
-      setStudentDeleteSuccess('');
-      return;
-    }
-
-    if (!window.confirm('Are you sure you want to delete this student?')) return;
-
-    setStudentDeleteError('');
-    setStudentDeleteSuccess('');
-    setDeletingStudentId(studentId);
-    try {
-      const response = await api.delete('api/registrar/delete_student.php', {
-        params: { student_id: studentId },
-      });
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Failed to delete student information. Please try again.');
-      }
-      setStudentRecords((records) => records.filter((record) => Number(record.id) !== studentId));
-      setStudentDeleteSuccess(response.data.message || 'Student deleted successfully.');
-    } catch (error) {
-      setStudentDeleteError(
-        error.response?.data?.message || error.message || 'Failed to delete student information. Please try again.',
-      );
-    } finally {
-      setDeletingStudentId(null);
-    }
-  };
-
   const openStudentAttributeEditor = (student) => {
     setEditingStudent(student);
     setStudentEditForm({
-      first_name: student.first_name || '',
-      last_name: student.last_name || '',
       gpa: String(student.gpa ?? student.cgpa ?? ''),
-      g12_result: String(student.g12 ?? student.grade_12_result ?? 0),
       coc_score: String(student.coc ?? student.coc_result ?? 0),
-      gender: String(student.gender || '').toLowerCase() === 'female' ? 'Female' : 'Male',
-      disability: parseYesNo(student.hasDisability ?? student.disability) ? 'Yes' : 'No',
-      minority: parseYesNo(student.minority ?? student.isMinority) ? 'Yes' : 'No',
-      stream: formatStudentStream(student.stream) === 'Social Science' ? 'Social' : 'Natural',
     });
     setStudentAttributesError('');
     setStudentAttributesSuccess('');
@@ -1532,16 +1714,9 @@ const RegistrarDashboard = () => {
     try {
       const response = await api.post('api/registrar/update_student.php', {
         student_id: studentId,
-      first_name: studentEditForm.first_name,
-      last_name: studentEditForm.last_name,
-      gpa: studentEditForm.gpa,
-      g12_result: studentEditForm.g12_result,
-      coc_score: studentEditForm.coc_score,
-      gender: studentEditForm.gender,
-      stream: studentEditForm.stream,
-      disability: studentEditForm.disability,
-      minority: studentEditForm.minority,
-    });
+        cgpa: studentEditForm.gpa,
+        coc_score: studentEditForm.coc_score,
+      });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to update student record.');
       }
@@ -1685,7 +1860,7 @@ const RegistrarDashboard = () => {
     setPlacementCandidatesError('');
     console.debug('[Run Placement] Fetching candidate students', params);
 
-    api.get('api/registrar/candidate_students_api.php', { params })
+    api.get('api/registrar/candidate_students_api.php', { params, withCredentials: true })
       .then((response) => {
         if (!isCurrent) return;
         const candidates = Array.isArray(response.data?.students) ? response.data.students : [];
@@ -1724,13 +1899,39 @@ const RegistrarDashboard = () => {
     };
   }, [registrar, tab, selectedStream, placementCollege, loadAllStudentsInStream]);
 
+  useEffect(() => {
+    if (!registrar || tab !== 'run-placement') return undefined;
+
+    let isCurrent = true;
+    setPlacementPreviewLoading(true);
+    setPlacementPreviewError('');
+    api.get('api/registrar/placement_preview.php', { withCredentials: true })
+      .then((response) => {
+        if (!isCurrent) return;
+        setPlacementPreviewData(Array.isArray(response.data?.students) ? response.data.students : []);
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        setPlacementPreviewData([]);
+        setPlacementPreviewError(
+          error.response?.data?.message || error.message || 'Unable to load the cumulative score preview.',
+        );
+      })
+      .finally(() => {
+        if (isCurrent) setPlacementPreviewLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [registrar, tab, studentRecordsRefreshToken]);
+
   const placementCandidates = placementCandidatesData.filter((student) => {
     const choices = Array.isArray(student.choices) ? student.choices : [];
+    if (choices.length === 0) return false;
     const streamMatches = (stream) => String(stream || '').trim().toLowerCase()
       === String(selectedStream).trim().toLowerCase();
-    if (selectedStream !== 'all' && (choices.length > 0
-      ? !choices.some((choice) => streamMatches(choice.stream || student.stream))
-      : !streamMatches(student.stream))) {
+    if (selectedStream !== 'all' && !streamMatches(student.stream)) {
       return false;
     }
     if (!loadAllStudentsInStream && placementCollege !== 'all' && !choices.some((choice) => (
@@ -1744,17 +1945,48 @@ const RegistrarDashboard = () => {
 
   const savePlacementRules = async (event) => {
     event.preventDefault();
+    if (!isEditingPlacementRules) return;
+    const baseWeightTotal = Number(placementRules.grade12Weight)
+      + Number(placementRules.gpaWeight)
+      + Number(placementRules.cocWeight);
+    const quotaTotal = Number(placementRules.generalQuotaPercent)
+      + Number(placementRules.reservedFemaleQuotaPercent);
+    if (Math.abs(baseWeightTotal - 100) > 0.00001) {
+      setRulesError('Grade 12, CGPA, and COC weights must total 100%.');
+      return;
+    }
+    if (!Number.isFinite(Number(placementRules.maxScoreCap))
+      || Number(placementRules.maxScoreCap) < 0
+      || Number(placementRules.maxScoreCap) > 100) {
+      setRulesError('The maximum score cap must be between 0 and 100%.');
+      return;
+    }
+    if (!Number.isFinite(Number(placementRules.g12TotalBase))
+      || Number(placementRules.g12TotalBase) <= 0
+      || Number(placementRules.g12TotalBase) > 9999.99) {
+      setRulesError('Grade 12 total base mark must be greater than 0 and no more than 9,999.99.');
+      return;
+    }
+    if (Math.abs(quotaTotal - 100) > 0.00001) {
+      setRulesError('General and reserved female quotas must total 100%.');
+      return;
+    }
     setRulesSaving(true);
     setRulesError('');
 
     try {
-      const response = await api.post('api/registrar/update_placement_settings.php', {
+      const response = await api.post('api/registrar/update-rules.php', {
         gpa_weight: placementRules.gpaWeight,
         grade_12_weight: placementRules.grade12Weight,
+        g12_total_base: placementRules.g12TotalBase,
         coc_weight: placementRules.cocWeight,
-        gender_weight: placementRules.genderWeight,
-        disability_weight: placementRules.disabilityWeight,
-        minority_weight: placementRules.minorityWeight,
+        max_score_cap: placementRules.maxScoreCap,
+        female_bonus_points: placementRules.femaleBonusPoints,
+        disability_bonus_points: placementRules.disabilityBonusPoints,
+        developing_region_female_bonus_points: placementRules.developingRegionFemaleBonusPoints,
+        developing_region_disability_bonus_points: placementRules.developingRegionDisabilityBonusPoints,
+        general_quota_percent: placementRules.generalQuotaPercent,
+        reserved_female_quota_percent: placementRules.reservedFemaleQuotaPercent,
         min_gpa: placementRules.minGpa,
       });
 
@@ -1762,7 +1994,26 @@ const RegistrarDashboard = () => {
         throw new Error(response.data?.message || 'Unable to save placement rules.');
       }
 
-      localStorage.setItem('placementRules', JSON.stringify(placementRules));
+      const savedSettings = response.data?.settings || response.data || {};
+      const savedRules = {
+        ...placementRules,
+        gpaWeight: Number(savedSettings.gpa_weight ?? placementRules.gpaWeight),
+        grade12Weight: Number(savedSettings.grade_12_weight ?? placementRules.grade12Weight),
+        g12TotalBase: Number(savedSettings.g12_total_base ?? placementRules.g12TotalBase),
+        cocWeight: Number(savedSettings.coc_weight ?? placementRules.cocWeight),
+        maxScoreCap: Number(savedSettings.max_score_cap ?? placementRules.maxScoreCap),
+        femaleBonusPoints: Number(savedSettings.female_bonus_points ?? placementRules.femaleBonusPoints),
+        disabilityBonusPoints: Number(savedSettings.disability_bonus_points ?? placementRules.disabilityBonusPoints),
+        developingRegionFemaleBonusPoints: Number(savedSettings.developing_region_female_bonus_points ?? placementRules.developingRegionFemaleBonusPoints),
+        developingRegionDisabilityBonusPoints: Number(savedSettings.developing_region_disability_bonus_points ?? placementRules.developingRegionDisabilityBonusPoints),
+        generalQuotaPercent: Number(savedSettings.general_quota_percent ?? placementRules.generalQuotaPercent),
+        reservedFemaleQuotaPercent: Number(savedSettings.reserved_female_quota_percent ?? placementRules.reservedFemaleQuotaPercent),
+        minGpa: Number(savedSettings.min_gpa ?? placementRules.minGpa),
+      };
+      setPlacementRules(savedRules);
+      localStorage.setItem('placementRules', JSON.stringify(savedRules));
+      placementRulesSnapshot.current = null;
+      setIsEditingPlacementRules(false);
       setRulesSaved(true);
       setTimeout(() => setRulesSaved(false), 2000);
     } catch (error) {
@@ -1771,6 +2022,22 @@ const RegistrarDashboard = () => {
     } finally {
       setRulesSaving(false);
     }
+  };
+
+  const cancelPlacementRulesEdit = () => {
+    if (placementRulesSnapshot.current) {
+      setPlacementRules(placementRulesSnapshot.current);
+    }
+    placementRulesSnapshot.current = null;
+    setRulesError('');
+    setIsEditingPlacementRules(false);
+  };
+
+  const startPlacementRulesEdit = () => {
+    placementRulesSnapshot.current = { ...placementRules };
+    setRulesError('');
+    setRulesSaved(false);
+    setIsEditingPlacementRules(true);
   };
   useEffect(() => {
     setPlacementCollege('all');
@@ -2198,7 +2465,7 @@ const RegistrarDashboard = () => {
                     <input
                       type="text"
                       className="form-control form-control-sm"
-                      placeholder="Search student name, email, ID..."
+                      placeholder="Search admission number, given name, or father name..."
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
                       style={{ minWidth: 260 }}
@@ -2213,16 +2480,6 @@ const RegistrarDashboard = () => {
                   </div>
                 </div>
 
-                {studentDeleteError && (
-                  <div className="alert alert-danger py-2" role="alert">
-                    {studentDeleteError}
-                  </div>
-                )}
-                {studentDeleteSuccess && (
-                  <div className="alert alert-success py-2" role="status">
-                    {studentDeleteSuccess}
-                  </div>
-                )}
                 {studentAttributesSuccess && (
                   <div className="alert alert-success py-2" role="status">
                     {studentAttributesSuccess}
@@ -2244,156 +2501,77 @@ const RegistrarDashboard = () => {
                       <table className="table table-hover align-middle table-bordered">
                         <thead className="table-light">
                           <tr>
-                            <th> Student ID</th>
+                            <th>Admission Number</th>
                             <th>First Name</th>
-                            <th>Last Name</th>
-                            <th>Username</th>
-                            <th title="Cumulative GPA">GPA</th>
-                            <th title="Grade 12 / Secondary School Score">G12 Result</th>
-                            <th title="Certificate of Competence">COC</th>
-                            <th>Gender</th>
+                            <th>Father Name</th>
+                            <th>Grandfather Name</th>
+                            <th>Region</th>
+                            <th>Sex</th>
+                            <th>Field of Study</th>
+                            <th>Total Mark (G12)</th>
+                            <th>CGPA</th>
+                            <th>COC Score</th>
+                            <th>Cumulative Score</th>
                             <th>Disability</th>
                             <th>Minority</th>
-                            <th>STREAM</th>
-                            <th title="Computed from GPA, G12, and other factors">Cumulative Score</th>
-                            <th>Department</th>
-                            <th>Action</th>
-                            <th>Status</th>
+                            <th>Placement Status</th>
+                            <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {paginatedStudents.map((student) => {
-                            const disabilityFlag = parseYesNo(student.hasDisability ?? student.disability ?? student.specialSupport);
-                            const minorityFlag = parseYesNo(student.minority ?? student.isMinority ?? student.minorityStatus);
+                            const disabilityFlag = parseYesNo(student.disability);
+                            const minorityFlag = parseYesNo(student.minority);
+                            const fieldOfStudy = String(
+                              student.field_of_study
+                                || student.fieldOfStudy
+                                || student.FieldOfStudy
+                                || student.Fieldofstudy
+                                || ''
+                            ).trim();
 
                             return (
-                            <tr key={`${student.id}-${student.email || student.name}`}>
-                              {/* Student ID */}
-                              <td className="fw-bold text-primary">{student.id_number || student.id}</td>
-
-                              {/* Student Names */}
-                              <td className="fw-semibold">{student.first_name || 'N/A'}</td>
-                              <td className="fw-semibold">{student.last_name || 'N/A'}</td>
-                              <td>{student.username || 'N/A'}</td>
-
-                              {/* CGPA / GPA */}
+                            <tr key={student.admission_number}>
+                              <td className="fw-bold text-primary">{student.admission_number || '—'}</td>
+                              <td>{student.given_name ?? '—'}</td>
+                              <td>{student.father_name ?? '—'}</td>
+                              <td>{student.grandfather_name ?? '—'}</td>
+                              <td>{student.region || student.Region || '—'}</td>
+                              <td>{student.sex || '—'}</td>
+                              <td>{fieldOfStudy || '—'}</td>
+                              <td className="text-center">{student.total_mark ?? '—'}</td>
+                              <td className="text-center">{student.cgpa ?? '—'}</td>
+                              <td className="text-center">{student.coc_score ?? '—'}</td>
+                              <td className="text-center">{formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score)}</td>
                               <td className="text-center">
-                                <span className="badge bg-primary-subtle text-primary px-3 py-2">
-                                  {student.cgpa}
+                                <span className={`badge px-3 py-2 ${disabilityFlag ? 'bg-danger text-white' : 'bg-secondary text-white'}`}>
+                                  {disabilityFlag ? 'Yes' : 'No'}
                                 </span>
                               </td>
-
-                              {/* Grade 12 Result (grade_12_result column) */}
-                              <td className="text-center" title="Grade 12 / Secondary School Score">
-                                {student.g12 !== null && student.g12 !== undefined && student.g12 !== 'N/A' ? (
-                                  <span className="badge bg-info-subtle text-info px-3 py-2">
-                                    {typeof student.g12 === 'number' ? student.g12.toFixed(2) : student.g12}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted">—</span>
-                                )}
-                              </td>
-
-                              {/* Certificate of Competence (coc_result column) - Display numeric score */}
-                              <td className="text-center" title="Certificate of Competence Score">
-                                {student.coc !== null && student.coc !== undefined && student.coc !== 'N/A' ? (
-                                  <span className="badge bg-success-subtle text-success px-3 py-2">
-                                    {typeof student.coc === 'number' ? student.coc.toFixed(2) : student.coc}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted">—</span>
-                                )}
-                              </td>
-
-                              {/* Gender */}
                               <td className="text-center">
-                                <span className={`badge ${String(student.gender || '').toLowerCase() === 'female'
-                                  ? 'bg-danger-subtle text-danger'
-                                  : String(student.gender || '').toLowerCase() === 'male'
-                                    ? 'bg-primary-subtle text-primary'
-                                    : 'bg-secondary-subtle text-secondary'}`}>
-                                  {student.gender && student.gender !== 'N/A' ? student.gender : 'Not specified'}
+                                <span className={`badge px-3 py-2 ${minorityFlag ? 'bg-info text-white' : 'bg-secondary text-white'}`}>
+                                  {minorityFlag ? 'Yes' : 'No'}
                                 </span>
                               </td>
-
-                              {/* Disability Status */}
-                              <td className="text-center">
-                                {disabilityFlag ? (
-                                  <span className="badge bg-danger text-white px-3 py-2">Yes</span>
-                                ) : (
-                                  <span className="badge bg-secondary text-white px-3 py-2">No</span>
-                                )}
-                              </td>
-
-                              {/* Minority Status */}
-                              <td className="text-center">
-                                {minorityFlag ? (
-                                  <span className="badge bg-info text-white px-3 py-2">Yes</span>
-                                ) : (
-                                  <span className="badge bg-secondary text-white px-3 py-2">No</span>
-                                )}
-                              </td>
-
-                              {/* Stream */}
-                              <td>{student.stream || 'N/A'}</td>
-
-                              {/* Cumulative Score (from cumulative_avg column) */}
-                              <td className="text-center">
-                                <span className="badge bg-warning-subtle text-warning px-3 py-2 fw-bold">
-                                  {Number(student.placement_result_score || student.cumulativeScore).toFixed(2)}
-                                </span>
-                              </td>
-
-                              {/* Department Assignment */}
-                              <td>
-                                <div className="small">{student.department}</div>
-                              </td>
-
-                              <td className="text-center text-nowrap" style={{ minWidth: '135px' }}>
-                                <div className="d-flex justify-content-center align-items-center gap-1 flex-nowrap">
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-secondary"
-                                    onClick={() => openStudentAttributeEditor(student)}
-                                  >
-                                    Update
-                                  </button>
-                                  {needsAcademicScores(student) && (
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm btn-warning text-dark"
-                                      onClick={() => {
-                                        const studentId = student.id ?? student.user_id ?? student.email;
-                                        navigate(`/student-score-form/${encodeURIComponent(studentId)}`, {
-                                          state: { student, returnTo: '/registrar-dashboard', returnTab: tab },
-                                        });
-                                      }}
-                                    >
-                                      Fill Scores
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-danger"
-                                    onClick={() => handleDeleteStudent(student)}
-                                    disabled={deletingStudentId !== null}
-                                  >
-                                    {deletingStudentId === Number(student.id) ? 'Deleting...' : 'Delete'}
-                                  </button>
-                                </div>
-                              </td>
-
-                              {/* Placement Status */}
                               <td className="text-center">
                                 <span className={`badge px-3 py-2 ${
-                                  student.status === 'Placed' || student.status === 'Approved' 
+                                  student.placement_status === 'Placed' || student.placement_status === 'Approved'
                                     ? 'bg-success text-white' 
-                                    : student.status === 'Pending' 
+                                    : student.placement_status === 'Pending'
                                       ? 'bg-warning text-dark' 
                                       : 'bg-secondary text-white'
                                 }`}>
-                                  {student.status}
+                                  {student.placement_status || 'Pending'}
                                 </span>
+                              </td>
+                              <td className="text-center">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary"
+                                  onClick={() => openStudentAttributeEditor(student)}
+                                >
+                                  Update Scores
+                                </button>
                               </td>
                             </tr>
                             );
@@ -2455,7 +2633,7 @@ const RegistrarDashboard = () => {
                   <form className="modal-content" onSubmit={handleSaveStudentAttributes}>
                     <div className="modal-header">
                       <h5 className="modal-title" id="student-attributes-modal-title">
-                        Update student details
+                        Update CGPA and COC scores
                       </h5>
                       <button
                         type="button"
@@ -2472,33 +2650,9 @@ const RegistrarDashboard = () => {
                       {studentAttributesError && (
                         <div className="alert alert-danger py-2" role="alert">{studentAttributesError}</div>
                       )}
-                      <div className="mb-3">
-                        <label className="form-label" htmlFor="registrar-student-first-name">First name</label>
-                        <input
-                          id="registrar-student-first-name"
-                          className="form-control"
-                          value={studentEditForm?.first_name || ''}
-                          onChange={(event) => setStudentEditForm((current) => ({ ...current, first_name: event.target.value }))}
-                          maxLength={50}
-                          required
-                          disabled={savingStudentAttributes}
-                        />
-                      </div>
-                      <div className="mb-3">
-                        <label className="form-label" htmlFor="registrar-student-last-name">Last name</label>
-                        <input
-                          id="registrar-student-last-name"
-                          className="form-control"
-                          value={studentEditForm?.last_name || ''}
-                          onChange={(event) => setStudentEditForm((current) => ({ ...current, last_name: event.target.value }))}
-                          maxLength={50}
-                          required
-                          disabled={savingStudentAttributes}
-                        />
-                      </div>
                       <div className="row g-3 mb-3">
                         <div className="col-md-4">
-                          <label className="form-label" htmlFor="registrar-student-gpa">GPA</label>
+                          <label className="form-label" htmlFor="registrar-student-gpa">CGPA</label>
                           <input
                             id="registrar-student-gpa"
                             className="form-control"
@@ -2513,18 +2667,13 @@ const RegistrarDashboard = () => {
                           />
                         </div>
                         <div className="col-md-4">
-                          <label className="form-label" htmlFor="registrar-student-g12">Grade 12 result</label>
+                          <label className="form-label" htmlFor="registrar-student-g12">Grade 12 result (Ministry import)</label>
                           <input
                             id="registrar-student-g12"
                             className="form-control"
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={studentEditForm?.g12_result || ''}
-                            onChange={(event) => setStudentEditForm((current) => ({ ...current, g12_result: event.target.value }))}
-                            required
-                            disabled={savingStudentAttributes}
+                            type="text"
+                            value={String(editingStudent.g12 ?? editingStudent.grade_12_result ?? 'Not available')}
+                            readOnly
                           />
                         </div>
                         <div className="col-md-4">
@@ -2541,62 +2690,6 @@ const RegistrarDashboard = () => {
                             required
                             disabled={savingStudentAttributes}
                           />
-                        </div>
-                      </div>
-                      <div className="row g-3 mb-3">
-                        <div className="col-md-6">
-                          <label className="form-label" htmlFor="registrar-student-gender">Gender</label>
-                          <select
-                            id="registrar-student-gender"
-                            className="form-select"
-                            value={studentEditForm?.gender || 'Male'}
-                            onChange={(event) => setStudentEditForm((current) => ({ ...current, gender: event.target.value }))}
-                            disabled={savingStudentAttributes}
-                          >
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                          </select>
-                        </div>
-                        <div className="col-md-6">
-                          <label className="form-label" htmlFor="registrar-student-stream">Stream</label>
-                          <select
-                            id="registrar-student-stream"
-                            className="form-select"
-                            value={studentEditForm?.stream || 'Natural'}
-                            onChange={(event) => setStudentEditForm((current) => ({ ...current, stream: event.target.value }))}
-                            disabled={savingStudentAttributes}
-                          >
-                            <option value="Natural">Natural Science</option>
-                            <option value="Social">Social Science</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="row g-3 mb-3">
-                        <div className="col-md-6">
-                          <label className="form-label" htmlFor="registrar-student-disability">Disability</label>
-                          <select
-                            id="registrar-student-disability"
-                            className="form-select"
-                            value={studentEditForm?.disability || 'No'}
-                            onChange={(event) => setStudentEditForm((current) => ({ ...current, disability: event.target.value }))}
-                            disabled={savingStudentAttributes}
-                          >
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </div>
-                        <div className="col-md-6">
-                          <label className="form-label" htmlFor="registrar-student-minority">Minority status</label>
-                          <select
-                            id="registrar-student-minority"
-                            className="form-select"
-                            value={studentEditForm?.minority || 'No'}
-                            onChange={(event) => setStudentEditForm((current) => ({ ...current, minority: event.target.value }))}
-                            disabled={savingStudentAttributes}
-                          >
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
                         </div>
                       </div>
                     </div>
@@ -2815,7 +2908,10 @@ const RegistrarDashboard = () => {
           ) : tab === 'student-registration' ? (
             <StudentRegistration onBack={() => setTab('student-info')} onSuccess={() => setTab('student-info')} />
           ) : tab === 'data-import' ? (
-            <DataImport onImportSuccess={() => setStudentRecordsRefreshToken((current) => current + 1)} />
+            <>
+              <MinistryImport onImportSuccess={() => setStudentRecordsRefreshToken((current) => current + 1)} />
+              <SIMSImport onImportSuccess={() => setStudentRecordsRefreshToken((current) => current + 1)} />
+            </>
           ) : tab === 'capacity' ? (
             <div className="card shadow-sm border-0">
               <div className="card-body p-4">
@@ -3183,56 +3279,112 @@ const RegistrarDashboard = () => {
               <div className="card-body">
                 <div className="d-flex justify-content-between align-items-center gap-3 mb-3 flex-wrap">
                   <h4 className="card-title mb-0">Placement Rules &amp; Criteria</h4>
-                  <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
-                    🖨️ Print Rules
-                  </button>
+                  <div className="d-flex gap-2">
+                    {!isEditingPlacementRules && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        aria-label="Edit placement rules"
+                        title="Edit placement rules"
+                        onClick={startPlacementRulesEdit}
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                        <span className="ms-1">Edit</span>
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
+                      🖨️ Print Rules
+                    </button>
+                  </div>
                 </div>
-                <p className="text-muted">Define algorithm criteria used for automated placements.</p>
+                <p className="text-muted">Adjust weights, the MoSHE Grade 12 total base mark, score cap, minimum CGPA, and affirmative-action bonuses. The weights must total 100%; quota allocation remains fixed at 80% open competition and 20% reserved for female students.</p>
                 <form onSubmit={savePlacementRules}>
                   <div className="row g-3 mb-3">
-                                <div className="col-md-4">
-                                  <label className="form-label">Minimum GPA Threshold for Placement </label>
-                                  <input type="number" className="form-control" value={placementRules.minGpa} onChange={(e) => setPlacementRules((prev) => ({ ...prev, minGpa: Number(e.target.value) }))} min={0} max={4} step="0.01" />
-                                  <span className="d-none d-print-inline">{Number(placementRules.minGpa).toFixed(2)}</span>
-                                </div>
                     <div className="col-md-4">
-                      <label className="form-label">GPA Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.gpaWeight} onChange={(e) => setPlacementRules(prev => ({...prev, gpaWeight: Number(e.target.value)}))} min={0} max={100} />
-                      <span className="d-none d-print-inline">{placementRules.gpaWeight}%</span>
-                    </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Grade 12 Weight or Remedial Result (%)</label>
-                      <input type="number" className="form-control" value={placementRules.grade12Weight} onChange={(e) => setPlacementRules(prev => ({...prev, grade12Weight: Number(e.target.value)}))} min={0} max={100} />
+                      <label className="form-label">Grade 12 Entrance / Remedial Result Weight (%)</label>
+                      <input type="number" className="form-control" value={placementRules.grade12Weight} onChange={(event) => setPlacementRules((current) => ({ ...current, grade12Weight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
                       <span className="d-none d-print-inline">{placementRules.grade12Weight}%</span>
                     </div>
                     <div className="col-md-4">
-                      <label className="form-label">COC Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.cocWeight} onChange={(e) => setPlacementRules(prev => ({...prev, cocWeight: Number(e.target.value)}))} min={0} max={100} />
+                      <label className="form-label" htmlFor="placement-g12-total-base">Grade 12 Total Base Mark (Out of)</label>
+                      <input id="placement-g12-total-base" type="number" className="form-control" value={placementRules.g12TotalBase} onChange={(event) => setPlacementRules((current) => ({ ...current, g12TotalBase: Number(event.target.value) }))} min={0.01} max={9999.99} step="0.01" readOnly={!isEditingPlacementRules} required />
+                      <span className="form-text">MoSHE Grade 12 marks are normalized against this total. Individual student results remain read-only.</span>
+                      <span className="d-none d-print-inline">{placementRules.g12TotalBase}</span>
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label">Semester GPA / CGPA Weight (%)</label>
+                      <input type="number" className="form-control" value={placementRules.gpaWeight} onChange={(event) => setPlacementRules((current) => ({ ...current, gpaWeight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
+                      <span className="d-none d-print-inline">{placementRules.gpaWeight}%</span>
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label">Department / COC Entrance Exam Weight (%)</label>
+                      <input type="number" className="form-control" value={placementRules.cocWeight} onChange={(event) => setPlacementRules((current) => ({ ...current, cocWeight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
                       <span className="d-none d-print-inline">{placementRules.cocWeight}%</span>
                     </div>
+                    <div className="col-md-4">
+                      <label className="form-label">Maximum Score Cap (%)</label>
+                      <input type="number" className="form-control" value={placementRules.maxScoreCap} onChange={(event) => setPlacementRules((current) => ({ ...current, maxScoreCap: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} aria-describedby="placement-score-cap-help" required />
+                      <span id="placement-score-cap-help" className="form-text">The score cap cannot exceed 100%.</span>
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label">Minimum GPA Threshold</label>
+                      <input type="number" className="form-control" value={placementRules.minGpa} onChange={(event) => setPlacementRules((current) => ({ ...current, minGpa: Number(event.target.value) }))} min={0} max={4} step="0.01" readOnly={!isEditingPlacementRules} required />
+                      <span className="d-none d-print-inline">{Number(placementRules.minGpa).toFixed(2)}</span>
+                    </div>
+                    <div className="col-12">
+                      <div className={Math.abs(Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight) - 100) <= 0.00001 ? 'text-success small' : 'text-danger small'} role="status">
+                        Base criteria total: {Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight)}% (must equal 100%)
+                      </div>
+                    </div>
                   </div>
+                  <h5 className="h6 mt-4">Affirmative Action Bonus Points</h5>
+                  <div className="row g-3 mb-3">
+                    {[
+                      ['femaleBonusPoints', 'Female Bonus Points'],
+                      ['disabilityBonusPoints', 'Disability Bonus Points'],
+                      ['developingRegionFemaleBonusPoints', 'Developing Region / Minority (Female) Bonus Points'],
+                      ['developingRegionDisabilityBonusPoints', 'Developing Region / Minority (Disability) Bonus Points'],
+                    ].map(([key, label]) => (
+                      <div className="col-md-4" key={key}>
+                        <label className="form-label" htmlFor={`placement-${key}`}>{label}</label>
+                        <input id={`placement-${key}`} type="number" className="form-control" value={placementRules[key]} onChange={(event) => setPlacementRules((current) => ({ ...current, [key]: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
+                        <span className="d-none d-print-inline">{placementRules[key]} points</span>
+                      </div>
+                    ))}
+                  </div>
+                  <h5 className="h6 mt-4">Quota Allocation</h5>
                   <div className="row g-3 mb-3">
                     <div className="col-md-4">
-                      <label className="form-label">Gender Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.genderWeight} onChange={(e) => setPlacementRules(prev => ({...prev, genderWeight: Number(e.target.value)}))} min={0} max={100} />
-                      <span className="d-none d-print-inline">{placementRules.genderWeight}%</span>
+                      <label className="form-label">General / Open Competition Quota (%)</label>
+                      <output className="form-control d-block">{placementRules.generalQuotaPercent}</output>
                     </div>
                     <div className="col-md-4">
-                      <label className="form-label">Disability Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.disabilityWeight} onChange={(e) => setPlacementRules(prev => ({...prev, disabilityWeight: Number(e.target.value)}))} min={0} max={100} />
-                      <span className="d-none d-print-inline">{placementRules.disabilityWeight}%</span>
+                      <label className="form-label">Reserved Female Quota (%)</label>
+                      <output className="form-control d-block">{placementRules.reservedFemaleQuotaPercent}</output>
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Minority Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.minorityWeight} onChange={(e) => setPlacementRules(prev => ({...prev, minorityWeight: Number(e.target.value)}))} min={0} max={100} />
-                      <span className="d-none d-print-inline">{placementRules.minorityWeight}%</span>
+                    <div className="col-12">
+                      <div className={Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent) === 100 ? 'text-success small' : 'text-danger small'} role="status">
+                        Quota total: {Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent)}% (must equal 100%)
+                      </div>
                     </div>
                   </div>
                   <div className="d-flex gap-2 align-items-center flex-wrap">
-                    <button className="btn btn-primary" type="submit" disabled={rulesSaving}>
-                      {rulesSaving ? 'Saving...' : 'Save Rules'}
-                    </button>
-                    <button className="btn btn-outline-secondary" type="button" onClick={() => { setPlacementRules({ gpaWeight: 40, grade12Weight: 20, cocWeight: 30, genderWeight: 3, disabilityWeight: 3, minorityWeight: 4, minGpa: 1.75 }); localStorage.removeItem('placementRules'); }}>Reset</button>
+                    {isEditingPlacementRules && (
+                      <>
+                        <button className="btn btn-primary" type="submit" disabled={rulesSaving}>
+                          <Save size={16} className="me-1" aria-hidden="true" />
+                          {rulesSaving ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button className="btn btn-outline-secondary" type="button" disabled={rulesSaving} onClick={cancelPlacementRulesEdit}>
+                          Cancel
+                        </button>
+                        <button className="btn btn-outline-secondary" type="button" disabled={rulesSaving} onClick={() => {
+                          const defaults = { gpaWeight: 30, grade12Weight: 20, g12TotalBase: 600, cocWeight: 50, maxScoreCap: 100, femaleBonusPoints: 5, disabilityBonusPoints: 5, developingRegionFemaleBonusPoints: 10, developingRegionDisabilityBonusPoints: 10, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75 };
+                          setPlacementRules(defaults);
+                          setRulesError('');
+                        }}>Reset</button>
+                      </>
+                    )}
                     {rulesSaved && <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">Saved</div>}
                     {rulesError && <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">{rulesError}</div>}
                   </div>
@@ -3344,6 +3496,14 @@ const RegistrarDashboard = () => {
                     <div className="d-flex justify-content-end gap-2 flex-wrap mt-4">
                       <button
                         type="button"
+                        className="btn btn-outline-secondary btn-sm"
+                        onClick={() => setStudentRecordsRefreshToken((current) => current + 1)}
+                        disabled={placementCandidatesLoading}
+                      >
+                        Refresh candidates
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn-outline-primary btn-sm"
                         onClick={() => {
                           const visibleIds = placementCandidates.map((student) => String(student.id));
@@ -3357,6 +3517,18 @@ const RegistrarDashboard = () => {
                       </button>
                       <button
                         type="button"
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => {
+                          const candidateIds = placementCandidatesData
+                            .filter((student) => Array.isArray(student.choices) && student.choices.length > 0)
+                            .map((student) => String(student.id));
+                          setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...candidateIds])));
+                        }}
+                      >
+                        Select all candidates
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn-outline-secondary btn-sm"
                         onClick={() => setSelectedStudentIds([])}
                       >
@@ -3367,7 +3539,7 @@ const RegistrarDashboard = () => {
                     {!latestPlacementRun && (
                     <div className="mt-4">
                       <div className="d-flex justify-content-between align-items-center mb-2">
-                        <span className="fw-semibold" style={{ color: '#123153' }}>Candidate students</span>
+                        <span className="fw-semibold" style={{ color: '#123153' }}>Students who submitted department preferences</span>
                         <span className="text-muted small">
                           {selectedStudentIds.length > 0
                             ? `${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? '' : 's'} selected`
@@ -3383,9 +3555,14 @@ const RegistrarDashboard = () => {
                         ) : placementCandidates.length === 0 ? (
                           <div className="p-3 text-muted">
                             <div>
-                              {loadAllStudentsInStream
-                                ? 'No students are available for the selected stream.'
-                                : 'No students match the current stream and college filters.'}
+                              {placementCandidatesData.some((student) => !student.choices?.length)
+                                ? 'No students with submitted department preferences match these filters yet.'
+                                : loadAllStudentsInStream
+                                  ? 'No students are available for the selected stream.'
+                                  : 'No students match the current stream and college filters.'}
+                            </div>
+                            <div className="small mt-1">
+                              Students appear here after saving at least one department choice.
                             </div>
                             {placementCollege !== 'all' && !loadAllStudentsInStream && (
                               <button
@@ -3402,6 +3579,25 @@ const RegistrarDashboard = () => {
                           </div>
                         ) : (
                           <>
+                            <div className="d-flex align-items-center gap-2 p-3 border-bottom bg-light">
+                              <input
+                                type="checkbox"
+                                aria-label="Select all visible candidates"
+                                checked={placementCandidates.length > 0
+                                  && placementCandidates.every((student) => selectedStudentIds.includes(String(student.id)))}
+                                onChange={(event) => {
+                                  const visibleIds = placementCandidates.map((student) => String(student.id));
+                                  setSelectedStudentIds((previous) => {
+                                    if (event.target.checked) {
+                                      return Array.from(new Set([...previous, ...visibleIds]));
+                                    }
+                                    return previous.filter((id) => !visibleIds.includes(id));
+                                  });
+                                }}
+                                style={{ width: 18, height: 18, accentColor: '#0d5cb8' }}
+                              />
+                              <span className="small fw-semibold text-muted">Select all visible candidates</span>
+                            </div>
                             {loadAllStudentsInStream && placementCollege !== 'all' && (
                               <div className="alert alert-warning m-2 py-2" role="status">
                                 Showing all candidates in this stream; the selected college filter is bypassed for this list.
@@ -3431,11 +3627,51 @@ const RegistrarDashboard = () => {
                                     style={{ width: 18, height: 18, accentColor: '#0d5cb8' }}
                                   />
                                   <div>
-                                    <div className="fw-semibold" style={{ color: '#123153' }}>{student.name}</div>
-                                    <div className="small text-muted">{student.email} • {student.department}</div>
+                                    <div className="fw-semibold" style={{ color: '#123153' }}>
+                                      {student.name || 'Student'} <span className="text-muted fw-normal">· {student.admission_number || student.id_number || 'No admission number'}</span>
+                                    </div>
+                                    <div className="small text-muted">
+                                      {student.stream || 'Stream unavailable'} · Cumulative score: {formatCumulativeScore(calculateCumulativeScore({
+                                        cgpa: student.cgpa,
+                                        grade12: student.g12,
+                                        coc: student.coc,
+                                        gender: student.gender,
+                                        hasDisability: student.hasDisability,
+                                        minority: student.minority,
+                                        region: student.region,
+                                      }, placementRules))}
+                                    </div>
+                                    <div className="small mt-1">
+                                      <span className="text-muted">Student’s submitted department choices: </span>
+                                      {student.choices?.length
+                                        ? student.choices
+                                          .slice()
+                                          .filter((choice) => Number(choice.priority) >= 1 && Number(choice.priority) <= 3)
+                                          .sort((left, right) => Number(left.priority) - Number(right.priority))
+                                          .map((choice) => (
+                                            <span
+                                              key={`${student.id}-${choice.priority}-${choice.dept_id || choice.dept_name}`}
+                                              className="badge rounded-pill me-1 mb-1"
+                                              style={{ background: '#edf3ff', color: '#123153' }}
+                                            >
+                                              Choice {choice.priority}: {choice.dept_name || choice.department}
+                                            </span>
+                                          ))
+                                        : <span className="text-warning">No saved preferences</span>}
+                                    </div>
                                   </div>
                                 </div>
-                                <span className="badge rounded-pill px-2 py-2" style={{ background: '#edf3ff', color: '#123153' }}>{student.status}</span>
+                                <span
+                                  className="badge rounded-pill px-2 py-2"
+                                  style={{
+                                    background: student.account_linked ? '#edf3ff' : '#fff3cd',
+                                    color: '#123153',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  title={student.account_linked ? 'Linked to a student account' : 'No student account is linked; this record cannot be placed yet'}
+                                >
+                                  {student.account_linked ? student.status : 'Account not linked'}
+                                </span>
                               </label>
                             );
                             })}
@@ -3447,6 +3683,64 @@ const RegistrarDashboard = () => {
                   </div>
                 </div>
 
+                <section className="card border-0 shadow-sm mb-4">
+                  <div className="card-body">
+                    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                      <div>
+                        <h5 className="fw-bold mb-1">Pre-Placement Cumulative Score Preview</h5>
+                        <p className="text-muted small mb-0">
+                          Scores use available student profile, MoSHE, and SIMS data before placement.
+                        </p>
+                      </div>
+                      <span className="badge bg-light text-dark">20% Grade 12 · 30% CGPA · 50% COC</span>
+                    </div>
+                    {placementPreviewLoading ? (
+                      <div className="text-muted" role="status">Loading joined student scores…</div>
+                    ) : placementPreviewError ? (
+                      <div className="text-danger" role="alert">{placementPreviewError}</div>
+                    ) : placementPreviewData.length === 0 ? (
+                      <div className="text-muted">No student records are available for score preview.</div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="table table-sm table-hover align-middle mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Admission Number</th>
+                              <th>Student</th>
+                              <th>Grade 12</th>
+                              <th>CGPA</th>
+                              <th>COC</th>
+                              <th>Bonuses</th>
+                              <th>Cumulative Score</th>
+                              <th>Join Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {placementPreviewData.map((student) => (
+                              <tr key={student.admissionNumber}>
+                                <td>{student.admissionNumber}</td>
+                                <td>{student.name}</td>
+                                <td>{student.totalMark}</td>
+                                <td>{student.cgpa ?? '—'}</td>
+                                <td>{student.cocScore ?? '—'}</td>
+                                <td>
+                                  +{Number(student.femaleBonus || 0) + Number(student.disabilityBonus || 0) + Number(student.developingRegionBonus || 0)}
+                                </td>
+                                <td className="fw-bold">{student.cumulativeScore === null ? '—' : `${student.cumulativeScore}%`}</td>
+                                <td>
+                                  <span className={`badge ${student.ready ? 'bg-success' : 'bg-warning text-dark'}`}>
+                                    {student.ready ? 'Ready' : 'Score data incomplete'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
                 <div className="d-flex gap-2 flex-wrap">
                   <button
                     className="btn btn-primary"
@@ -3456,6 +3750,11 @@ const RegistrarDashboard = () => {
                       if (!studentsToPlace.length) {
                         setRunResult({ assigned: 0, unassigned: 0, error: 'Please select at least one student before running placement.' });
                         setPlacementError('No student selected.');
+                        return;
+                      }
+                      const unlinkedStudents = studentsToPlace.filter((student) => !student.account_linked);
+                      if (unlinkedStudents.length > 0) {
+                        setPlacementError('Some selected records are not linked to student accounts. Link the accounts before running placement.');
                         return;
                       }
 
@@ -3470,7 +3769,15 @@ const RegistrarDashboard = () => {
                               let preferences = Array.isArray(record.choices) ? record.choices : [];
 
                               if (preferences.length === 0) {
-                                const preferenceResponse = await api.get(`api/student/student_preferences.php?student_id=${encodeURIComponent(record.id)}`);
+                                const preferenceParams = new URLSearchParams();
+                                preferenceParams.set('student_id', String(record.id));
+                                if (record.admission_number || record.id_number) {
+                                  preferenceParams.set('admission_number', String(record.admission_number || record.id_number));
+                                }
+                                const preferenceResponse = await api.get(
+                                  `api/student/student_preferences.php?${preferenceParams.toString()}`,
+                                  { withCredentials: true },
+                                );
                                 const payload = preferenceResponse.data || {};
                                 preferences = Array.isArray(payload.choices)
                                   ? payload.choices
@@ -3484,7 +3791,7 @@ const RegistrarDashboard = () => {
                               const formattedPreferences = preferences
                                 .map((pref, index) => ({
                                   priority: Number(pref?.priority ?? pref?.rank ?? index + 1),
-                                  department: pref?.department || pref?.name || pref?.dept_name || pref?.college || pref?.stream || '',
+                                  department: pref?.dept_name || pref?.department || pref?.name || pref?.college || pref?.stream || '',
                                   college_name: pref?.college_name || pref?.collegeName || pref?.college || '',
                                   stream: pref?.stream || '',
                                 }))
@@ -3532,9 +3839,9 @@ const RegistrarDashboard = () => {
                           selectedDepartment: 'all',
                           selectedCollege: placementCollege,
                           placementScope: 'college-wide',
-                          selectedStudentIds: students.map((student) => student.id),
+                          selectedStudentIds: studentsToPlace.map((student) => String(student.id)),
                         };
-                                const response = await api.post('api/registrar/placement_engine.php', payload);
+                                const response = await api.post('api/registrar/placement_engine.php', payload, { withCredentials: true });
                         const result = response.data;
 
                         if (!result?.success) {

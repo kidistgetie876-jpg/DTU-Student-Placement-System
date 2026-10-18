@@ -1,0 +1,305 @@
+.student-notifications {
+  --student-accent: #4f46e5;
+  --student-ink: #172554;
+  --student-muted: #64748b;
+  padding: clamp(1.1rem, 2.5vw, 2rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 1.25rem;
+  background: linear-gradient(145deg, #fff 0%, #f8faff 100%);
+  box-shadow: 0 16px 42px rgba(30, 41, 59, .08);
+}
+
+.student-notifications-heading,
+.student-notification-toolbar,
+.student-notification-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.student-notifications-heading {
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #e8edf5;
+}
+
+.student-section-eyebrow {
+  color: var(--student-accent);
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+
+.student-notifications-heading h2 {
+  margin: .35rem 0 .25rem;
+  color: var(--student-ink);
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  font-weight: 800;
+}
+
+.student-notifications-heading p,
+.student-notification-content p {
+  margin: 0;
+  color: var(--student-muted);
+  line-height: 1.6;
+}
+
+.student-notification-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .7rem .95rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  white-space: nowrap;
+}
+
+.student-notification-toolbar {
+  min-height: 58px;
+  color: var(--student-muted);
+  font-size: .9rem;
+}
+
+.student-mark-all-button,
+.student-mark-read-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  min-height: 38px;
+  padding: .5rem .85rem;
+  border: 1px solid #c7d2fe;
+  border-radius: .7rem;
+  background: #fff;
+  color: #4338ca;
+  font-size: .85rem;
+  font-weight: 700;
+  transition: background-color .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.student-mark-all-button:hover,
+.student-mark-read-button:hover {
+  transform: translateY(-1px);
+  border-color: #818cf8;
+  background: #eef2ff;
+}
+
+.student-mark-all-button:disabled,
+.student-mark-read-button:disabled {
+  cursor: wait;
+  opacity: .65;
+  transform: none;
+}
+
+.student-notification-feedback {
+  margin-bottom: 1rem;
+  padding: .75rem 1rem;
+  border: 1px solid #a7f3d0;
+  border-radius: .75rem;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.student-notification-feedback.is-danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.student-notification-list {
+  display: grid;
+  gap: .85rem;
+}
+
+.student-notification-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(30, 41, 59, .045);
+}
+
+.student-notification-card.is-unread {
+  border-color: #c7d2fe;
+  background: linear-gradient(110deg, #f5f7ff 0%, #fff 75%);
+}
+
+.student-notification-icon,
+.student-notification-empty-icon {
+  display: grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.student-notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-notification-title-row h3 {
+  margin: 0;
+  color: var(--student-ink);
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.student-unread-label {
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #4338ca;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.student-notification-content p {
+  margin-top: .45rem;
+  white-space: pre-wrap;
+}
+
+.student-notification-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem 1rem;
+  margin-top: .75rem;
+  color: #64748b;
+  font-size: .78rem;
+}
+
+.student-notification-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.student-notification-empty {
+  display: grid;
+  justify-items: center;
+  gap: .55rem;
+  padding: 3rem 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, .7);
+  color: var(--student-muted);
+  text-align: center;
+}
+
+.student-notification-empty h3 {
+  margin: .3rem 0 0;
+  color: var(--student-ink);
+  font-size: 1.1rem;
+  font-weight: 750;
+}
+
+.student-notification-empty p {
+  margin: 0;
+}
+
+.student-appeal {
+  margin-top: .75rem;
+  padding: clamp(1.1rem, 2.5vw, 2rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 1.25rem;
+  background: linear-gradient(145deg, #fff 0%, #f8faff 100%);
+  box-shadow: 0 16px 42px rgba(30, 41, 59, .08);
+}
+
+.student-appeal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+}
+
+.student-appeal-heading h2 {
+  margin: .35rem 0;
+  color: #172554;
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  font-weight: 800;
+}
+
+.student-appeal-heading p {
+  margin: 0;
+  color: #64748b;
+}
+
+.student-appeal-placement {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #c7d2fe;
+  border-radius: .9rem;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.student-appeal-form {
+  padding: clamp(1rem, 2vw, 1.5rem);
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+}
+
+.student-appeal-form .form-label {
+  color: #334155;
+}
+
+.student-appeal-form .form-control {
+  min-height: 46px;
+  border-color: #cbd5e1;
+  border-radius: .7rem;
+}
+
+.student-appeal-form textarea.form-control {
+  min-height: 140px;
+}
+
+.student-appeal-form .form-control:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 .2rem rgba(99, 102, 241, .14);
+}
+
+.student-appeal-history {
+  display: grid;
+  gap: .85rem;
+}
+
+.student-appeal-record {
+  padding: 1.1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: .9rem;
+  background: #fff;
+}
+
+.student-appeal-message {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 575.98px) {
+  .student-notification-card {
+    flex-wrap: wrap;
+    gap: .75rem;
+  }
+
+  .student-notification-content {
+    flex-basis: calc(100% - 58px);
+  }
+
+  .student-mark-read-button {
+    margin-left: 3.25rem;
+  }
+
+  .student-appeal-heading {
+    flex-direction: column;
+  }
+}

@@ -72,6 +72,21 @@ if (!$db instanceof mysqli) {
     updateProfileResponse(['success' => false, 'message' => 'Database connection failed.'], 500);
 }
 
+$hasProfilePhotoColumn = false;
+if ($photoExtension !== null) {
+    $photoColumn = $db->query("SHOW COLUMNS FROM users LIKE 'profile_photo'");
+    $hasProfilePhotoColumn = $photoColumn instanceof mysqli_result && $photoColumn->num_rows > 0;
+    if ($photoColumn instanceof mysqli_result) {
+        $photoColumn->free();
+    }
+    if (!$hasProfilePhotoColumn) {
+        updateProfileResponse([
+            'success' => false,
+            'message' => 'Profile photo storage is not configured. Apply the user profile photo database migration first.',
+        ], 503);
+    }
+}
+
 $storedPhotoPath = null;
 $newPhotoPath = null;
 $oldPhotoPath = null;
@@ -97,7 +112,10 @@ try {
         updateProfileResponse(['success' => false, 'message' => 'That email address is already in use.'], 409);
     }
 
-    $currentProfile = $db->prepare('SELECT profile_photo FROM users WHERE id = ? LIMIT 1');
+    $currentPhotoExpression = $hasProfilePhotoColumn ? 'profile_photo' : 'NULL';
+    $currentProfile = $db->prepare(
+        "SELECT {$currentPhotoExpression} AS profile_photo FROM users WHERE id = ? LIMIT 1"
+    );
     if (!$currentProfile) {
         throw new RuntimeException('Unable to prepare current profile query: ' . $db->error);
     }
@@ -145,17 +163,11 @@ try {
     }
     $updateUser->close();
 
-    $updateStudent = $db->prepare('UPDATE student_data SET first_name = ?, last_name = ?, email = ? WHERE user_id = ?');
-    if (!$updateStudent) {
-        throw new RuntimeException('Unable to prepare student profile update: ' . $db->error);
-    }
-    $updateStudent->bind_param('sssi', $firstName, $lastName, $email, $userId);
-    if (!$updateStudent->execute()) {
-        throw new RuntimeException('Unable to update student profile mirror: ' . $updateStudent->error);
-    }
-    $updateStudent->close();
-
-    $readProfile = $db->prepare('SELECT id, first_name, last_name, username, email, role, profile_photo FROM users WHERE id = ? LIMIT 1');
+    $profilePhotoExpression = $hasProfilePhotoColumn ? 'profile_photo' : 'NULL';
+    $readProfile = $db->prepare(
+        "SELECT id, first_name, last_name, username, email, role, {$profilePhotoExpression} AS profile_photo
+         FROM users WHERE id = ? LIMIT 1"
+    );
     if (!$readProfile) {
         throw new RuntimeException('Unable to prepare updated profile query: ' . $db->error);
     }

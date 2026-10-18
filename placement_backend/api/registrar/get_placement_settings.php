@@ -15,12 +15,20 @@ function placementSettingsResponse(array $payload, int $status = 200): void
 function defaultPlacementSettings(): array
 {
     return [
-        'gpa_weight' => 40,
+        'gpa_weight' => 30,
         'grade_12_weight' => 20,
-        'coc_weight' => 30,
-        'gender_weight' => 3,
-        'disability_weight' => 3,
-        'minority_weight' => 4,
+        'g12_total_base' => 600,
+        'coc_weight' => 50,
+        'gender_weight' => 0,
+        'disability_weight' => 0,
+        'minority_weight' => 0,
+        'max_score_cap' => 100,
+        'female_bonus_points' => 5,
+        'disability_bonus_points' => 5,
+        'developing_region_female_bonus_points' => 10,
+        'developing_region_disability_bonus_points' => 10,
+        'general_quota_percent' => 80,
+        'reserved_female_quota_percent' => 20,
         'min_gpa' => 1.75,
     ];
 }
@@ -61,7 +69,13 @@ try {
 
     $settings = $result->fetch_assoc();
     $fallback = $settings === null;
-    $settings = $settings ?: defaultPlacementSettings();
+    $hasOfficialRules = is_array($settings) && array_key_exists('max_score_cap', $settings);
+    $settings = array_merge(defaultPlacementSettings(), $settings ?: []);
+    if (!$hasOfficialRules) {
+        $settings['gpa_weight'] = 30;
+        $settings['grade_12_weight'] = 20;
+        $settings['coc_weight'] = 50;
+    }
     $settings['min_gpa'] = (float) ($settings['min_gpa'] ?? 1.75);
 
     placementSettingsResponse([

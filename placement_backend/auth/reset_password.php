@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../config/cors.php';
+sendCorsHeaders();
 require_once __DIR__ . '/../config/db_config.php';
 require_once __DIR__ . '/password_reset_helpers.php';
 

@@ -18,7 +18,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 $userId = (int) ($_SESSION['user_id'] ?? 0);
-if ($userId <= 0) {
+if ($userId <= 0 && (
+    strtolower((string) ($_SESSION['role'] ?? '')) !== 'student'
+    || trim((string) ($_SESSION['admission_number'] ?? $_SESSION['user_id'] ?? '')) === ''
+)) {
     profileResponse(['success' => false, 'message' => 'Authentication is required.'], 401);
 }
 
@@ -27,22 +30,62 @@ if (!$db instanceof mysqli) {
     profileResponse(['success' => false, 'message' => 'Database connection failed.'], 500);
 }
 
-$statement = $db->prepare(
-    "SELECT u.id,
-            COALESCE(NULLIF(sd.first_name, ''), u.first_name, '') AS first_name,
-            COALESCE(NULLIF(sd.last_name, ''), u.last_name, '') AS last_name,
-            u.username, u.email, u.role, u.profile_photo
-     FROM users u
-     LEFT JOIN student_data sd ON sd.user_id = u.id
-     WHERE u.id = ?
-     LIMIT 1"
-);
+$photoColumn = $db->query("SHOW COLUMNS FROM users LIKE 'profile_photo'");
+$profilePhotoExpression = $photoColumn instanceof mysqli_result && $photoColumn->num_rows > 0
+    ? 'u.profile_photo'
+    : 'NULL';
+if ($photoColumn instanceof mysqli_result) {
+    $photoColumn->free();
+}
+
+$statement = null;
+if ($userId > 0) {
+    $statement = $db->prepare(
+        "SELECT u.id, u.first_name, u.last_name, u.username, u.email, u.role,
+                {$profilePhotoExpression} AS profile_photo
+         FROM users u
+         WHERE u.id = ?
+         LIMIT 1"
+    );
+} else {
+    $admissionNumber = trim((string) ($_SESSION['admission_number'] ?? $_SESSION['user_id'] ?? ''));
+    $columnsResult = $db->query('SHOW COLUMNS FROM student_data');
+    if (!$columnsResult) {
+        error_log('Unable to inspect student profile columns: ' . $db->error);
+        profileResponse(['success' => false, 'message' => 'Unable to load profile.'], 500);
+    }
+    $studentColumns = array_column($columnsResult->fetch_all(MYSQLI_ASSOC), 'Field');
+    $columnsResult->free();
+    $studentColumn = static function (string $name) use ($studentColumns): string {
+        return in_array($name, $studentColumns, true) ? "student_data.`{$name}`" : 'NULL';
+    };
+    $firstName = $studentColumn('given_name') !== 'NULL'
+        ? $studentColumn('given_name')
+        : $studentColumn('username');
+    $lastName = $studentColumn('father_name');
+    $username = $studentColumn('username') !== 'NULL' ? $studentColumn('username') : $firstName;
+    $email = $studentColumn('email');
+    $statement = $db->prepare(
+        "SELECT {$studentColumn('admission_number')} AS id_number,
+                {$firstName} AS first_name, {$lastName} AS last_name,
+                {$username} AS username, {$email} AS email, 'student' AS role,
+                NULL AS profile_photo
+         FROM student_data
+         WHERE {$studentColumn('admission_number')} = ?
+         LIMIT 1"
+    );
+    if ($statement) {
+        $statement->bind_param('s', $admissionNumber);
+    }
+}
 if (!$statement) {
     error_log('Unable to prepare current profile query: ' . $db->error);
     profileResponse(['success' => false, 'message' => 'Unable to load profile.'], 500);
 }
 
-$statement->bind_param('i', $userId);
+if ($userId > 0) {
+    $statement->bind_param('i', $userId);
+}
 if (!$statement->execute()) {
     error_log('Unable to load current profile: ' . $statement->error);
     $statement->close();

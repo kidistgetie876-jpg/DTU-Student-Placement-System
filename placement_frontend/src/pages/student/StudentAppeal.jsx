@@ -96,22 +96,29 @@ const StudentAppeal = ({ studentId, placement }) => {
   };
 
   return (
-    <div className="card p-4 border-0 shadow-sm rounded-4">
-      <div className="d-flex justify-content-between align-items-start gap-3 mb-4 flex-wrap">
+    <section className="student-appeal" aria-labelledby="student-appeal-title">
+      <div className="student-appeal-heading">
         <div>
-          <h4 className="fw-bold text-primary mb-1">Submit Appeal</h4>
-          <p className="text-muted mb-0">Send a placement complaint to the Registrar for review.</p>
+          <span className="student-section-eyebrow">REGISTRAR SUPPORT</span>
+          <h2 id="student-appeal-title">Submit Appeal</h2>
+          <p>Share your placement concern with the Registrar for review.</p>
         </div>
-        <span className="badge bg-warning text-dark px-3 py-2">Registrar review</span>
+        <span className="badge rounded-pill text-bg-warning px-3 py-2">Registrar review</span>
       </div>
 
       {placement && (
-        <div className="alert alert-light border mb-4">
-          Current placement: <strong>{placement.assigned_department || 'Not available'}</strong>
+        <div className="student-appeal-placement">
+          Current placement: <strong>{placement.assigned_department || placement.department || 'Not available'}</strong>
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      {!studentId && (
+        <div className="alert alert-warning" role="alert">
+          Your student account could not be verified. Please sign in again before submitting an appeal.
+        </div>
+      )}
+
+      <form className="student-appeal-form" onSubmit={handleSubmit}>
         <div className="mb-3">
           <label className="form-label fw-semibold" htmlFor="appeal-subject">Subject</label>
           <input
@@ -135,26 +142,33 @@ const StudentAppeal = ({ studentId, placement }) => {
             required
           />
         </div>
-        <button type="submit" className="btn btn-primary fw-semibold" disabled={submitting || !studentId}>
-          {submitting ? 'Submitting...' : 'Submit Appeal'}
-        </button>
-        {feedback && (
-          <div className={`alert alert-${feedback.type} mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0`} role={feedback.type === 'danger' ? 'alert' : 'status'}>
-            {feedback.text}
-          </div>
-        )}
+        <div className="d-flex align-items-center gap-3 flex-wrap">
+          <button type="submit" className="btn btn-primary fw-semibold px-4 py-2 rounded-3" disabled={submitting || !studentId}>
+            {submitting ? 'Submitting...' : 'Submit Appeal'}
+          </button>
+          {feedback && (
+            <div className={`alert alert-${feedback.type} py-2 px-3 small rounded-3 shadow-sm mb-0`} role={feedback.type === 'danger' ? 'alert' : 'status'}>
+              {feedback.text}
+            </div>
+          )}
+        </div>
       </form>
 
-      <hr className="my-4" />
-      <h5 className="fw-bold text-primary mb-3">My Appeals</h5>
+      <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mt-4 mb-3">
+        <h3 className="h5 fw-bold text-primary mb-0">My Appeals</h3>
+        <span className="small text-muted">{appeals.length} submitted</span>
+      </div>
       {loading ? (
-        <div className="text-muted">Loading appeal history...</div>
+        <div className="student-notification-empty" role="status">Loading appeal history…</div>
       ) : appeals.length === 0 ? (
-        <div className="text-muted">No appeals submitted yet.</div>
+        <div className="student-notification-empty">
+          <h3>No appeals yet</h3>
+          <p>Your submitted appeals and Registrar responses will appear here.</p>
+        </div>
       ) : (
-        <div className="d-grid gap-3">
+        <div className="student-appeal-history">
           {appeals.map((appeal) => (
-            <div className="border rounded-3 p-3" key={appeal.id}>
+            <article className="student-appeal-record" key={appeal.id}>
               <div className="d-flex justify-content-between gap-2 flex-wrap mb-2">
                 <strong>{appeal.subject}</strong>
                 <div className="d-flex align-items-center gap-2">
@@ -171,14 +185,14 @@ const StudentAppeal = ({ studentId, placement }) => {
                   )}
                 </div>
               </div>
-              <p className="mb-2 text-muted">{appeal.message}</p>
+              <p className="student-appeal-message mb-2 text-muted">{appeal.message}</p>
               {appeal.response && <div className="alert alert-info mb-0"><strong>Registrar response:</strong> {appeal.response}</div>}
               <small className="text-muted">Submitted {appeal.created_at}</small>
-            </div>
+            </article>
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

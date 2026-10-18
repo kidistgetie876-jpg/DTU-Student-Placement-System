@@ -1,15 +1,24 @@
 <?php
-function getAuditPdo(): PDO {
-    global $db_host, $db_user, $db_pass, $db_name;
-    static $pdo = null;
-    if ($pdo instanceof PDO) return $pdo;
+/**
+ * Audit Logging Helper
+ */
 
-    $pdo = new PDO("mysql:host={$db_host};dbname={$db_name};charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
-    return $pdo;
+// getAuditPdo() ከ db_config.php ጋር እንዳይጋጭ በ if (!function_exists) እንሸፍነዋለን
+if (!function_exists('getAuditPdo')) {
+    function getAuditPdo(): PDO {
+        global $db_host, $db_user, $db_pass, $db_name;
+        static $pdo = null;
+        if ($pdo instanceof PDO) return $pdo;
+
+        // MAMP Port 8889 መጠቀም አስፈላጊ ከሆነ በ Host ላይ ወይም በ Port ሊጨመር ይችላል
+        $port = 8889; 
+        $pdo = new PDO("mysql:host={$db_host};port={$port};dbname={$db_name};charset=utf8mb4", $db_user, $db_pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        return $pdo;
+    }
 }
 
 /** Write an audit event without exposing database errors to API clients. */
@@ -24,8 +33,11 @@ function logActivity($db, ?int $userId, ?string $fullName, string $action, strin
         if ($db instanceof PDO) {
             $stmt = $db->prepare('INSERT INTO audit_logs (user_id, full_name, action, details, ip_address) VALUES (:user_id, :full_name, :action, :details, :ip_address)');
             $stmt->execute([
-                ':user_id' => $userId, ':full_name' => $fullName, ':action' => $action,
-                ':details' => $details, ':ip_address' => $ipAddress,
+                ':user_id' => $userId, 
+                ':full_name' => $fullName, 
+                ':action' => $action,
+                ':details' => $details, 
+                ':ip_address' => $ipAddress,
             ]);
             return true;
         }
@@ -67,3 +79,4 @@ function getAuditActor($db): array {
     if (!$actor) return ['id' => null, 'name' => null, 'role' => null];
     return ['id' => (int) $actor['id'], 'name' => $actor['username'], 'role' => $actor['role']];
 }
+?>

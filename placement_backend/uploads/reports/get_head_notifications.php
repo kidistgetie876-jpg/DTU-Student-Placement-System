@@ -3,7 +3,7 @@ header('Access-Control-Allow-Origin: http://localhost:3000');
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/db_config.php';
+require_once __DIR__ . '/../../config/db_config.php';
 $db = getDbConnection();
 
 $dept_id = isset($_GET['dept_id']) ? intval($_GET['dept_id']) : 0;

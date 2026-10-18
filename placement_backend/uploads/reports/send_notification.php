@@ -5,7 +5,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/db_config.php';
+require_once __DIR__ . '/../../config/db_config.php';
 $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

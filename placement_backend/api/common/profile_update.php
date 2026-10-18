@@ -21,18 +21,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_scoring.php';
 $db = getDbConnection();
 
 function loadPlacementWeights(mysqli $db): array
 {
-    $weights = ['gpa' => 40.0, 'grade12' => 20.0, 'coc' => 30.0, 'gender' => 3.0, 'disability' => 3.0, 'minority' => 4.0];
-    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight FROM placement_settings WHERE id = 1 LIMIT 1');
+    $weights = ['gpa' => 30.0, 'grade12' => 20.0, 'coc' => 50.0, 'g12_total_base' => 600.0, 'gender' => 0.0, 'disability' => 0.0, 'minority' => 0.0];
+    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, gender_weight, disability_weight, minority_weight FROM placement_settings WHERE id = 1 LIMIT 1');
     if ($result) {
         $row = $result->fetch_assoc();
         $columns = [
             'gpa' => 'gpa_weight',
             'grade12' => 'grade_12_weight',
             'coc' => 'coc_weight',
+            'g12_total_base' => 'g12_total_base',
             'gender' => 'gender_weight',
             'disability' => 'disability_weight',
             'minority' => 'minority_weight',
@@ -48,12 +50,15 @@ function loadPlacementWeights(mysqli $db): array
 
 function calculateCumulativeScore(float $gpa, float $grade12, float $coc, string $gender, string $disability, string $minority, array $weights): float
 {
-    $scores = ['gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)), 'grade12' => min(100, max(0, $grade12)), 'coc' => min(100, max(0, ($coc / 30) * 100)), 'gender' => strtolower($gender) === 'female' ? 100 : 0, 'disability' => in_array(strtolower($disability), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0, 'minority' => in_array(strtolower($minority), ['yes', 'y', 'true', '1', 'on'], true) ? 100 : 0];
-    $totalWeight = array_sum($weights);
-    if ($totalWeight <= 0) return 0.0;
-    $weightedTotal = 0.0;
-    foreach ($scores as $key => $score) $weightedTotal += $score * (float) $weights[$key];
-    return round(min(100, max(0, $weightedTotal / $totalWeight)), 2);
+    return calculatePlacementCumulativeScore(
+        $gpa,
+        $grade12,
+        $coc,
+        $gender,
+        $disability,
+        $minority,
+        $weights
+    );
 }
 
 function respond(array $payload, int $status = 200): void
@@ -74,6 +79,12 @@ if (!is_array($data) && !empty($_POST)) {
 }
 if (!is_array($data)) {
     respond(['success' => false, 'message' => 'Invalid request payload. Send the profile as JSON.'], 400);
+}
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+if (strtolower((string) ($_SESSION['role'] ?? '')) === 'registrar' && array_key_exists('grade_12_result', $data)) {
+    respond(['success' => false, 'message' => 'Grade 12 results are Ministry-owned and cannot be changed by registrars.'], 403);
 }
 
 $userId = (int) ($data['user_id'] ?? $data['student_id'] ?? $data['id'] ?? 0);
@@ -102,6 +113,22 @@ $grade12 = (float) ($data['grade_12_result'] ?? 0);
 $coc = array_key_exists('coc_result', $data) && $data['coc_result'] !== '' && $data['coc_result'] !== null
     ? (float) $data['coc_result']
     : null;
+if (!array_key_exists('grade_12_result', $data) && $userId > 0) {
+    $grade12Lookup = $db->prepare('SELECT grade_12_result FROM student_data WHERE user_id = ? LIMIT 1');
+    if (!$grade12Lookup) {
+        respond(['success' => false, 'message' => 'Could not prepare the existing Grade 12 result lookup.'], 500);
+    }
+    $grade12Lookup->bind_param('i', $userId);
+    if (!$grade12Lookup->execute()) {
+        $grade12Lookup->close();
+        respond(['success' => false, 'message' => 'Could not load the existing Grade 12 result.'], 500);
+    }
+    $currentStudent = $grade12Lookup->get_result()->fetch_assoc();
+    $grade12Lookup->close();
+    if ($currentStudent && is_numeric($currentStudent['grade_12_result'])) {
+        $grade12 = (float) $currentStudent['grade_12_result'];
+    }
+}
 
 if ($userId > 0 && ($email === '' || $username === '' || $firstName === '' || $lastName === '')) {
     $userLookup = $db->prepare('SELECT first_name, last_name, username, email FROM users WHERE id = ? LIMIT 1');
@@ -129,7 +156,7 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 if ($stream === '') {
     respond(['success' => false, 'message' => 'Select Natural Science or Social Science before saving.'], 400);
 }
-if ($gpa < 0 || $gpa > 4 || $grade12 < 0 || $grade12 > 100 || ($coc !== null && ($coc < 0 || $coc > 30))) {
+if ($gpa < 0 || $gpa > 4 || $grade12 < 0 || ($coc !== null && ($coc < 0 || $coc > 30))) {
     respond(['success' => false, 'message' => 'Scores are outside their allowed ranges.'], 400);
 }
 
@@ -146,6 +173,9 @@ if ($userCheck->get_result()->num_rows !== 1) {
 $userCheck->close();
 
 $weights = loadPlacementWeights($db);
+if ($grade12 > $weights['g12_total_base']) {
+    respond(['success' => false, 'message' => 'Grade 12 result cannot exceed the configured total base mark.'], 400);
+}
 $cumulativeAvg = calculateCumulativeScore($gpa, $grade12, $coc ?? 0, $gender, $disability, $minority, $weights);
 
 $sql = 'INSERT INTO student_data

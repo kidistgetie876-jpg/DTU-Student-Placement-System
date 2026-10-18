@@ -56,7 +56,8 @@ describe('MissingScoresForm', () => {
 
     expect(screen.getByLabelText('GPA (4.0)')).toHaveValue(3.2);
     expect(screen.getByLabelText('Stream')).toHaveValue('Social');
-    expect(screen.getByLabelText('Grade 12 Result')).toHaveValue(85);
+    expect(screen.getByLabelText('Grade 12 Result')).toHaveValue('85');
+    expect(screen.getByLabelText('Grade 12 Result')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('COC Result')).toHaveValue(24);
     expect(screen.getByLabelText('Gender')).toHaveValue('Female');
     expect(screen.getByLabelText('Disability')).toHaveValue('Yes');
@@ -75,12 +76,12 @@ describe('MissingScoresForm', () => {
         email: 'marta@example.com',
         stream: 'Social',
         gpa: '3.5',
-        grade_12_result: 85,
         coc_result: 24,
         disability: 'Yes',
         minority: 'No',
       })
     ));
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('grade_12_result');
     expect(await screen.findByRole('heading', { name: 'Returned to registrar dashboard' })).toBeInTheDocument();
   });
 });

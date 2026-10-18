@@ -1,9 +1,5 @@
 <?php
-/**
- * db_config.php - Integrated Database Configuration & CORS Manager
- * This file handles database connection and allows React frontend to communicate with PHP.
- */
-
+/** Shared MAMP / hosted database connection and CORS bootstrap. */
 if (session_status() === PHP_SESSION_NONE) {
     session_name('DTUPLACEMENTSESSID');
 }
@@ -11,93 +7,86 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/cors.php';
 sendCorsHeaders();
 
-// 2. የሚፈቀዱ የጥሪ አይነቶች (Methods) እና Header-ዎች
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-
-// 3. ለ OPTIONS (Preflight) ጥያቄ ምላሽ መስጠት - ለሪአክት ግንኙነት በጣም አስፈላጊ ነው
-$requestMethod = $_SERVER['REQUEST_METHOD'] ?? '';
-if ($requestMethod === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
-
-function getDatabaseEnvValue(string ...$keys): ?string
-{
-    foreach ($keys as $key) {
-        $value = getenv($key);
-        if ($value !== false) {
-            return (string) $value;
+if (!function_exists('getDatabaseEnvValue')) {
+    function getDatabaseEnvValue(string ...$keys): ?string
+    {
+        foreach ($keys as $key) {
+            $value = getenv($key);
+            if ($value !== false && $value !== '') {
+                return (string) $value;
+            }
         }
+        return null;
     }
-
-    return null;
 }
 
-function parseDatabaseUrl(string $databaseUrl): array
-{
-    $parsed = parse_url($databaseUrl);
-    if ($parsed === false || empty($parsed['host'])) {
-        return [];
-    }
-
-    $databaseName = '';
-    if (isset($parsed['path'])) {
-        $databaseName = ltrim((string) $parsed['path'], '/');
-    }
-
-    return [
-        'host' => (string) $parsed['host'],
-        'port' => isset($parsed['port']) ? (string) $parsed['port'] : '3306',
-        'user' => isset($parsed['user']) ? rawurldecode((string) $parsed['user']) : '',
-        'password' => isset($parsed['pass']) ? rawurldecode((string) $parsed['pass']) : '',
-        'name' => $databaseName,
-    ];
-}
-
-// Support standard DB_* variables as well as common hosting aliases such as Render's MYSQL* variables.
+// 1. የ MAMP እና Render ኮንፊግሬሽን ማዘጋጀት
 $isHosted = strtolower((string) (getenv('RENDER') ?: '')) === 'true';
-$databaseUrl = getDatabaseEnvValue('DATABASE_URL', 'CLEARDB_DATABASE_URL', 'JAWSDB_URL', 'MYSQL_URL');
-$databaseUrlConfig = $databaseUrl !== null ? parseDatabaseUrl($databaseUrl) : [];
 
-$db_host = getDatabaseEnvValue('DB_HOST', 'MYSQLHOST', 'MYSQL_HOST', 'DATABASE_HOST') ?: ($databaseUrlConfig['host'] ?? ($isHosted ? '' : 'localhost'));
-$db_user = getDatabaseEnvValue('DB_USER', 'MYSQLUSER', 'MYSQL_USER', 'DATABASE_USER') ?: ($databaseUrlConfig['user'] ?? ($isHosted ? '' : 'root'));
-$db_pass = getDatabaseEnvValue('DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD', 'DATABASE_PASSWORD');
-if ($db_pass === null || $db_pass === '') {
-    $db_pass = $databaseUrlConfig['password'] ?? '';
+$db_host = getDatabaseEnvValue('DB_HOST', 'MYSQLHOST', 'MYSQL_HOST') ?: ($isHosted ? '' : '127.0.0.1');
+$db_user = getDatabaseEnvValue('DB_USER', 'MYSQLUSER', 'MYSQL_USER') ?: ($isHosted ? '' : 'root');
+$db_pass = getDatabaseEnvValue('DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD');
+if ($db_pass === null) {
+    $db_pass = $isHosted ? '' : 'root'; // MAMP Default password
 }
-$db_name = getDatabaseEnvValue('DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE', 'DATABASE_NAME') ?: ($databaseUrlConfig['name'] ?? ($isHosted ? '' : 'placement_db'));
-$db_port = getDatabaseEnvValue('DB_PORT', 'MYSQLPORT', 'MYSQL_PORT', 'DATABASE_PORT');
-if ($db_port === null || $db_port === '') {
-    $db_port = $databaseUrlConfig['port'] ?? '3306';
-}
-$db_port = filter_var($db_port, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+$db_name = getDatabaseEnvValue('DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE') ?: ($isHosted ? '' : 'placement_db');
+
+// MAMP MySQL Port = 8889
+$configuredPort = getDatabaseEnvValue('DB_PORT', 'MYSQLPORT', 'MYSQL_PORT');
+$portCandidates = $configuredPort !== null ? [$configuredPort] : ($isHosted ? ['3306'] : ['8889', '3306']);
 
 $mysqli = null;
-if ($db_host === '' || $db_user === '' || $db_name === '' || $db_port === false) {
-    error_log('Database configuration is incomplete. Falling back to default public-page responses.');
-} else {
-    try {
-        $mysqli = new mysqli($db_host, $db_user, $db_pass, $db_name, (int) $db_port);
-        if ($mysqli->connect_error) {
-            throw new RuntimeException($mysqli->connect_error);
-        }
+$lastConnectionError = '';
 
-        if (!$mysqli->set_charset('utf8mb4')) {
-            throw new RuntimeException($mysqli->error);
+if ($db_host === '' || $db_user === '' || $db_name === '') {
+    error_log('Database configuration is incomplete.');
+} else {
+    foreach ($portCandidates as $portCandidate) {
+        $port = (int) $portCandidate;
+        try {
+            // በ 'root' ፓስወርድ እና በ ባዶ ('') ፓስወርድ መሞከር
+            $passwordsToTry = [$db_pass, ''];
+            foreach ($passwordsToTry as $pass) {
+                $connection = @new mysqli($db_host, $db_user, $pass, $db_name, $port);
+                if ($connection->connect_errno === 0) {
+                    $connection->set_charset('utf8mb4');
+                    $mysqli = $connection;
+                    break 2; // ከተገናኘ ውጣ
+                } else {
+                    $lastConnectionError = $connection->connect_error;
+                }
+            }
+        } catch (Throwable $error) {
+            $lastConnectionError = $error->getMessage();
         }
-    } catch (Throwable $error) {
-        error_log('Database connection failed: ' . $error->getMessage());
-        $mysqli = null;
     }
 }
 
-/**
- * በሌሎች የ API ፋይሎች ላይ (ለምሳሌ login.php) ዳቤዙን ለመጥራት የምንጠቀመው ፋንክሽን
- */
-function getDbConnection(): ?mysqli {
-    global $mysqli;
-    return $mysqli;
+if (!function_exists('getDbConnection')) {
+    function getDbConnection(): ?mysqli
+    {
+        global $mysqli, $lastConnectionError;
+        if (!$mysqli instanceof mysqli) {
+            throw new RuntimeException('Database connection failed: ' . $lastConnectionError);
+        }
+        return $mysqli;
+    }
 }
 
+// Audit Log PDO Connection Helper
+if (!function_exists('getAuditPdo')) {
+    function getAuditPdo(): ?PDO
+    {
+        global $db_host, $db_name, $db_user, $db_pass, $mysqli;
+        if (!$mysqli) return null;
+        try {
+            return new PDO("mysql:host=$db_host;dbname=$db_name;port=8889;charset=utf8mb4", $db_user, $db_pass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+}
 ?>

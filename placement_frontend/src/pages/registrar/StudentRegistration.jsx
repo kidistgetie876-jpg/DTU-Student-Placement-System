@@ -12,7 +12,6 @@ const initialForm = {
   phone: '',
   gender: 'Male',
   gpa: '',
-  grade12: '',
   coc: '',
   stream: '',
   department: '',
@@ -73,7 +72,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
     if (!form.stream) return 'Please select a stream.';
 
     if (Number(form.gpa) < 0 || Number(form.gpa) > 4) return 'CGPA must be between 0 and 4.';
-    if (Number(form.grade12) < 0 || Number(form.grade12) > 100) return 'G12 score must be between 0 and 100.';
     if (form.coc !== '' && (Number(form.coc) < 0 || Number(form.coc) > 30)) return 'COC score must be between 0 and 30.';
     return '';
   };
@@ -130,7 +128,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
         stream: form.stream || null,
         department: form.department || null,
         department_id: form.department || null,
-        grade_12_result: Number(form.grade12) || 0,
         coc_result: form.coc.trim() !== '' ? form.coc.trim() : null,
         disability: form.disability,
         minority: form.minority,
@@ -203,10 +200,6 @@ const StudentRegistration = ({ onBack, onSuccess }) => {
                   <div className="col-md-4">
                     <label className="form-label fw-semibold">CGPA</label>
                     <input type="number" step="0.01" className="form-control" name="gpa" value={form.gpa} onChange={handleChange} />
-                  </div>
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">G12 Score</label>
-                    <input type="number" min="0" max="100" step="0.01" className="form-control" name="grade12" value={form.grade12} onChange={handleChange} />
                   </div>
                   <div className="col-md-4">
                     <label className="form-label fw-semibold">COC / Certificate <span className="text-muted fw-normal">(Optional)</span></label>

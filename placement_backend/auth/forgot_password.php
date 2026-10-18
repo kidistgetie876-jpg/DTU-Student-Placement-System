@@ -2,6 +2,8 @@
 use PHPMailer\PHPMailer\Exception;
 use PHPMailer\PHPMailer\PHPMailer;
 
+require_once __DIR__ . '/../config/cors.php';
+sendCorsHeaders();
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../config/db_config.php';

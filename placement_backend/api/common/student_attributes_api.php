@@ -18,6 +18,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_scoring.php';
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -135,57 +136,26 @@ try {
         $createProfile->close();
     }
 
-    $weights = [
-        'gpa' => 40.0,
-        'grade12' => 20.0,
-        'coc' => 30.0,
-        'gender' => 3.0,
-        'disability' => 3.0,
-        'minority' => 4.0,
-    ];
-    $weightsResult = $db->query(
-        'SELECT gpa_weight, grade_12_weight, coc_weight, gender_weight, disability_weight, minority_weight
-         FROM placement_settings WHERE id = 1 LIMIT 1'
-    );
-    if (!$weightsResult) {
-        throw new RuntimeException('Unable to load placement scoring weights: ' . $db->error);
-    }
-    $storedWeights = $weightsResult->fetch_assoc();
-    $weightsResult->free();
-    if ($storedWeights) {
-        foreach ([
-            'gpa' => 'gpa_weight',
-            'grade12' => 'grade_12_weight',
-            'coc' => 'coc_weight',
-            'gender' => 'gender_weight',
-            'disability' => 'disability_weight',
-            'minority' => 'minority_weight',
-        ] as $key => $column) {
-            if (isset($storedWeights[$column]) && is_numeric($storedWeights[$column]) && (float) $storedWeights[$column] >= 0) {
-                $weights[$key] = (float) $storedWeights[$column];
-            }
-        }
-    }
-
     $gpa = (float) ($profile['gpa'] ?? 0);
     $grade12 = (float) ($profile['grade_12_result'] ?? 0);
     $coc = (float) ($profile['coc_result'] ?? 0);
-    $scores = [
-        'gpa' => min(100, max(0, ($gpa <= 4 ? $gpa / 4 : $gpa / 100) * 100)),
-        'grade12' => min(100, max(0, $grade12)),
-        'coc' => min(100, max(0, ($coc / 30) * 100)),
-        'gender' => strtolower(trim((string) ($profile['gender'] ?? ''))) === 'female' ? 100 : 0,
-        'disability' => $disability === 'Yes' ? 100 : 0,
-        'minority' => $minority === 'Yes' ? 100 : 0,
-    ];
-    $totalWeight = array_sum($weights);
-    $cumulativeAverage = 0.0;
-    if ($totalWeight > 0) {
-        foreach ($scores as $key => $score) {
-            $cumulativeAverage += $score * $weights[$key];
-        }
-        $cumulativeAverage = round(min(100, max(0, $cumulativeAverage / $totalWeight)), 2);
+    $gender = trim((string) ($profile['gender'] ?? ''));
+
+    $scoreSettings = $db->query('SELECT g12_total_base FROM placement_settings WHERE id = 1 LIMIT 1');
+    if (!$scoreSettings) {
+        throw new RuntimeException('Unable to load Grade 12 scoring base: ' . $db->error);
     }
+    $scoreRules = $scoreSettings->fetch_assoc() ?: [];
+    $scoreSettings->free();
+    $cumulativeAverage = calculatePlacementCumulativeScore(
+        $gpa,
+        $grade12,
+        $coc,
+        $gender,
+        $disability,
+        $minority,
+        ['g12_total_base' => (float) ($scoreRules['g12_total_base'] ?? 600)]
+    );
 
     $update = $db->prepare(
         'UPDATE student_data

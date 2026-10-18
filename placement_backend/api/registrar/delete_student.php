@@ -27,10 +27,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
-if ($userId <= 0 || !in_array($role, ['registrar', 'admin'], true)) {
+if ($userId <= 0 || $role !== 'admin') {
     deleteStudentResponse([
         'success' => false,
-        'message' => 'Only registrars and administrators can delete student information.',
+        'message' => 'Only administrators can delete student information.',
     ], 403);
 }
 

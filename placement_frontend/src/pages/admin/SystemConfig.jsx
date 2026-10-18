@@ -20,7 +20,7 @@ const defaultSettings = {
     location: 'Registrar Office, Ground Floor, Main Campus, Debre Tabor, Ethiopia',
     phone1: '+251 988024266',
     phone2: '+251 995015403',
-    supportEmail: 'tsegayaaderajew021@gmail.com',
+    supportEmail: 'kidistgetie876@gmail.com',
     officeHours: 'Monday - Friday: 8:30 AM - 5:30 PM (Local Time)',
   },
   maintenance: {
@@ -37,12 +37,17 @@ const defaultSettings = {
     resultsDate: '2026-08-27',
     appealStart: '2026-08-27',
     appealEnd: '2026-08-30',
-    gpa_weight: 40,
+    gpa_weight: 30,
     grade_12_weight: 20,
-    coc_weight: 30,
-    gender_weight: 3,
-    disability_weight: 3,
-    minority_weight: 4,
+    coc_weight: 50,
+    g12_total_base: 600,
+    max_score_cap: 100,
+    female_bonus_points: 5,
+    disability_bonus_points: 5,
+    developing_region_female_bonus_points: 10,
+    developing_region_disability_bonus_points: 10,
+    general_quota_percent: 80,
+    reserved_female_quota_percent: 20,
     guideTitle: 'Placement Information & Student Guide',
     guideDescription: 'This guide explains the university placement process, criteria, login steps, department capacity rules, and result timelines for students at Debre Tabor University.',
     rulesTabLabel: 'Rules & Criteria',
@@ -144,12 +149,17 @@ const settingCards = [
 ];
 
 const placementWeightFields = [
-  ['gpa_weight', 'GPA Weight (%)'],
-  ['grade_12_weight', 'Grade 12 Weight (%)'],
-  ['coc_weight', 'COC Weight (%)'],
-  ['gender_weight', 'Gender Affirmative Action Weight (%)'],
-  ['disability_weight', 'Disability Affirmative Action Weight (%)'],
-  ['minority_weight', 'Minority Affirmative Action Weight (%)'],
+  ['grade_12_weight', 'Grade 12 Entrance / Remedial Result Weight (%)'],
+  ['gpa_weight', 'Semester GPA / CGPA Weight (%)'],
+  ['coc_weight', 'Department / COC Entrance Exam Weight (%)'],
+  ['g12_total_base', 'Grade 12 Total Base Mark (Out of)'],
+  ['max_score_cap', 'Maximum Score Cap (%)'],
+  ['female_bonus_points', 'Female Bonus Points'],
+  ['disability_bonus_points', 'Disability Bonus Points'],
+  ['developing_region_female_bonus_points', 'Developing Region / Minority (Female) Bonus Points'],
+  ['developing_region_disability_bonus_points', 'Developing Region / Minority (Disability) Bonus Points'],
+  ['general_quota_percent', 'General / Open Competition Quota (%)'],
+  ['reserved_female_quota_percent', 'Reserved Female Quota (%)'],
 ];
 
 const placementGuideFields = [
@@ -207,13 +217,21 @@ const placementGuideFields = [
   ['scheduleSummary', 'Schedule Summary', 3],
 ];
 
-const mergeSettings = (value) => ({
+const mergeSettings = (value) => {
+  const placement = { ...defaultSettings.placement, ...(value?.placement || {}) };
+  const baseWeightTotal = Number(placement.gpa_weight) + Number(placement.grade_12_weight) + Number(placement.coc_weight);
+  if (baseWeightTotal !== 100) {
+    placement.gpa_weight = 30;
+    placement.grade_12_weight = 20;
+    placement.coc_weight = 50;
+  }
+  return {
   ...defaultSettings,
   ...(value || {}),
   site: { ...defaultSettings.site, ...(value?.site || {}) },
   contact: { ...defaultSettings.contact, ...(value?.contact || {}) },
   maintenance: { ...defaultSettings.maintenance, ...(value?.maintenance || {}) },
-  placement: { ...defaultSettings.placement, ...(value?.placement || {}) },
+  placement,
   homepage: { ...defaultSettings.homepage, ...(value?.homepage || {}) },
   navigation: defaultSettings.navigation.map((defaultLink) => {
     const savedLink = Array.isArray(value?.navigation)
@@ -221,7 +239,8 @@ const mergeSettings = (value) => ({
       : null;
     return { ...defaultLink, ...(savedLink || {}) };
   }),
-});
+  };
+};
 
 const normalizeHomepageSettings = (value) => {
   let homepage = value?.public_portal || value?.homepage || value || {};
@@ -344,11 +363,20 @@ const SystemConfig = () => {
   };
 
   const saveSettings = async () => {
-    setSaving(true);
     setError('');
     setMessage('');
     setSaveSuccess('');
     setSaveError('');
+    if (activeEditor === 'placement') {
+      const placement = settings.placement;
+      const baseTotal = Number(placement.grade_12_weight) + Number(placement.gpa_weight) + Number(placement.coc_weight);
+      const quotaTotal = Number(placement.general_quota_percent) + Number(placement.reserved_female_quota_percent);
+      if (baseTotal !== 100 || Number(placement.max_score_cap) !== 100 || quotaTotal !== 100) {
+        setSaveError('Base weights and quotas must each total 100%, and the score cap must be 100%.');
+        return;
+      }
+    }
+    setSaving(true);
     try {
       const placementFormState = settings.placement;
       const payload = activeEditor === 'placement'
@@ -364,9 +392,14 @@ const SystemConfig = () => {
           gpa_weight: Number(placement.gpa_weight),
           grade_12_weight: Number(placement.grade_12_weight),
           coc_weight: Number(placement.coc_weight),
-          gender_weight: Number(placement.gender_weight),
-          disability_weight: Number(placement.disability_weight),
-          minority_weight: Number(placement.minority_weight),
+          g12_total_base: Number(placement.g12_total_base),
+          max_score_cap: Number(placement.max_score_cap),
+          female_bonus_points: Number(placement.female_bonus_points),
+          disability_bonus_points: Number(placement.disability_bonus_points),
+          developing_region_female_bonus_points: Number(placement.developing_region_female_bonus_points),
+          developing_region_disability_bonus_points: Number(placement.developing_region_disability_bonus_points),
+          general_quota_percent: Number(placement.general_quota_percent),
+          reserved_female_quota_percent: Number(placement.reserved_female_quota_percent),
         });
         if (!rulesResponse.data?.success) {
           throw new Error(rulesResponse.data?.message || 'Unable to save placement scoring weights.');
@@ -653,7 +686,18 @@ const SystemConfig = () => {
                     {placementWeightFields.map(([key, label]) => (
                       <div className="col-md-6" key={key}>
                         <label className="form-label" htmlFor={`placement-${key}`}>{label}</label>
-                        <input id={`placement-${key}`} type="number" min="0" max="100" step="any" className="form-control" value={settings.placement[key]} onChange={(event) => updateSetting('placement', key, event.target.value)} required />
+                        <input
+                          id={`placement-${key}`}
+                          type="number"
+                          min={key === 'g12_total_base' ? '0.01' : '0'}
+                          max={key === 'g12_total_base' ? '9999.99' : '100'}
+                          step="any"
+                          className="form-control"
+                          value={settings.placement[key]}
+                          onChange={(event) => updateSetting('placement', key, event.target.value)}
+                          readOnly={key === 'max_score_cap'}
+                          required
+                        />
                       </div>
                     ))}
                     <div className="col-12 mt-4">

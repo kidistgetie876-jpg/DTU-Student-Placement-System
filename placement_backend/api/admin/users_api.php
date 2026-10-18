@@ -62,6 +62,62 @@ function jsonResponse($payload, int $code = 200) {
     exit;
 }
 
+function usersSelectQuery(mysqli $conn): string {
+    $studentColumns = [];
+    $columnResult = $conn->query('SHOW COLUMNS FROM student_data');
+    if ($columnResult instanceof mysqli_result) {
+        while ($column = $columnResult->fetch_assoc()) {
+            $studentColumns[(string) $column['Field']] = true;
+        }
+        $columnResult->free();
+    }
+
+    $firstNameFields = [];
+    foreach (['given_name', 'first_name'] as $field) {
+        if (isset($studentColumns[$field])) {
+            $firstNameFields[] = "NULLIF(student_data.{$field}, '')";
+        }
+    }
+    $lastNameFields = [];
+    foreach (['father_name', 'last_name'] as $field) {
+        if (isset($studentColumns[$field])) {
+            $lastNameFields[] = "NULLIF(student_data.{$field}, '')";
+        }
+    }
+    $firstNameFields[] = 'users.first_name';
+    $lastNameFields[] = 'users.last_name';
+
+    if (isset($studentColumns['field_of_study'])) {
+        $stream = 'student_data.field_of_study';
+    } elseif (isset($studentColumns['stream'])) {
+        $stream = 'student_data.stream';
+    } else {
+        $stream = "''";
+    }
+
+    $join = '';
+    if (isset($studentColumns['admission_number'])) {
+        $join = ' LEFT JOIN student_data ON student_data.admission_number = users.id_number';
+        $stream = isset($studentColumns['field_of_study']) || isset($studentColumns['stream'])
+            ? $stream
+            : "''";
+    } elseif (isset($studentColumns['user_id'])) {
+        $join = ' LEFT JOIN student_data ON student_data.user_id = users.id';
+    } else {
+        $stream = "''";
+        $firstNameFields = ['users.first_name'];
+        $lastNameFields = ['users.last_name'];
+    }
+
+    return 'SELECT users.id,
+                   COALESCE(' . implode(', ', $firstNameFields) . ') AS first_name,
+                   COALESCE(' . implode(', ', $lastNameFields) . ') AS last_name,
+                   users.username, users.email, users.phone_number,
+                   users.id_number, ' . $stream . ' AS stream,
+                   users.role, users.created_at
+            FROM users' . $join;
+}
+
 // Validate Ethiopian phone number format
 function normalizeOptionalValue($value): ?string {
     if ($value === null) return null;
@@ -84,17 +140,10 @@ $method = $_SERVER['REQUEST_METHOD'];
 try {
     // GET - Fetch users
     if ($method === 'GET') {
+        $usersSelect = usersSelectQuery($conn);
         if (isset($_GET['id_number']) && trim((string) $_GET['id_number']) !== '') {
             $idNumber = trim((string) $_GET['id_number']);
-            $stmt = $conn->prepare("SELECT users.id,
-                COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
-                COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
-                users.username, users.email, users.phone_number,
-                users.id_number, student_data.stream AS stream,
-                users.role, users.created_at
-                FROM users
-                LEFT JOIN student_data ON student_data.user_id = users.id
-                WHERE LOWER(TRIM(users.id_number)) = LOWER(TRIM(?)) LIMIT 1");
+            $stmt = $conn->prepare($usersSelect . ' WHERE LOWER(TRIM(users.id_number)) = LOWER(TRIM(?)) LIMIT 1');
             if (!$stmt) throw new Exception($conn->error);
             $stmt->bind_param('s', $idNumber);
             if (!$stmt->execute()) throw new Exception($stmt->error);
@@ -110,15 +159,7 @@ try {
         if (isset($_GET['id']) && is_numeric($_GET['id'])) {
             // Get single user
             $id = (int)$_GET['id'];
-            $stmt = $conn->prepare("SELECT users.id,
-                COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
-                COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
-                users.username, users.email, users.phone_number,
-                users.id_number, student_data.stream AS stream,
-                users.role, users.created_at
-                FROM users
-                LEFT JOIN student_data ON student_data.user_id = users.id
-                WHERE users.id = ? LIMIT 1");
+            $stmt = $conn->prepare($usersSelect . ' WHERE users.id = ? LIMIT 1');
             if (!$stmt) throw new Exception($conn->error);
             $stmt->bind_param('i', $id);
             $stmt->execute();
@@ -132,15 +173,7 @@ try {
         } else {
             // Get all users unless a limit is explicitly requested.
             $limit = (isset($_GET['limit']) && is_numeric($_GET['limit'])) ? (int)$_GET['limit'] : 0;
-            $query = "SELECT users.id,
-                COALESCE(NULLIF(student_data.first_name, ''), users.first_name) AS first_name,
-                COALESCE(NULLIF(student_data.last_name, ''), users.last_name) AS last_name,
-                users.username, users.email, users.phone_number,
-                users.id_number, student_data.stream AS stream,
-                users.role, users.created_at
-                FROM users
-                LEFT JOIN student_data ON student_data.user_id = users.id
-                ORDER BY users.created_at DESC";
+            $query = $usersSelect . ' ORDER BY users.created_at DESC';
 
             if ($limit > 0) {
                 $query .= ' LIMIT ?';

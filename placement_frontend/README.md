@@ -27,12 +27,38 @@ The React app runs at:
 
 - `http://localhost:3000`
 
-### Backend
+For a separately hosted frontend, set `REACT_APP_API_BASE_URL` to the PHP backend
+URL and configure `FRONTEND_ORIGIN` (or comma-separated `FRONTEND_ORIGINS`) on the
+backend to the exact frontend origin. Credentialed requests require an explicit
+allowed origin; wildcard CORS origins are not supported.
 
-Start Apache and MySQL from XAMPP. With this project in the XAMPP `htdocs` folder,
-the backend API base is:
+### Render deployment
 
-- `http://localhost/student-placement/placement_backend`
+The root `render.yaml` deploys the React frontend and the PHP backend as separate
+services. Configure `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` on the
+backend service with credentials for the MySQL database containing the placement
+system schema. Set `FRONTEND_ORIGIN` to the exact public URL of the frontend
+(including `https://`). The frontend build uses
+`https://placement-backend-21ap.onrender.com` as its backend URL; override
+`REACT_APP_API_BASE_URL` if the backend service uses a different URL.
+
+### Local MAMP backend
+
+Start Apache and MySQL from MAMP. With MAMP's default Apache port (8888) and this
+project in `C:\MAMP\htdocs`, the backend API base is:
+
+- `http://localhost:8888/student-placement/placement_backend`
+
+Run the frontend from `placement_frontend` with `npm start`, then open
+`http://localhost:3000`. When the frontend is opened on localhost, API requests
+use the local MAMP backend rather than the hosted Render backend. If Apache uses
+a different port, set `REACT_APP_LOCAL_API_BASE_URL` in the frontend environment
+to the matching backend URL and restart the development server.
+
+The local database config defaults to database `placement_db`, MySQL user `root`,
+password `root` (with an empty-password fallback), and MySQL port `8889`. Create
+or import the placement system database in MAMP MySQL, or configure `DB_HOST`,
+`DB_NAME`, `DB_USER`, `DB_PASSWORD`, and `DB_PORT` to match your local database.
 
 ## Available Scripts
 

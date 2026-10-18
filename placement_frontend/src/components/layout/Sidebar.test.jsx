@@ -19,7 +19,7 @@ describe('Sidebar', () => {
     ['registrar', 'overview', 'Department Status'],
     ['admin', 'dashboard', 'Audit Logs / System Health'],
     ['head', 'capacity', 'Department Capacity'],
-    ['student', 'result', 'Submit Complaints / Help'],
+    ['student', 'result', 'Submit Appeal'],
   ])('renders the %s navigation with an active item and role-specific menu', (role, activeItem, menuItem) => {
     const onSelect = jest.fn();
 
@@ -51,6 +51,13 @@ describe('Sidebar', () => {
     renderSidebar({ role: 'head', activeItem: 'overview', onSelect: jest.fn() });
 
     expect(screen.queryByRole('button', { name: 'Preferences' })).not.toBeInTheDocument();
+  });
+
+  it('does not show the removed profile tab in the Student navigation', () => {
+    renderSidebar({ role: 'student', activeItem: 'overview', onSelect: jest.fn() });
+
+    expect(screen.queryByRole('button', { name: 'Profile & Preferences' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit Appeal' })).toBeInTheDocument();
   });
 
   it('translates common sidebar labels when Amharic is selected', () => {

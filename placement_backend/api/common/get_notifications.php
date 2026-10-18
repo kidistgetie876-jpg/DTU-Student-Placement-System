@@ -18,9 +18,12 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-$userId = (int) ($_SESSION['user_id'] ?? 0);
+$sessionUserId = (string) ($_SESSION['user_id'] ?? '');
+$userId = ctype_digit($sessionUserId) ? (int) $sessionUserId : 0;
 $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
-if ($userId <= 0 || !in_array($role, ['admin', 'registrar', 'head', 'hod', 'coordinator', 'student'], true)) {
+$admissionNumber = trim((string) ($_SESSION['admission_number'] ?? ($role === 'student' ? $sessionUserId : '')));
+$hasStudentSession = $role === 'student' && $admissionNumber !== '';
+if (($userId <= 0 && !$hasStudentSession) || !in_array($role, ['admin', 'registrar', 'head', 'hod', 'coordinator', 'student'], true)) {
     notificationsResponse(['success' => false, 'message' => 'Authentication is required.'], 401);
 }
 
@@ -47,22 +50,34 @@ try {
 
     $notifications = [];
     if ($role === 'student') {
-        ensureStudentNotificationReadsTable($db);
-        $query = $db->prepare(
-            "SELECT n.id, n.sender_role, n.title, n.message, n.created_at,
-                     CASE WHEN notification_reads.notification_id IS NOT NULL THEN 1 ELSE n.is_read END AS is_read,
-                     'general' AS notification_type
-             FROM notifications n
-             LEFT JOIN student_notification_reads notification_reads
-                ON notification_reads.notification_id = n.id AND notification_reads.student_id = ?
-             WHERE (n.recipient_id = ? AND n.recipient_role = 'student')
-                OR (n.recipient_role = 'student' AND n.recipient_id IS NULL)
-             ORDER BY created_at DESC, id DESC"
-        );
+        if ($userId > 0) {
+            ensureStudentNotificationReadsTable($db);
+            $query = $db->prepare(
+                "SELECT n.id, n.sender_role, n.title, n.message, n.created_at,
+                         CASE WHEN notification_reads.notification_id IS NOT NULL THEN 1 ELSE n.is_read END AS is_read,
+                         'general' AS notification_type
+                 FROM notifications n
+                 LEFT JOIN student_notification_reads notification_reads
+                    ON notification_reads.notification_id = n.id AND notification_reads.student_id = ?
+                 WHERE (n.recipient_id = ? AND n.recipient_role = 'student')
+                    OR (n.recipient_role = 'student' AND n.recipient_id IS NULL)
+                 ORDER BY created_at DESC, id DESC"
+            );
+        } else {
+            $query = $db->prepare(
+                "SELECT id, sender_role, title, message, created_at, is_read,
+                        'general' AS notification_type
+                 FROM notifications
+                 WHERE recipient_role = 'student' AND recipient_id IS NULL
+                 ORDER BY created_at DESC, id DESC"
+            );
+        }
         if (!$query) {
             throw new RuntimeException('Unable to prepare student notification query: ' . $db->error);
         }
-        $query->bind_param('ii', $userId, $userId);
+        if ($userId > 0) {
+            $query->bind_param('ii', $userId, $userId);
+        }
     } elseif (in_array($role, ['head', 'hod', 'coordinator'], true)) {
         $query = $db->prepare(
             "SELECT id, sender_role, title, message, created_at, is_read, 'general' AS notification_type
@@ -98,7 +113,7 @@ try {
         $notifications[] = $row;
     }
     $query->close();
-    if ($role === 'student') {
+    if ($role === 'student' && $userId > 0) {
         $meetings = $db->prepare(
             "SELECT id, 'registrar' AS sender_role, title, message, created_at, is_read,
                     'meeting' AS notification_type
