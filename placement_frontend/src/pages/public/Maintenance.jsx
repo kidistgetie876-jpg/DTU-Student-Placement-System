@@ -4,8 +4,9 @@ import { FiSettings } from 'react-icons/fi';
 import dtuLogo from '../../assets/image.png';
 
 const DEFAULT_MAINTENANCE = {
-  title: 'System Under Maintenance',
-  message: 'The DTU Placement Portal is currently undergoing scheduled system updates. Services will resume shortly.',
+  reason: 'Scheduled System Maintenance & Updates',
+  title: 'Scheduled System Maintenance',
+  message: 'We are performing scheduled maintenance and system updates to improve the reliability and performance of the DTU Placement Portal. Please check back soon.',
   expectedReturn: 'Soon',
 };
 
@@ -31,6 +32,9 @@ const Maintenance = ({ settings = {} }) => {
         </div>
         <p className="text-uppercase fw-semibold small text-primary mb-2">Debre Tabor University</p>
         <h1 id="maintenance-title" className="h2 fw-bold mb-3">{title}</h1>
+        {settings.reason?.trim() && (
+          <p className="small fw-semibold text-primary mb-2">{settings.reason.trim()}</p>
+        )}
         <p className="text-secondary mb-4" style={{ whiteSpace: 'pre-wrap' }}>{message}</p>
         {expectedReturn && (
           <p className="border-top pt-3 mb-4">

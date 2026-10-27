@@ -87,12 +87,21 @@ const ContactMessages = () => {
         throw new Error(response.data?.message || 'Unable to send the reply.');
       }
 
-      const updatedMessage = { ...selectedMessage, status: 'replied' };
+      const updatedMessage = {
+        ...selectedMessage,
+        status: 'Replied',
+        admin_reply: replyText.trim(),
+      };
       setMessages((current) => current.map((item) => (
         String(item.id) === String(selectedMessage.id) ? updatedMessage : item
       )));
-      setSuccess(response.data.message || 'Reply sent successfully!');
-      closeMessage();
+      setSelectedMessage(updatedMessage);
+      if (response.data.email_sent === true) {
+        setSuccess(response.data.message || 'Email sent and reply recorded.');
+        closeMessage();
+      } else {
+        setError(response.data.message || 'Reply was saved, but the email could not be sent. You can retry after checking SMTP configuration.');
+      }
     } catch (sendError) {
       setError(sendError.response?.data?.message || sendError.message || 'Unable to send the reply.');
     } finally {

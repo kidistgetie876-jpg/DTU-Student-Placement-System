@@ -205,13 +205,13 @@ const AdminDashboard = () => {
   if (!admin) return <div className="text-center mt-5">Loading...</div>;
 
   return (
-    <div className="admin-dashboard container-fluid px-0">
+    <div className="admin-dashboard container-fluid px-0 min-h-screen d-flex flex-column">
       <OfficialPrintLetterhead
         office="OFFICE OF UNIVERSITY ADMINISTRATION"
         title="OFFICIAL ADMINISTRATIVE RECORD"
         metadata={`Generated on: ${new Date().toLocaleDateString()}`}
       />
-      <div className="row g-0">
+      <div className="row g-0 flex-grow-1">
         <Sidebar role="admin" activeItem={tab} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
@@ -227,29 +227,6 @@ const AdminDashboard = () => {
           {tab === 'dashboard' ? (
             <>
               <div className="row g-4">
-                <div className="col-lg-4">
-                  <div 
-                    className="card summary-card shadow-sm" 
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#0d6efd';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
-                    onClick={() => handleCardClick('totalStudents')}
-                  >
-                    <div className="card-body">
-                      <span className="summary-label">{t('Total Students')}</span>
-                      <h3 className="summary-value">{statsLoading ? '...' : stats.totalStudents}</h3>
-                      <div className="mt-2"><small className="text-primary fw-bold">Click to view details →</small></div>
-                    </div>
-                  </div>
-                </div>
                 <div className="col-lg-4">
                   <div 
                     className="card summary-card shadow-sm" 

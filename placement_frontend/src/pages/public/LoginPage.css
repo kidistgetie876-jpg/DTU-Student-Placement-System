@@ -1,0 +1,321 @@
+.login-page {
+  display: flex;
+  flex: 1 0 auto;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding-block: 0.5rem;
+}
+
+.login-page .login-card {
+  padding: 0.625rem 1.125rem;
+}
+
+.login-page .login-logo {
+  width: 3rem;
+  height: 3rem;
+}
+
+.login-forgot-link {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.5rem;
+}
+
+.login-forgot-link button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.login-forgot-link button:hover {
+  color: #3730a3;
+  text-decoration: underline;
+}
+
+.login-forgot-link button:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.login-page .login-form-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0.4375rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  outline: none;
+  background-color: #f8fafc;
+  color: #0f172a;
+  font-size: 0.875rem;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.login-page .login-form-input::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+.login-page .login-form-input:hover:not(:focus) {
+  border-color: #94a3b8;
+}
+
+.login-page .login-form-input:focus {
+  border-color: #6366f1;
+  background-color: #fff;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+.login-page .login-sign-in-button {
+  appearance: none;
+  border: 0;
+  background: linear-gradient(90deg, #4f46e5 0%, #2563eb 100%);
+  color: #ffffff;
+}
+
+.login-page .login-sign-in-button:hover:not(:disabled) {
+  background: linear-gradient(90deg, #4338ca 0%, #1d4ed8 100%);
+}
+
+.login-page .login-sign-in-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-height: 700px) {
+  .login-page .login-card {
+    padding: 0.5rem 0.875rem;
+  }
+
+  .login-page .login-logo {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .login-page .login-sign-in-button {
+    padding-block: 0.5rem;
+  }
+}
+
+.login-reset-overlay {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.login-reset-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 28rem;
+  margin: auto;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.3);
+  animation: login-reset-enter 180ms ease-out both;
+}
+
+.login-reset-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #94a3b8;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.login-reset-close:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.login-reset-close:focus-visible,
+.login-reset-secondary:focus-visible,
+.login-reset-submit:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.login-reset-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.login-reset-title {
+  margin: 0 2.75rem 0.5rem 0;
+  color: #0f172a;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.5rem;
+}
+
+.login-reset-description {
+  margin: 0 0 1.25rem;
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.login-reset-notice {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.login-reset-error {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.login-reset-success {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.login-reset-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.login-reset-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.login-reset-input {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 0.875rem;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.login-reset-input::placeholder {
+  color: #94a3b8;
+}
+
+.login-reset-input:focus {
+  border-color: #6366f1;
+  outline: none;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+.login-reset-submit,
+.login-reset-secondary {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: color 160ms ease, background-color 160ms ease, opacity 160ms ease;
+}
+
+.login-reset-submit {
+  width: 100%;
+  border: 0;
+  background: linear-gradient(90deg, #4f46e5, #2563eb);
+  color: #fff;
+  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.2);
+}
+
+.login-reset-submit:hover {
+  background: linear-gradient(90deg, #4338ca, #1d4ed8);
+}
+
+.login-reset-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.login-reset-secondary {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+}
+
+.login-reset-secondary:hover {
+  background: #f1f5f9;
+}
+
+.login-reset-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+@keyframes login-reset-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (min-width: 640px) {
+  .login-reset-dialog {
+    padding: 2rem;
+  }
+
+  .login-reset-actions > * {
+    flex: 1;
+  }
+}
+
+.login-reset-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .login-reset-actions {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-reset-dialog {
+    animation-duration: 1ms;
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import "./App.css";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import api from './services/api.js';
 import Header from "./components/layout/Header.jsx";
 import PublicLayout from "./components/layout/PublicLayout.jsx";
@@ -22,11 +22,13 @@ import MissingScoresForm from "./pages/registrar/MissingScoresForm.jsx";
 import Maintenance from './pages/public/Maintenance.jsx';
 import { LanguageProvider } from './contexts/LanguageContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
+import { AuthProvider } from './contexts/AuthContext.jsx';
 
 const DEFAULT_MAINTENANCE = {
   enabled: false,
-  title: 'System Under Maintenance',
-  message: 'The DTU Placement Portal is currently undergoing scheduled system updates. Services will resume shortly.',
+  reason: 'Scheduled System Maintenance & Updates',
+  title: 'Scheduled System Maintenance',
+  message: 'We are performing scheduled maintenance and system updates to improve the reliability and performance of the DTU Placement Portal. Please check back soon.',
   expectedReturn: 'Soon',
 };
 
@@ -105,7 +107,7 @@ function AppRoutes() {
       <Route path="/contact" element={<Contact />} />
       <Route path="/login" element={<Login />} />
       <Route path="/admin-dashboard" element={<AdminDashboard />} />
-      <Route path="/registrar-dashboard" element={<RegistrarDashboard />} />
+      <Route path="/registrar-dashboard" element={<Navigate to="/registrar-dashboard/overview" replace />} />
       <Route path="/registrar-dashboard/:tab" element={<RegistrarDashboard />} />
       <Route path="/student-registration" element={<StudentRegistration />} />
       <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
@@ -144,7 +146,9 @@ function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <LanguageProvider>
-          <AppRoutes />
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>
     </BrowserRouter>

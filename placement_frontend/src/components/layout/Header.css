@@ -1,7 +1,7 @@
 :root {
-  --dtu-blue: #0a2d6d;
-  --dtu-blue-dark: #061c47;
-  --dtu-blue-light: #154294;
+  --dtu-blue: #1d4ed8;
+  --dtu-blue-dark: #1e3a8a;
+  --dtu-blue-light: #3730a3;
   --dtu-gold: #f4c95d;
   --dtu-gold-hover: #e5b840;
   --nav-bg: #e9eff7; /* ነጭ ያልሆነ ዘመናዊና ውብ Slate-Ice tint */
@@ -19,10 +19,10 @@
 
 /* Tier 1 Styling: University Branding */
 .top-branding-tier {
-  background: linear-gradient(135deg, var(--dtu-blue-dark) 0%, var(--dtu-blue) 60%, #123880 100%);
+  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
   padding: 1.25rem 0;
   color: white;
-  border-bottom: 3.5px solid var(--dtu-gold);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.5);
 }
 
 .top-branding-content {
@@ -34,15 +34,15 @@
 
 .top-branding-tier.has-dashboard-utilities {
   padding: 0.85rem 0;
-  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
-  background: linear-gradient(100deg, #2a1b54 0%, #1e1250 52%, #2a1b54 100%);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.5);
+  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
 }
 
 .university-logo {
   height: 68px;
   width: auto;
   border-radius: 12px;
-  border: 2px solid rgba(244, 201, 93, 0.4);
+  border: 2px solid rgba(96, 165, 250, 0.5);
   padding: 3px;
   background: rgba(255, 255, 255, 0.08);
   filter: drop-shadow(0 4px 10px rgba(0,0,0,0.25));
@@ -65,18 +65,75 @@
 .system-subtitle {
   font-size: 1.05rem;
   margin: 0;
-  color: var(--dtu-gold);
+  color: #dbeafe;
   font-weight: 600;
   letter-spacing: 0.5px;
 }
 
 /* Tier 2 Styling: Modern Soft-Slate Navigation (ነጭ ያልሆነ!) */
 .navigation-tier {
-  background: linear-gradient(180deg, #f0f4fa 0%, #e2ebf6 100%); /* ውብ ነጭ ያልሆነ የሰማያዊ ሼድ */
+  background: #ffffff;
   padding: 0.45rem 0;
-  border-bottom: 1px solid #cbd8e8;
+  border-bottom: 1px solid #e2e8f0;
   backdrop-filter: blur(10px);
   margin-bottom: 0;
+}
+
+.navigation-tier .navbar-collapse {
+  visibility: visible;
+}
+
+.navigation-tier .public-navigation-links {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-left: 0;
+}
+
+@media (min-width: 992px) {
+  .navigation-tier .public-navigation-links {
+    gap: 1.5rem;
+  }
+}
+
+.navigation-tier .public-nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color 200ms ease, background-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+.navigation-tier .public-nav-link:hover {
+  color: #4f46e5;
+  transform: scale(1.05);
+}
+
+.navigation-tier .public-nav-link[aria-current="page"] {
+  background: #4f46e5;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.22);
+}
+
+.navigation-tier .public-nav-link[aria-current="page"]:hover {
+  color: #fff;
+}
+
+.navigation-tier .public-nav-link:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
 }
 
 .navigation-tier .nav-link {
@@ -227,4 +284,57 @@
   .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation { gap: 0.25rem; }
   .top-branding-tier.has-dashboard-utilities .dashboard-language-trigger span,
   .top-branding-tier.has-dashboard-utilities .dashboard-language-trigger > svg:last-child { display: none; }
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button,
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(30, 64, 175, 0.28);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button:hover,
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger:hover,
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button[aria-expanded="true"],
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger[aria-expanded="true"] {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(30, 64, 175, 0.58);
+  color: #fff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger-copy small {
+  color: #dbeafe;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-avatar {
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  background: rgba(30, 64, 175, 0.55);
+  color: #fff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-notification-badge {
+  border-color: #1e3a8a;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: #172554;
+  color: #f8fafc;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button {
+  color: #e2e8f0;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button:hover,
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button[aria-checked="true"] {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-role-pill {
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(37, 99, 235, 0.35);
+  color: #dbeafe;
 }

@@ -1,12 +1,19 @@
 import axios from 'axios';
+import { handleUnauthorizedResponse } from '../services/authSession.js';
 
-const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-const backendHost = window.location.hostname === '::1' ? '[::1]' : window.location.hostname;
-const localBaseUrl = `http://${backendHost}/student-placement/placement_backend`;
-const defaultBaseUrl = 'https://placement-backend-21ap.onrender.com';
+const frontendHost = window.location.hostname;
+const apiHost = frontendHost === '127.0.0.1'
+  ? '127.0.0.1'
+  : frontendHost === '::1'
+    ? '[::1]'
+    : frontendHost === 'localhost'
+      ? 'localhost'
+      : '127.0.0.1';
+const localBaseUrl = `http://${apiHost}:8888/student-placement/placement_backend`;
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE_URL || (isLocalhost ? localBaseUrl : defaultBaseUrl),
+  baseURL: localBaseUrl,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -20,5 +27,22 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error);
+
+    handleUnauthorizedResponse(error);
+
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      error.message = 'The server took too long to respond. Please try again.';
+    } else if (!error.response) {
+      error.message = 'Unable to reach the local server. Check that MAMP is running.';
+    }
+
+    return Promise.reject(error);
+  },
+);
 
 export default api;

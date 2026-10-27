@@ -6,6 +6,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/head_department.php';
 
 function clearHeadReportHistoryResponse(array $payload, int $status = 200): void
 {
@@ -25,8 +26,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 $headId = (int) ($_SESSION['user_id'] ?? 0);
-$role = strtolower((string) ($_SESSION['role'] ?? ''));
-if ($headId <= 0 || !in_array($role, ['head', 'hod', 'coordinator'], true)) {
+$role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+if ($headId <= 0 || !in_array($role, ['head', 'department head', 'department_head', 'head of department', 'hod', 'coordinator'], true)) {
     clearHeadReportHistoryResponse(['success' => false, 'message' => 'Only department heads can clear report history.'], 403);
 }
 
@@ -38,14 +39,11 @@ if (!$db) {
 $status = 200;
 $payload = [];
 try {
-    $departmentStatement = $db->prepare("SELECT id FROM departments WHERE head_id = ? AND status = 'active' LIMIT 1");
-    if (!$departmentStatement) {
-        throw new Exception('Unable to load the assigned department.');
-    }
-    $departmentStatement->bind_param('i', $headId);
-    $departmentStatement->execute();
-    $department = $departmentStatement->get_result()->fetch_assoc();
-    $departmentStatement->close();
+    $department = resolveHeadDepartment(
+        $db,
+        $_SESSION['user_id'],
+        isset($_SESSION['email']) ? (string) $_SESSION['email'] : null
+    );
     if (!$department) {
         $status = 403;
         throw new Exception('No active department is assigned to this head.');

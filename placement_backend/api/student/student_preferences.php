@@ -1,14 +1,136 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+
 require_once __DIR__ . '/../../config/cors.php';
 sendCorsHeaders();
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_semester.php';
+require_once __DIR__ . '/../common/student_placement_allocation.php';
 header('Content-Type: application/json; charset=UTF-8');
 
-function studentPreferencesResponse(array $payload, int $status = 200): void
+function sendJsonResponse(array $payload, int $status = 200): void
 {
     http_response_code($status);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function getTableColumns(mysqli $db, string $table): array
+{
+    $columns = [];
+    $result = $db->query('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`');
+    while ($row = $result->fetch_assoc()) {
+        $columns[] = $row['Field'];
+    }
+    $result->free();
+    return $columns;
+}
+
+function getActivePlacementSemester(mysqli $db): int
+{
+    $settingsColumns = getTableColumns($db, 'placement_settings');
+    if (!in_array('active_semester', $settingsColumns, true)) {
+        return 1;
+    }
+
+    $result = $db->query('SELECT active_semester FROM placement_settings WHERE id = 1 LIMIT 1');
+    if (!$result) {
+        throw new RuntimeException('Unable to read the active placement semester: ' . $db->error);
+    }
+    $settings = $result->fetch_assoc();
+    $result->free();
+    $semester = (int) ($settings['active_semester'] ?? 1);
+
+    return in_array($semester, [1, 2], true) ? $semester : 1;
+}
+
+function bindStatementValues(mysqli_stmt $statement, string $types, array &$values): void
+{
+    if ($types === '') {
+        return;
+    }
+
+    $arguments = [$types];
+    foreach ($values as &$value) {
+        $arguments[] = &$value;
+    }
+    call_user_func_array([$statement, 'bind_param'], $arguments);
+}
+
+function getActiveDepartments(mysqli $db, int $semester = 1): array
+{
+    $columns = getTableColumns($db, 'departments');
+    foreach (['id', 'name'] as $requiredColumn) {
+        if (!in_array($requiredColumn, $columns, true)) {
+            error_log('Student preferences: departments table is missing required column ' . $requiredColumn);
+            return [];
+        }
+    }
+    $activeConditions = [];
+    if (in_array('status', $columns, true)) {
+        $activeConditions[] = "LOWER(TRIM(COALESCE(status, ''))) = 'active'";
+    }
+    if (in_array('is_active', $columns, true)) {
+        $activeConditions[] = 'is_active = 1';
+    }
+    if (!$activeConditions) {
+        error_log('Student preferences: departments table is missing a supported active-status column');
+        return [];
+    }
+
+    $college = in_array('college_name', $columns, true) ? 'college_name' : "'' AS college_name";
+    $stream = in_array('stream', $columns, true) ? 'stream' : "'' AS stream";
+    $offeredSemester = in_array('offered_semester', $columns, true)
+        ? 'offered_semester'
+        : ($semester === 2 ? '2 AS offered_semester' : 'NULL AS offered_semester');
+    $placementGroup = in_array('placement_group', $columns, true)
+        ? 'placement_group'
+        : "'' AS placement_group";
+    $firstSemesterOnly = in_array('is_first_semester_only', $columns, true)
+        ? 'is_first_semester_only'
+        : '0 AS is_first_semester_only';
+    $sql = "SELECT id, name, $college, $stream, $offeredSemester, $placementGroup, $firstSemesterOnly
+            FROM departments
+            WHERE (" . implode(' OR ', $activeConditions) . ")
+            ORDER BY college_name ASC, name ASC";
+    $result = $db->query($sql);
+    $departments = [];
+    while ($row = $result->fetch_assoc()) {
+        $collegeName = trim((string) ($row['college_name'] ?? ''));
+        if (strcasecmp($collegeName, 'Law') === 0) {
+            $collegeName = 'School of Law';
+        }
+        $departments[] = [
+            'id' => (int) $row['id'],
+            'name' => (string) $row['name'],
+            'college_name' => $collegeName,
+            'stream' => (string) ($row['stream'] ?? ''),
+            'placement_group' => (string) ($row['placement_group'] ?? ''),
+            'offered_semester' => isset($row['offered_semester']) ? (int) $row['offered_semester'] : null,
+            'is_first_semester_only' => (int) ($row['is_first_semester_only'] ?? 0),
+        ];
+    }
+    $result->free();
+    return $departments;
+}
+
+function studentIdentityFilter(array $columns, string $studentId, string $admissionNumber): array
+{
+    $conditions = [];
+    $values = [];
+    $types = '';
+    if (in_array('admission_number', $columns, true) && $admissionNumber !== '') {
+        $conditions[] = 'admission_number = ?';
+        $values[] = $admissionNumber;
+        $types .= 's';
+    }
+    if (in_array('student_id', $columns, true) && $studentId !== '') {
+        $conditions[] = 'student_id = ?';
+        $values[] = $studentId;
+        $types .= 's';
+    }
+    return [$conditions, $values, $types];
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
@@ -16,321 +138,628 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     exit;
 }
 
-if (!in_array($_SERVER['REQUEST_METHOD'] ?? '', ['GET', 'POST'], true)) {
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if (!in_array($method, ['GET', 'POST'], true)) {
     header('Allow: GET, POST, OPTIONS');
-    studentPreferencesResponse(['success' => false, 'message' => 'Only GET and POST requests are allowed.'], 405);
+    sendJsonResponse(['success' => false, 'message' => 'Only GET and POST requests are allowed.'], 405);
 }
 
 try {
     $db = getDbConnection();
-} catch (Throwable $error) {
-    error_log('Student preferences database connection failed: ' . $error->getMessage());
-    studentPreferencesResponse(['success' => false, 'message' => 'Student preferences are temporarily unavailable.'], 503);
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $studentId = trim((string) ($_GET['student_id'] ?? $_GET['admission_number'] ?? ''));
-    $admissionNumber = trim((string) ($_GET['admission_number'] ?? ''));
-    if ($studentId === '') {
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'A student ID is required.'], 400);
+    if (!$db instanceof mysqli) {
+        throw new RuntimeException('Database connection is unavailable.');
     }
 
-    $columnsResult = $db->query('SHOW COLUMNS FROM student_choices');
-    if (!$columnsResult) {
-        error_log('Unable to inspect student choices columns: ' . $db->error);
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'Unable to load student preferences.'], 500);
-    }
-    $columns = array_column($columnsResult->fetch_all(MYSQLI_ASSOC), 'Field');
-    $columnsResult->free();
-
-    $available = static fn (string $name): bool => in_array($name, $columns, true);
-    $expression = static function (string $name) use ($available): string {
-        return $available($name) ? "sc.`{$name}`" : 'NULL';
-    };
-    $identifierColumns = array_values(array_filter(
-        ['admission_number', 'student_id', 'user_id'],
-        $available
-    ));
-    if (!$identifierColumns) {
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'Student identifier is not available in the preferences table.'], 500);
-    }
-
-    $departmentNameExpression = $available('dept_name')
-        ? "NULLIF(sc.`dept_name`, '')"
-        : ($available('department_name') ? "NULLIF(sc.`department_name`, '')" : 'NULL');
-    $select = [
-        $expression('dept_id') . ' AS dept_id',
-        "COALESCE({$departmentNameExpression}, d.name) AS dept_name",
-        $expression('college_name') . ' AS college_name',
-        $expression('stream') . ' AS stream',
-        $expression('priority') . ' AS priority',
-    ];
-    $identifiers = array_values(array_unique(array_filter([$studentId, $admissionNumber], static fn (string $value): bool => $value !== '')));
-    $conditions = [];
-    $parameters = [];
-    foreach ($identifierColumns as $column) {
-        foreach ($identifiers as $identifier) {
-            $conditions[] = "sc.`{$column}` = ?";
-            $parameters[] = $identifier;
+    if ($method === 'GET') {
+        $studentId = trim((string) ($_GET['student_id'] ?? ''));
+        $admissionNumber = trim((string) ($_GET['admission_number'] ?? ''));
+        if ($admissionNumber === '' && $studentId !== '' && !ctype_digit($studentId)) {
+            $admissionNumber = $studentId;
         }
-    }
-    $where = implode(' OR ', $conditions);
-    $order = $available('priority') ? ' ORDER BY sc.`priority` ASC' : '';
-    $statement = $db->prepare(
-        'SELECT ' . implode(', ', $select)
-        . ' FROM student_choices sc LEFT JOIN departments d ON d.id = sc.dept_id'
-        . " WHERE ({$where}){$order}"
-    );
-    if (!$statement) {
-        error_log('Unable to prepare student preferences query: ' . $db->error);
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'Unable to load student preferences.'], 500);
-    }
-
-    $types = str_repeat('s', count($parameters));
-    $bindArguments = [$types];
-    foreach ($parameters as $index => $value) {
-        $bindArguments[] = &$parameters[$index];
-    }
-    if (!call_user_func_array([$statement, 'bind_param'], $bindArguments) || !$statement->execute()) {
-        error_log('Unable to load student preferences: ' . $statement->error);
-        $statement->close();
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'Unable to load student preferences.'], 500);
-    }
-
-    $result = $statement->get_result();
-    $choices = [];
-    while ($row = $result->fetch_assoc()) {
-        $choices[] = $row;
-    }
-    $statement->close();
-    $db->close();
-
-    studentPreferencesResponse([
-        'success' => true,
-        'choices' => $choices,
-        'submissionDeadline' => '2026-10-30',
-        'isDeadlineActive' => true,
-        'isResultPublished' => false,
-    ]);
-}
-
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-$sessionUserId = trim((string) ($_SESSION['user_id'] ?? ''));
-$sessionAdmissionNumber = trim((string) ($_SESSION['admission_number'] ?? ''));
-if (strtolower((string) ($_SESSION['role'] ?? '')) !== 'student' || ($sessionUserId === '' && $sessionAdmissionNumber === '')) {
-    $db->close();
-    studentPreferencesResponse(['success' => false, 'message' => 'Please sign in as a student before submitting preferences.'], 403);
-}
-
-$input = json_decode((string) file_get_contents('php://input'), true);
-$requestedStudentId = trim((string) ($input['student_id'] ?? ''));
-$choices = $input['choices'] ?? null;
-if ($requestedStudentId === '' || !is_array($choices) || count($choices) === 0) {
-    $db->close();
-    studentPreferencesResponse(['success' => false, 'message' => 'A student ID and at least one ranked choice are required.'], 400);
-}
-
-$userLookup = static function (mysqli $db, string $identifier, bool $preferAdmissionNumber = false): ?array {
-    $lookupColumn = static function (mysqli $connection, string $column, string $value): ?array {
-        $statement = $connection->prepare("SELECT id, id_number FROM users WHERE `{$column}` = ? AND LOWER(role) = 'student' LIMIT 1");
-        if (!$statement) {
-            throw new RuntimeException('Unable to verify the student account.');
+        if ($studentId === '' && $admissionNumber === '') {
+            sendJsonResponse(['success' => false, 'message' => 'A student ID or admission number is required.'], 400);
         }
-        $statement->bind_param('s', $value);
-        if (!$statement->execute()) {
-            $statement->close();
-            throw new RuntimeException('Unable to verify the student account.');
-        }
-        $student = $statement->get_result()->fetch_assoc() ?: null;
-        $statement->close();
-        return $student;
-    };
 
-    if ($preferAdmissionNumber || !ctype_digit($identifier)) {
-        return $lookupColumn($db, 'id_number', $identifier);
-    }
-    return $lookupColumn($db, 'id', $identifier) ?? $lookupColumn($db, 'id_number', $identifier);
-};
+        $activeSemester = getActivePlacementSemester($db);
 
-$transactionStarted = false;
-try {
-    $requestedAccount = $userLookup(
-        $db,
-        $requestedStudentId,
-        $sessionAdmissionNumber !== '' && $requestedStudentId === $sessionAdmissionNumber
-    );
-    $sessionAccount = null;
-    if ($sessionUserId !== '') {
-        $sessionAccount = $userLookup(
+        $allocation = getStudentAllocatedPlacementGroup($db, $studentId, $admissionNumber);
+        $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
+        $secondSemesterPortal = getStudentSecondSemesterChoicePortalState(
             $db,
-            $sessionUserId,
-            $sessionAdmissionNumber !== '' && $sessionUserId === $sessionAdmissionNumber
+            $studentId,
+            $admissionNumber
+        );
+        $storedStatus = strtolower(getStudentStoredPlacementStatus($db, $studentId, $admissionNumber));
+        $secondSemesterStage = in_array($storedStatus, [
+            'pending 2nd semester',
+            'placed in semester 1',
+            'allocated',
+        ], true);
+        $pendingSecondSemesterEditable = $secondSemesterStage
+            && trim((string) ($allocation['college'] ?? '')) !== ''
+            && trim((string) ($allocation['group'] ?? '')) !== ''
+            && $secondSemesterPortal['isOpen']
+            && !$secondSemesterPortal['isFinalized'];
+        $secondSemesterEligible = $secondSemesterPortal['eligible'] || $pendingSecondSemesterEditable;
+        $secondSemesterOpen = $secondSemesterPortal['isOpen'];
+        $semester = $secondSemesterEligible
+            && ($activeSemester === 2
+                || $secondSemesterOpen
+                || $secondSemesterPortal['isFinalized']
+                || $secondSemesterStage)
+            ? 2
+            : 1;
+        $choiceEditable = isStudentChoiceExplicitlyEditable($db, $studentId, $admissionNumber)
+            || $pendingSecondSemesterEditable;
+        $placementExecuted = !$choiceEditable
+            && hasStudentPlacementForSemester($db, $studentId, $admissionNumber, $semester);
+        $isLocked = $semester === 2 && $secondSemesterEligible
+            ? $secondSemesterPortal['isFinalized']
+            : (!$choiceEditable && isStudentChoiceEditingLocked($db, $studentId, $admissionNumber));
+        $departments = getActiveDepartments($db, $semester);
+        $choices = [];
+        $choiceColumns = getTableColumns($db, 'student_choices');
+        if (in_array('dept_id', $choiceColumns, true) && in_array('priority', $choiceColumns, true)) {
+            [$conditions, $values, $types] = studentIdentityFilter($choiceColumns, $studentId, $admissionNumber);
+            if ($conditions) {
+                $departmentColumns = getTableColumns($db, 'departments');
+                $departmentJoin = in_array('id', $departmentColumns, true)
+                    ? ' LEFT JOIN departments d ON d.id = sc.dept_id'
+                    : '';
+                $departmentName = $departmentJoin !== '' && in_array('name', $departmentColumns, true)
+                    ? "COALESCE(NULLIF(d.name, ''), sc.dept_name, '')"
+                    : "COALESCE(sc.dept_name, '')";
+                $departmentCollege = $departmentJoin !== '' && in_array('college_name', $departmentColumns, true)
+                    ? "COALESCE(NULLIF(d.college_name, ''), sc.college_name, '')"
+                    : "COALESCE(sc.college_name, '')";
+                $departmentStream = $departmentJoin !== '' && in_array('stream', $departmentColumns, true)
+                    ? "COALESCE(NULLIF(d.stream, ''), sc.stream, '')"
+                    : "COALESCE(sc.stream, '')";
+                $departmentOfferedSemester = $departmentJoin !== '' && in_array('offered_semester', $departmentColumns, true)
+                    ? 'd.offered_semester'
+                    : 'NULL';
+                $choiceSemester = in_array('semester', $choiceColumns, true) ? 'sc.semester' : '1';
+                $sql = "SELECT sc.dept_id, {$departmentName} AS dept_name,
+                               {$departmentCollege} AS college_name, {$departmentStream} AS stream,
+                               {$departmentOfferedSemester} AS offered_semester, sc.priority,
+                               {$choiceSemester} AS semester
+                        FROM student_choices sc{$departmentJoin} WHERE ("
+                    . implode(' OR ', $conditions) . ')';
+                if (in_array('semester', $choiceColumns, true)) {
+                    $sql .= ' AND sc.semester = ?';
+                    $values[] = (string) $semester;
+                    $types .= 's';
+                }
+                $sql .= ' ORDER BY sc.priority ASC, semester ASC, sc.dept_id ASC';
+                $statement = $db->prepare($sql);
+                bindStatementValues($statement, $types, $values);
+                $statement->execute();
+                $result = $statement->get_result();
+                while ($row = $result->fetch_assoc()) {
+                    $choiceDepartmentId = isset($row['dept_id']) && (int) $row['dept_id'] > 0
+                        ? (int) $row['dept_id']
+                        : null;
+                    $choiceDepartmentName = (string) ($row['dept_name'] ?? '');
+                    $choiceCollegeName = trim((string) ($row['college_name'] ?? ''));
+                    if (strcasecmp($choiceCollegeName, 'Law') === 0) {
+                        $choiceCollegeName = 'School of Law';
+                    }
+                    $choices[] = [
+                        'dept_id' => $choiceDepartmentId,
+                        'dept_name' => $choiceDepartmentName,
+                        'department_name' => $choiceDepartmentName,
+                        'type' => $choiceDepartmentId === null
+                            ? ($choiceDepartmentName === 'Broad Group / Semester 2 Queue'
+                                ? 'college_queue'
+                                : 'broad_group')
+                            : 'department',
+                        'college_name' => $choiceCollegeName,
+                        'stream' => (string) ($row['stream'] ?? ''),
+                        'semester' => in_array((int) ($row['semester'] ?? 1), [1, 2], true)
+                            ? (int) $row['semester']
+                            : 1,
+                        'offered_semester' => isset($row['offered_semester'])
+                            ? (int) $row['offered_semester']
+                            : null,
+                        'priority' => (int) $row['priority'],
+                    ];
+                }
+                $result->free();
+                $statement->close();
+            }
+        }
+
+        $availableDepartments = array_values(array_filter($departments, static function (array $department) use ($semester, $allocation): bool {
+            if ($semester === 1) {
+                return placementDepartmentOfferedInSemester($department, 1);
+            }
+            return placementDepartmentOfferedInSemester($department, 2)
+                && $allocation['group'] !== ''
+                && normalizeStudentPlacementGroup(
+                    (string) ($department['placement_group'] ?? ''),
+                    (string) ($department['college_name'] ?? ''),
+                    (string) ($department['stream'] ?? '')
+                ) === $allocation['group']
+                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
+                    === normalizeStudentPlacementCollegeName((string) ($allocation['college'] ?? ''));
+        }));
+
+        $db->close();
+        $choiceMessage = $secondSemesterPortal['message'];
+        if ($semester !== 2) {
+            $choiceMessage = '';
+        }
+        sendJsonResponse([
+            'success' => true,
+            'choices' => $choices,
+            'is_submitted' => !empty($choices),
+            'semester' => $semester,
+            'activeSemester' => $activeSemester,
+            'assignedStream' => $assignedStream,
+            'assignedCollege' => $allocation['college'],
+            'placementGroup' => $allocation['group'],
+            'placementExecuted' => $placementExecuted,
+            'is_placed' => $placementExecuted,
+            'isLocked' => $isLocked,
+            'is_choice_editable' => $choiceEditable,
+            'secondSemesterChoiceEligible' => $secondSemesterEligible,
+            'isSecondSemesterChoiceOpen' => $secondSemesterOpen,
+            'secondSemesterChoiceFinalized' => $secondSemesterPortal['isFinalized'],
+            'message' => $choiceMessage,
+            'allowedDepartments' => $availableDepartments,
+            'minimumChoices' => count($availableDepartments),
+        ]);
+    }
+
+    $input = json_decode((string) file_get_contents('php://input'), true);
+    if (!is_array($input)) {
+        sendJsonResponse(['success' => false, 'message' => 'The request body must be valid JSON.'], 400);
+    }
+    $studentId = trim((string) ($input['student_id'] ?? ''));
+    $admissionNumber = trim((string) ($input['admission_number'] ?? ''));
+    if ($admissionNumber === '' && $studentId !== '' && !ctype_digit($studentId)) {
+        $admissionNumber = $studentId;
+    }
+    $choices = $input['choices'] ?? [];
+    if ($admissionNumber === '' || !is_array($choices) || !$choices) {
+        sendJsonResponse(['success' => false, 'message' => 'Admission number and choices are required.'], 400);
+    }
+    $semester = (int) ($input['semester'] ?? 1);
+    if (!in_array($semester, [1, 2], true)) {
+        sendJsonResponse(['success' => false, 'message' => 'A valid placement semester is required.'], 400);
+    }
+    $activeSemester = getActivePlacementSemester($db);
+    $storedPlacementStatus = strtolower(trim(
+        getStudentStoredPlacementStatus($db, $studentId, $admissionNumber)
+    ));
+    $choiceEditable = isStudentChoiceExplicitlyEditable($db, $studentId, $admissionNumber);
+    $studentAllocation = getStudentAllocatedPlacementGroup($db, $studentId, $admissionNumber);
+    $secondSemesterPortal = getStudentSecondSemesterChoicePortalState(
+        $db,
+        $studentId,
+        $admissionNumber
+    );
+    $secondSemesterStage = in_array($storedPlacementStatus, [
+        'pending 2nd semester',
+        'placed in semester 1',
+        'allocated',
+    ], true);
+    $pendingSecondSemesterEditable = $semester === 2
+        && $secondSemesterStage
+        && trim((string) ($studentAllocation['college'] ?? '')) !== ''
+        && trim((string) ($studentAllocation['group'] ?? '')) !== ''
+        && $secondSemesterPortal['isOpen']
+        && !$secondSemesterPortal['isFinalized'];
+    $choiceEditable = $choiceEditable || $pendingSecondSemesterEditable;
+    $canCompleteFirstSemester = $semester === 1
+        && $activeSemester === 2
+        && in_array($storedPlacementStatus, ['pending', 'pending 1st semester'], true)
+        && !hasStudentPlacementForSemester($db, $studentId, $admissionNumber, 1);
+    $canSubmitOpenSecondSemester = $semester === 2
+        && $secondSemesterPortal['eligible']
+        && $secondSemesterPortal['isOpen'];
+    if ($semester !== $activeSemester && !$canCompleteFirstSemester && !$canSubmitOpenSecondSemester) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => "Semester {$semester} preferences cannot be submitted while Semester {$activeSemester} is active.",
+        ], 409);
+    }
+    $secondSemesterEligible = $secondSemesterPortal['eligible'] || $pendingSecondSemesterEditable;
+    $secondSemesterOpen = $secondSemesterPortal['isOpen'];
+    if ($semester === 2 && !$secondSemesterEligible) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => 'Semester 2 preferences are available only after Semester 1 placement and college allocation are complete.',
+        ], 403);
+    }
+    if ($semester === 2 && !$secondSemesterOpen && !$choiceEditable) {
+        sendJsonResponse([
+            'success' => false,
+            'isLocked' => true,
+            'message' => $secondSemesterPortal['message'],
+        ], 403);
+    }
+    if (
+        !($semester === 2 && $secondSemesterEligible && $secondSemesterOpen)
+        && !$choiceEditable
+        && isStudentChoiceEditingLocked($db, $studentId, $admissionNumber)
+    ) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => 'Cannot modify choices after placement run.',
+        ], 409);
+    }
+    $allocation = $semester === 2
+        ? $studentAllocation
+        : ['group' => '', 'college' => ''];
+    if ($semester === 2 && ($allocation['group'] === '' || trim((string) $allocation['college']) === '')) {
+        sendJsonResponse([
+            'success' => false,
+            'message' => 'Semester 2 preferences are only available after your placement group has been assigned.',
+        ], 403);
+    }
+    $choiceColumns = getTableColumns($db, 'student_choices');
+    foreach (['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority'] as $requiredColumn) {
+        if (!in_array($requiredColumn, $choiceColumns, true)) {
+            throw new RuntimeException('The student_choices table is missing required column ' . $requiredColumn);
+        }
+    }
+    $identityConditions = ['TRIM(admission_number) = TRIM(?)'];
+    $identityValues = [$admissionNumber];
+    $identityTypes = 's';
+
+    $allowedPlacementGroup = normalizeStudentPlacementGroup(
+        (string) ($allocation['group'] ?? ''),
+        (string) ($allocation['college'] ?? '')
+    );
+    $allowedPlacementCollege = normalizeStudentPlacementCollegeName((string) ($allocation['college'] ?? ''));
+    $activeDepartments = getActiveDepartments($db, $semester);
+    if ($semester === 2) {
+        $activeDepartments = array_values(array_filter(
+            $activeDepartments,
+            static fn(array $department): bool => placementDepartmentOfferedInSemester($department, 2)
+                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
+                    === $allowedPlacementCollege
+                && normalizeStudentPlacementGroup(
+                    (string) ($department['placement_group'] ?? ''),
+                    (string) ($department['college_name'] ?? ''),
+                    (string) ($department['stream'] ?? '')
+                ) === $allowedPlacementGroup
+        ));
+    } else {
+        $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
+        $normalizedAssignedStream = strtolower(preg_replace('/[^a-z]/i', '', $assignedStream) ?? '');
+        if (!str_contains($normalizedAssignedStream, 'natural') && !str_contains($normalizedAssignedStream, 'social')) {
+            sendJsonResponse([
+                'success' => false,
+                'message' => 'Unable to verify your assigned stream. Please contact the Registrar Office.',
+            ], 400);
+        }
+    }
+    $departmentById = [];
+    foreach ($activeDepartments as $department) {
+        $departmentById[$department['id']] = $department;
+    }
+    $activeColleges = [];
+    foreach ($activeDepartments as $department) {
+        $collegeName = trim((string) ($department['college_name'] ?? ''));
+        if ($collegeName !== '') {
+            if ($semester !== 2 || !placementDepartmentOfferedInSemester($department, 2)) {
+                continue;
+            }
+            $activeColleges[strtolower($collegeName)] ??= $department;
+        }
+    }
+    if ($semester === 2 && $allowedPlacementGroup !== '') {
+        $activeColleges = array_filter(
+            $activeColleges,
+            static fn(array $department): bool => normalizeStudentPlacementGroup(
+                (string) ($department['placement_group'] ?? ''),
+                (string) ($department['college_name'] ?? ''),
+                (string) ($department['stream'] ?? '')
+            ) === $allowedPlacementGroup
+                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
+                    === $allowedPlacementCollege
         );
     }
-    if (!$sessionAccount && $sessionAdmissionNumber !== '' && $sessionAdmissionNumber !== $sessionUserId) {
-        $sessionAccount = $userLookup($db, $sessionAdmissionNumber, true);
-    }
-    $sameAccount = $requestedAccount && $sessionAccount
-        ? (int) $requestedAccount['id'] === (int) $sessionAccount['id']
-        : ($sessionAdmissionNumber !== ''
-            && ($requestedStudentId === $sessionAdmissionNumber
-                || ($requestedAccount && (string) $requestedAccount['id_number'] === $sessionAdmissionNumber)));
-    if (!$sameAccount) {
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'You can only submit preferences for your own student account.'], 403);
-    }
-
-    $columnResult = $db->query('SHOW COLUMNS FROM student_choices');
-    if (!$columnResult) {
-        throw new RuntimeException('Unable to inspect student choice storage.');
-    }
-    $columns = array_column($columnResult->fetch_all(MYSQLI_ASSOC), 'Field');
-    $columnResult->free();
-    $hasColumn = static fn (string $column): bool => in_array($column, $columns, true);
-    $identityColumns = array_values(array_filter(['student_id', 'user_id', 'admission_number'], $hasColumn));
-    if (!$identityColumns || !$hasColumn('dept_id') || !$hasColumn('priority')) {
-        throw new RuntimeException('The student choice table is missing required columns.');
-    }
-
-    $accountId = (int) ($requestedAccount['id'] ?? 0);
-    if ($accountId <= 0 && (in_array('student_id', $identityColumns, true) || in_array('user_id', $identityColumns, true))) {
-        $db->close();
-        studentPreferencesResponse(['success' => false, 'message' => 'Your account is not linked to a numeric student record. Please contact the Registrar.'], 409);
-    }
-    $admissionNumber = trim((string) ($requestedAccount['id_number'] ?? $sessionAdmissionNumber));
-    $identityValues = [
-        'student_id' => $accountId > 0 ? (string) $accountId : '',
-        'user_id' => $accountId > 0 ? (string) $accountId : '',
-        'admission_number' => $admissionNumber !== '' ? $admissionNumber : $requestedStudentId,
-    ];
-
-    $normalizedChoices = [];
+    $validatedChoices = [];
     $seenDepartments = [];
-    foreach (array_values($choices) as $index => $choice) {
-        if (!is_array($choice) || !isset($choice['dept_id'], $choice['priority'])
-            || !is_numeric($choice['dept_id']) || !is_numeric($choice['priority'])) {
-            $db->close();
-            studentPreferencesResponse(['success' => false, 'message' => 'Each choice must include a numeric department ID and priority.'], 400);
+    $seenBroadColleges = [];
+    $seenPriorities = [];
+    $selectedPlacementGroups = [];
+    foreach ($choices as $index => $choice) {
+        if (!is_array($choice)) {
+            sendJsonResponse(['success' => false, 'message' => 'Each preference must be a department or college choice.'], 400);
         }
-        $departmentId = (int) $choice['dept_id'];
-        $priority = (int) $choice['priority'];
-        if ($departmentId <= 0 || $priority !== $index + 1 || isset($seenDepartments[$departmentId])) {
-            $db->close();
-            studentPreferencesResponse(['success' => false, 'message' => 'Choices must have unique departments and consecutive priorities starting at 1.'], 400);
+        $departmentIdValue = $choice['dept_id'] ?? $choice['department_id'] ?? null;
+        if ($departmentIdValue === '' || $departmentIdValue === 0 || $departmentIdValue === '0') {
+            $departmentIdValue = null;
         }
-        $seenDepartments[$departmentId] = true;
-        $departmentStatement = $db->prepare('SELECT id, name, college_name, stream, status FROM departments WHERE id = ? LIMIT 1');
-        if (!$departmentStatement) {
-            throw new RuntimeException('Unable to verify the selected department.');
+        $collegeInput = trim((string) ($choice['college_name'] ?? $choice['college'] ?? ''));
+        $choiceType = strtolower(trim((string) ($choice['type'] ?? '')));
+        $broadNameInput = trim((string) (
+            $choice['dept_name']
+            ?? $choice['department_name']
+            ?? $choice['group_name']
+            ?? $choice['label']
+            ?? ''
+        ));
+        $isBroadGroup = $choiceType === 'broad_group'
+            || (!empty($choice['broad_group']) && $choiceType !== 'college_queue')
+            || (
+                $departmentIdValue === null
+                && $broadNameInput !== ''
+                && $broadNameInput !== 'Broad Group / Semester 2 Queue'
+                && $choiceType !== 'college_queue'
+            );
+        $isBroadCollegeQueue = !$isBroadGroup && ($choiceType === 'college_queue'
+            || !empty($choice['broad_group'])
+            || ($departmentIdValue === null && $collegeInput !== ''));
+        if ($isBroadGroup) {
+            if ($semester === 2) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => 'Broad placement groups cannot be selected as Semester 2 department preferences.',
+                ], 400);
+            }
+            $departmentName = $broadNameInput;
+            if ($departmentName === '') {
+                sendJsonResponse(['success' => false, 'message' => 'A broad preference must include its group or stream name.'], 400);
+            }
+            $broadGroupKey = strtolower($departmentName);
+            if (isset($seenBroadColleges[$broadGroupKey])) {
+                sendJsonResponse(['success' => false, 'message' => 'Each broad group can only be selected once.'], 400);
+            }
+            $departmentId = null;
+            $collegeName = $collegeInput;
+            $stream = $semester === 1
+                ? $assignedStream
+                : trim((string) ($choice['stream'] ?? ''));
+            $placementGroup = normalizeStudentPlacementGroup('', $departmentName);
+            $seenBroadColleges[$broadGroupKey] = true;
+        } elseif ($isBroadCollegeQueue) {
+            if ($semester === 2) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => 'Semester 2 preferences must select departments within your allocated group.',
+                ], 400);
+            }
+            $collegeKey = strtolower($collegeInput);
+            if ($semester !== 2 || $collegeInput === '' || !isset($activeColleges[$collegeKey])) {
+                sendJsonResponse(['success' => false, 'message' => 'A Semester 2 queue must reference an active college.'], 400);
+            }
+            if (isset($seenBroadColleges[$collegeKey])) {
+                sendJsonResponse(['success' => false, 'message' => 'Each college queue can only be selected once.'], 400);
+            }
+            $departmentId = null;
+            $departmentName = 'Broad Group / Semester 2 Queue';
+            $collegeName = trim((string) $activeColleges[$collegeKey]['college_name']);
+            $stream = (string) ($activeColleges[$collegeKey]['stream'] ?? '');
+            $placementGroup = normalizeStudentPlacementGroup(
+                (string) ($activeColleges[$collegeKey]['placement_group'] ?? ''),
+                $collegeName,
+                $stream
+            );
+            $seenBroadColleges[$collegeKey] = true;
+        } else {
+            $departmentId = (int) $departmentIdValue;
+            if ($departmentId <= 0 || !isset($departmentById[$departmentId])) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => 'A selected department is no longer active. Refresh and try again.',
+                ], 400);
+            }
+            $department = $departmentById[$departmentId];
+            if ($semester === 1) {
+                $departmentStream = strtolower(preg_replace(
+                    '/[^a-z]/i',
+                    '',
+                    (string) ($department['stream'] ?? '')
+                ) ?? '');
+                $isWrongStream = $departmentStream !== ''
+                    && (
+                        (str_contains($normalizedAssignedStream, 'natural')
+                            && !str_contains($departmentStream, 'natural'))
+                        || (str_contains($normalizedAssignedStream, 'social')
+                            && !str_contains($departmentStream, 'social'))
+                    );
+                if ($isWrongStream) {
+                    sendJsonResponse([
+                        'success' => false,
+                        'message' => 'Selected departments must belong to your assigned stream.',
+                    ], 400);
+                }
+            }
+            $available = placementDepartmentOfferedInSemester($department, $semester);
+            if (!$available) {
+                sendJsonResponse(['success' => false, 'message' => 'A selected department is not available in this semester.'], 400);
+            }
+            if ($semester === 2) {
+                $selectionGroup = normalizeStudentPlacementGroup(
+                    (string) ($department['placement_group'] ?? ''),
+                    (string) ($department['college_name'] ?? ''),
+                    (string) ($department['stream'] ?? '')
+                );
+                if ($selectionGroup !== $allowedPlacementGroup) {
+                    sendJsonResponse([
+                        'success' => false,
+                        'message' => 'Selected department does not belong to your allocated 1st-semester placement group.',
+                    ], 400);
+                }
+                if (
+                    normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
+                    !== $allowedPlacementCollege
+                ) {
+                    sendJsonResponse([
+                        'success' => false,
+                        'message' => 'Selected department does not belong to your allocated college.',
+                    ], 400);
+                }
+            }
+            if (isset($seenDepartments[$departmentId])) {
+                sendJsonResponse(['success' => false, 'message' => 'Each department can only be selected once.'], 400);
+            }
+            $departmentName = (string) $department['name'];
+            $collegeName = trim((string) $department['college_name']);
+            $placementGroup = normalizeStudentPlacementGroup(
+                (string) ($department['placement_group'] ?? ''),
+                $collegeName,
+                (string) ($department['stream'] ?? '')
+            );
+            if (strcasecmp($collegeName, 'Law') === 0) {
+                $collegeName = 'School of Law';
+            }
+            $stream = (string) $department['stream'];
+            $seenDepartments[$departmentId] = true;
         }
-        $departmentStatement->bind_param('i', $departmentId);
-        if (!$departmentStatement->execute()) {
-            $departmentStatement->close();
-            throw new RuntimeException('Unable to verify the selected department.');
+        if ($semester === 1 && $placementGroup !== '') {
+            $selectedPlacementGroups[$placementGroup] = true;
         }
-        $department = $departmentStatement->get_result()->fetch_assoc();
-        $departmentStatement->close();
-        if (!$department || strtolower(trim((string) ($department['status'] ?? ''))) !== 'active') {
-            $db->close();
-            studentPreferencesResponse(['success' => false, 'message' => 'A selected department is no longer active. Please review your choices.'], 400);
+        $priority = isset($choice['priority']) ? (int) $choice['priority'] : $index + 1;
+        if ($priority < 1) {
+            sendJsonResponse(['success' => false, 'message' => 'Each preference must have a valid priority number.'], 400);
         }
-        $normalizedChoices[] = [
+        if (isset($seenPriorities[$priority])) {
+            sendJsonResponse(['success' => false, 'message' => 'Each choice priority must be unique.'], 400);
+        }
+        $seenPriorities[$priority] = true;
+        $validatedChoices[] = [
             'dept_id' => $departmentId,
-            'dept_name' => (string) $department['name'],
-            'college_name' => (string) $department['college_name'],
-            'stream' => (string) $department['stream'],
+            'dept_name' => $departmentName,
+            'college_name' => $collegeName,
+            'stream' => $stream,
             'priority' => $priority,
         ];
     }
-
-    $deleteConditions = [];
-    $deleteValues = [];
-    foreach ($identityColumns as $column) {
-        $value = $identityValues[$column] ?? '';
-        if ($value !== '') {
-            $deleteConditions[] = "`{$column}` = ?";
-            $deleteValues[] = $value;
+    usort($validatedChoices, static fn (array $left, array $right): int => $left['priority'] <=> $right['priority']);
+    foreach ($validatedChoices as $index => $choice) {
+        if ($choice['priority'] !== $index + 1) {
+            sendJsonResponse([
+                'success' => false,
+                'message' => 'Choice priorities must be sequential, starting at 1.',
+            ], 400);
         }
     }
-    if (!$deleteConditions) {
-        throw new RuntimeException('No supported student identifier is available in the preferences table.');
-    }
-
-    $insertColumns = array_values(array_filter(
-        [...$identityColumns, 'dept_id', 'dept_name', 'department_name', 'college_name', 'stream', 'priority'],
-        $hasColumn
-    ));
-    $insertSql = 'INSERT INTO student_choices (' . implode(', ', array_map(static fn (string $column): string => "`{$column}`", $insertColumns))
-        . ') VALUES (' . implode(', ', array_fill(0, count($insertColumns), '?')) . ')';
-    $insertStatement = $db->prepare($insertSql);
-    $deleteStatement = $db->prepare('DELETE FROM student_choices WHERE (' . implode(' OR ', $deleteConditions) . ')');
-    if (!$insertStatement || !$deleteStatement) {
-        throw new RuntimeException('Unable to prepare student preference storage.');
-    }
-
-    if (!$db->begin_transaction()) {
-        throw new RuntimeException('Unable to start the student preference update.');
-    }
-    $transactionStarted = true;
-    $deleteTypes = str_repeat('s', count($deleteValues));
-    $deleteArguments = [$deleteTypes];
-    foreach ($deleteValues as $index => $value) {
-        $deleteArguments[] = &$deleteValues[$index];
-    }
-    if (!call_user_func_array([$deleteStatement, 'bind_param'], $deleteArguments) || !$deleteStatement->execute()) {
-        throw new RuntimeException('Unable to replace the existing student preferences.');
-    }
-    $deleteStatement->close();
-
-    foreach ($normalizedChoices as $choice) {
-        $values = [];
-        foreach ($insertColumns as $column) {
-            if (array_key_exists($column, $identityValues)) {
-                $values[] = $identityValues[$column];
-            } elseif ($column === 'dept_name' || $column === 'department_name') {
-                $values[] = $choice['dept_name'];
-            } else {
-                $values[] = (string) $choice[$column];
+    if ($semester === 1) {
+        $requiredPlacementGroups = str_contains($normalizedAssignedStream, 'natural')
+            ? ['health_science', 'git', 'other_natural_science']
+            : ['law', 'other_social_science'];
+        foreach ($requiredPlacementGroups as $requiredGroup) {
+            if (!isset($selectedPlacementGroups[$requiredGroup])) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => 'Select a preference for every available college or placement group in your assigned stream.',
+                ], 400);
             }
         }
-        $types = str_repeat('s', count($values));
-        $arguments = [$types];
-        foreach ($values as $index => $value) {
-            $arguments[] = &$values[$index];
-        }
-        if (!call_user_func_array([$insertStatement, 'bind_param'], $arguments) || !$insertStatement->execute()) {
-            throw new RuntimeException('Unable to save all student preferences.');
+
+        foreach ($activeDepartments as $department) {
+            $departmentStream = strtolower(preg_replace(
+                '/[^a-z]/i',
+                '',
+                (string) ($department['stream'] ?? '')
+            ) ?? '');
+            $matchesAssignedStream = str_contains($normalizedAssignedStream, 'natural')
+                ? str_contains($departmentStream, 'natural')
+                : str_contains($departmentStream, 'social');
+            $group = normalizeStudentPlacementGroup(
+                (string) ($department['placement_group'] ?? ''),
+                (string) ($department['college_name'] ?? ''),
+                (string) ($department['stream'] ?? '')
+            );
+            if (
+                (int) ($department['offered_semester'] ?? 0) === 1
+                && $matchesAssignedStream
+                && in_array($group, ['health_science', 'git'], true)
+                && !isset($seenDepartments[(int) $department['id']])
+            ) {
+                sendJsonResponse([
+                    'success' => false,
+                    'message' => 'Rank every active department in each selected college before submitting.',
+                ], 400);
+            }
         }
     }
-    $insertStatement->close();
-    if (!$db->commit()) {
-        throw new RuntimeException('Unable to commit student preferences.');
+
+    $insertColumns = ['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority'];
+    if (in_array('semester', $choiceColumns, true)) {
+        $insertColumns[] = 'semester';
     }
-    $transactionStarted = false;
-    $db->close();
-    studentPreferencesResponse([
-        'success' => true,
-        'message' => 'Preferences saved successfully.',
-        'choices' => $normalizedChoices,
-    ]);
+
+    $db->begin_transaction();
+    try {
+        $deleteConditions = ['(' . implode(' OR ', $identityConditions) . ')'];
+        $deleteValues = $identityValues;
+        $deleteTypes = $identityTypes;
+        if (in_array('semester', $choiceColumns, true)) {
+            $deleteConditions[] = 'semester = ?';
+            $deleteValues[] = (string) $semester;
+            $deleteTypes .= 's';
+        }
+        $delete = $db->prepare(
+            'DELETE FROM student_choices WHERE ' . implode(' AND ', $deleteConditions)
+        );
+        bindStatementValues($delete, $deleteTypes, $deleteValues);
+        $delete->execute();
+        $delete->close();
+
+        $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+        $insert = $db->prepare(
+            'INSERT INTO student_choices (`' . implode('`, `', $insertColumns) . '`) VALUES (' . $placeholders . ')'
+        );
+        foreach ($validatedChoices as $choice) {
+            $values = [];
+            $types = '';
+            foreach ($insertColumns as $column) {
+                switch ($column) {
+                    case 'admission_number':
+                        $values[] = $admissionNumber;
+                        $types .= 's';
+                        break;
+                    case 'dept_id':
+                        $values[] = $choice['dept_id'];
+                        $types .= 'i';
+                        break;
+                    case 'dept_name':
+                        $values[] = $choice['dept_name'];
+                        $types .= 's';
+                        break;
+                    case 'college_name':
+                        $values[] = $choice['college_name'];
+                        $types .= 's';
+                        break;
+                    case 'stream':
+                        $values[] = $choice['stream'];
+                        $types .= 's';
+                        break;
+                    case 'priority':
+                        $values[] = $choice['priority'];
+                        $types .= 'i';
+                        break;
+                    case 'semester':
+                        $values[] = $semester;
+                        $types .= 'i';
+                        break;
+                }
+            }
+            bindStatementValues($insert, $types, $values);
+            $insert->execute();
+        }
+        $insert->close();
+        $db->commit();
+        $db->close();
+        sendJsonResponse(['success' => true, 'message' => 'Preferences saved successfully!']);
+    } catch (Throwable $error) {
+        $db->rollback();
+        throw $error;
+    }
 } catch (Throwable $error) {
-    if ($transactionStarted) {
-        try {
-            $db->rollback();
-            $transactionStarted = false;
-        } catch (Throwable $rollbackError) {
-            error_log('Student preference rollback failed: ' . $rollbackError->getMessage());
-        }
+    error_log('Student preferences request failed: ' . $error->getMessage());
+    if (isset($db) && $db instanceof mysqli) {
+        $db->close();
     }
-    error_log('Unable to save student preferences: ' . $error->getMessage());
-    $db->close();
-    studentPreferencesResponse(['success' => false, 'message' => 'Unable to save student preferences.'], 500);
+    sendJsonResponse([
+        'success' => false,
+        'message' => 'Student preferences are temporarily unavailable. Please contact the Registrar if the problem continues.',
+    ], 503);
 }
-?>

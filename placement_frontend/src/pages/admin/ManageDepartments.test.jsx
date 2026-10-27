@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ManageDepartments from './ManageDepartments';
 import AssignHead from './AssignHead.jsx';
@@ -69,9 +69,59 @@ describe('ManageDepartments', () => {
       'NAME',
       'CAPACITY',
       'HEAD NAME',
-      'EDIT',
+      'ACTIONS',
     ]);
     expect(screen.getAllByText('Engineering').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('saves department placement group and semester metadata', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === 'api/admin/get_streams.php') {
+        return Promise.resolve({ data: { success: true, streams: [{ id: 1, name: 'Natural' }] } });
+      }
+      if (url === 'api/common/colleges_api.php') {
+        return Promise.resolve({
+          data: { success: true, colleges: [{ id: 2, name: 'Health Science', stream_id: 1, stream_name: 'Natural' }] },
+        });
+      }
+      if (url === 'api/common/departments_api.php') {
+        return Promise.resolve({ data: { departments: [] } });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    api.post.mockResolvedValue({ data: { success: true, id: 11 } });
+
+    render(
+      <MemoryRouter>
+        <ManageDepartments />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(await screen.findByRole('combobox', { name: 'College' }), {
+      target: { value: 'Health Science' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Computer Science'), {
+      target: { value: 'Medicine' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Placement group' }), {
+      target: { value: 'health_science' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Offered semester' }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'First semester only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Register Department' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/common/departments_api.php',
+      expect.objectContaining({
+        name: 'Medicine',
+        college_id: 2,
+        offered_semester: 1,
+        is_first_semester_only: 1,
+        placement_group: 'health_science',
+      }),
+    ));
   });
 
   it('loads catalog options and creates and selects new streams and colleges', async () => {
@@ -79,7 +129,7 @@ describe('ManageDepartments', () => {
       if (url === 'api/admin/get_streams.php') {
         return Promise.resolve({ data: { success: true, streams: [{ id: 1, name: 'Natural' }] } });
       }
-      if (url === 'api/admin/get_colleges.php') {
+      if (url === 'api/common/colleges_api.php') {
         return Promise.resolve({
           data: {
             success: true,
@@ -144,7 +194,7 @@ describe('ManageDepartments', () => {
       if (url === 'api/admin/get_streams.php') {
         return Promise.resolve({ data: { success: true, streams: [{ id: 1, name: 'Natural' }] } });
       }
-      if (url === 'api/admin/get_colleges.php') {
+      if (url === 'api/common/colleges_api.php') {
         return Promise.resolve({
           data: {
             success: true,
@@ -183,7 +233,7 @@ describe('ManageDepartments', () => {
 
   it('keeps fallback stream and college options when catalog requests fail', async () => {
     api.get.mockImplementation((url) => {
-      if (url === 'api/admin/get_streams.php' || url === 'api/admin/get_colleges.php') {
+      if (url === 'api/admin/get_streams.php' || url === 'api/common/colleges_api.php') {
         return Promise.reject({ response: { status: 500, data: { message: 'Server error' } } });
       }
       if (url === 'api/common/departments_api.php') {
@@ -216,6 +266,64 @@ describe('ManageDepartments', () => {
       '+ Add New College',
     ]);
     expect(screen.getByRole('alert')).toHaveTextContent('Streams: Server error Colleges: Server error');
+  });
+
+  it('opens an assignment dialog for the selected department and saves its head', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === 'api/common/departments_api.php') {
+        return Promise.resolve({
+          data: {
+            departments: [{
+              id: 10,
+              name: 'Computer Science',
+              stream: 'Natural',
+              college_name: 'Engineering',
+              head_id: null,
+            }],
+          },
+        });
+      }
+      if (url === 'api/admin/users_api.php') {
+        return Promise.resolve({
+          data: {
+            users: [
+              { id: 1, first_name: 'Amina', last_name: 'Head', role: 'head' },
+              { id: 2, username: 'Not a head', role: 'admin' },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <MemoryRouter>
+        <ManageDepartments />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign Head Computer Science' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Computer Science')).toBeInTheDocument();
+    expect(within(dialog).getByText('Natural')).toBeInTheDocument();
+    expect(within(dialog).getByText('Engineering')).toBeInTheDocument();
+
+    const headSelect = await screen.findByRole('combobox', { name: 'Department Head' });
+    expect(Array.from(headSelect.options).map(option => option.textContent)).toEqual([
+      '-- Select a Department Head --',
+      'Amina Head',
+    ]);
+    fireEvent.change(headSelect, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Assignment' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/admin/assign_department_head.php',
+      { department_id: 10, head_id: 1 }
+    ));
+    expect(await screen.findByText('Amina Head')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('shows heads before department selection and prevents assigning a head from another department', async () => {

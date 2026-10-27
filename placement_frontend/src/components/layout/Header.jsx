@@ -5,6 +5,7 @@ import dtuLogo from '../../assets/image.png'; // ሎጎህ እዚህ መሆኑ�
 import api from '../../services/api.js';
 import DashboardHeader from './DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 
 const defaultPublicLinks = [
   { id: 'home', label: 'Home', path: '/', enabled: true },
@@ -14,24 +15,28 @@ const defaultPublicLinks = [
   { id: 'contact', label: 'Contact', path: '/contact', enabled: true },
 ];
 
+const requiredPublicLinkIds = new Set(['home', 'services', 'placement-info', 'announcements', 'contact']);
+
+const getStoredUser = () => {
+  try {
+    const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+    return storedUser && typeof storedUser === 'object' ? storedUser : null;
+  } catch {
+    return null;
+  }
+};
+
 const mergePublicLinks = (navigation) => defaultPublicLinks.map((defaultLink) => {
   const savedLink = navigation.find((link) => link?.id === defaultLink.id);
-  return { ...defaultLink, ...(savedLink || {}), path: defaultLink.path };
+  const mergedLink = { ...defaultLink, ...(savedLink || {}), path: defaultLink.path };
+  return {
+    ...mergedLink,
+    enabled: requiredPublicLinkIds.has(defaultLink.id) || mergedLink.enabled === true,
+  };
 });
 
 function Header() {
-  const getStoredUser = () => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) return null;
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      return parsedUser && typeof parsedUser === 'object' ? parsedUser : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [user, setUser] = useState(() => getStoredUser());
+  const { user, setUser } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [siteBranding, setSiteBranding] = useState({
     universityTitle: 'DEBRE TABOR UNIVERSITY',
@@ -79,19 +84,6 @@ function Header() {
     };
   }, []);
 
-  useEffect(() => {
-    const syncUser = (event) => {
-      if (event.key === 'user') setUser(getStoredUser());
-    };
-    const syncProfile = () => setUser(getStoredUser());
-    window.addEventListener('storage', syncUser);
-    window.addEventListener('user-profile-updated', syncProfile);
-    return () => {
-      window.removeEventListener('storage', syncUser);
-      window.removeEventListener('user-profile-updated', syncProfile);
-    };
-  }, []);
-
   const handleLogout = () => {
     localStorage.removeItem('user');
     sessionStorage.removeItem('registrarActiveTab');
@@ -134,7 +126,7 @@ function Header() {
 
         /* TIER 2: Public navigation (Tebeb yalena Professional) */
         <nav className="navbar navbar-expand-lg navigation-tier">
-          <div className="container position-relative">
+          <div className="container position-relative flex flex-wrap items-center justify-between gap-3">
           
             {/* Mobile Toggle */}
             {!isDashboardRoute && (
@@ -153,10 +145,18 @@ function Header() {
             <div className={`collapse navbar-collapse ${isDashboardRoute || isMenuOpen ? 'show' : ''}`} id="dtuNavbar">
               {/* Center Links (Home, Services, Contact) */}
               {!isDashboardRoute && (
-                <ul className="navbar-nav mx-auto mb-2 mb-lg-0">
+                <ul className="navbar-nav public-navigation-links mx-auto mb-2 mb-lg-0 flex flex-wrap items-center justify-center gap-2 lg:gap-6">
                   {publicLinks.filter((link) => link.enabled === true).map((link) => (
                     <li className="nav-item" key={link.id}>
-                      <NavLink to={link.path} end={link.path === '/'} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+                      <NavLink
+                        to={link.path}
+                        end={link.path === '/'}
+                        className={({ isActive }) => `public-nav-link inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                          isActive
+                            ? 'bg-indigo-600 text-white shadow-md hover:text-white'
+                            : 'text-slate-700 hover:text-indigo-600'
+                        }`}
+                      >
                         {t(link.label)}
                       </NavLink>
                     </li>
@@ -183,9 +183,9 @@ function Header() {
                       <button onClick={handleLogout} className="btn btn-logout-custom">{t('Logout')}</button>
                     </div>
                   ) : (
-                    <button type="button" className="btn btn-login-custom" onClick={() => navigate('/login')}>
+                    <Link to="/login" className="btn btn-login-custom">
                       {t('Login')}
-                    </button>
+                    </Link>
                   )}
                 </div>
               )}

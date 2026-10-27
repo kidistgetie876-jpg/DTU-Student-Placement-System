@@ -1,16 +1,16 @@
 :is(.dark-mode, .dark-mode body) :is(.admin-dashboard, .head-dashboard, .student-dashboard) {
-  --dashboard-dark-surface: #111c2e;
-  --dashboard-dark-raised: #17253a;
+  --dashboard-dark-surface: #1e293b;
+  --dashboard-dark-raised: #273449;
   --dashboard-dark-border: #334155;
   --bs-body-color: #e2e8f0;
-  --bs-body-bg: #0b1220;
+  --bs-body-bg: #0f172a;
   --bs-border-color: #334155;
   color: #e2e8f0;
-  background-color: #0b1220;
+  background-color: #0f172a;
 }
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.main-content, .main-section) {
-  background-color: #0b1220 !important;
+  background-color: #0f172a !important;
   color: #e2e8f0;
 }
 
@@ -27,13 +27,13 @@
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
   :is(.card, .summary-card, .analytics-card, .task-card, .settings-card, .dtu-form-card, .department-form-card, .planning-panel, .activity-item, .department-table-toolbar, .modal-content) {
   border-color: #334155 !important;
-  background: #111c2e !important;
+  background: #1e293b !important;
   color: #e2e8f0 !important;
 }
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
   :is(.card .card, .settings-card, .task-card, .planning-panel, .activity-item) {
-  background-color: #17253a !important;
+  background-color: #273449 !important;
 }
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) :is(.summary-value, .status-chip) {
@@ -42,9 +42,9 @@
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .table {
   --bs-table-color: #e2e8f0;
-  --bs-table-bg: #111c2e;
+  --bs-table-bg: #1e293b;
   --bs-table-border-color: #334155;
-  --bs-table-striped-bg: #17253a;
+  --bs-table-striped-bg: #273449;
   --bs-table-striped-color: #e2e8f0;
   --bs-table-hover-bg: #1e304a;
   --bs-table-hover-color: #f8fafc;
@@ -70,12 +70,12 @@
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard) .list-group-item {
   border-color: #334155;
-  background-color: #111c2e;
+  background-color: #1e293b;
   color: #e2e8f0;
 }
 
 .dark-mode :is(.admin-dashboard, .head-dashboard, .student-dashboard)
-  :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  :is(.form-control, .form-select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea):not(.placement-rules-input) {
   border-color: #475569 !important;
   background-color: #17253a !important;
   color: #f8fafc !important;
@@ -150,6 +150,7 @@
 
 .dark-mode .role-sidebar {
   background: #0f172a;
+  border-color: #1e293b;
 }
 
 .dark-mode .role-sidebar-item {

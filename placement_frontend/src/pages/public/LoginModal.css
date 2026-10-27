@@ -131,28 +131,6 @@
   padding-right: 0;
 }
 
-.login-route-shell {
-  display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.login-route-main {
-  display: flex;
-  flex: 1 0 auto;
-  align-items: center;
-  justify-content: center;
-  margin: 2rem 0;
-}
-
-@media (min-width: 992px) {
-  .login-route-shell {
-    padding-top: 190px;
-  }
-}
-
 @keyframes login-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }

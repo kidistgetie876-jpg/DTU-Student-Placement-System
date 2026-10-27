@@ -4,7 +4,9 @@ html { overflow-x: hidden; }
 body { min-width: 320px; overflow-x: hidden; }
 img, video, canvas { max-width: 100%; height: auto; }
 button, input, select, textarea { max-width: 100%; }
-.app-main:not(.dashboard-main) { padding-top: 190px; }
+.app-main:not(.dashboard-main),
+.public-layout-main:not(.login-route-main) { padding-top: 190px !important; }
+.app-main.dashboard-main { padding-top: 110px !important; }
 .app-main.assign-head-main { padding-top: 190px !important; }
 .responsive-sidebar { color: #fff; background: #0f172a; border: 1px solid rgba(148,163,184,.12); border-radius: 1rem; box-shadow: 0 16px 38px rgba(15,23,42,.2); }
 .sidebar-nav-item { display: flex; align-items: center; gap: .8rem; width: 100%; min-height: 46px; padding: .7rem .9rem; color: #cbd5e1; background: rgba(255,255,255,.025); border: 1px solid transparent; border-left: 3px solid transparent; border-radius: .65rem; font-weight: 600; letter-spacing: .01em; transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease, box-shadow .2s ease; }
@@ -34,7 +36,9 @@ button, input, select, textarea { max-width: 100%; }
 
 @media (max-width: 991.98px) {
   .main-header-container { position: relative; }
-  .app-main:not(.dashboard-main) { padding-top: 0; }
+  .app-main:not(.dashboard-main),
+  .public-layout-main:not(.login-route-main) { padding-top: 0 !important; }
+  .app-main.dashboard-main { padding-top: 0 !important; }
   .app-main.assign-head-main { padding-top: 0 !important; }
   .top-branding-tier { padding: 1rem 0; }
   .top-branding-content { flex-wrap: wrap; }
@@ -50,8 +54,9 @@ button, input, select, textarea { max-width: 100%; }
   .navigation-tier .nav-link { padding: .7rem 0 !important; }
   .auth-action-wrapper { margin-left: 0 !important; flex-wrap: wrap; }
   .admin-dashboard .sidebar, .head-dashboard .sidebar {
-    position: relative; top: auto; left: auto; width: 100%; height: auto; min-height: 0; border-radius: 0 0 18px 18px;
+    position: relative; top: auto; left: auto; width: 100%; height: auto; min-height: 0; border-radius: 0;
   }
+
   .admin-dashboard .main-content, .head-dashboard .main-section {
     margin-left: 0; width: 100%; min-height: auto;
   }

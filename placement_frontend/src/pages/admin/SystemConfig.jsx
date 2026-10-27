@@ -25,8 +25,9 @@ const defaultSettings = {
   },
   maintenance: {
     enabled: false,
-    title: 'System Under Maintenance',
-    message: 'The DTU Placement Portal is currently undergoing scheduled system updates. Services will resume shortly.',
+    reason: 'Scheduled System Maintenance & Updates',
+    title: 'Scheduled System Maintenance',
+    message: 'We are performing scheduled maintenance and system updates to improve the reliability and performance of the DTU Placement Portal. Please check back soon.',
     expectedReturn: 'Soon',
   },
   placement: {
@@ -37,15 +38,18 @@ const defaultSettings = {
     resultsDate: '2026-08-27',
     appealStart: '2026-08-27',
     appealEnd: '2026-08-30',
-    gpa_weight: 30,
+    gpa_weight: 50,
     grade_12_weight: 20,
-    coc_weight: 50,
+    coc_weight: 30,
     g12_total_base: 600,
     max_score_cap: 100,
     female_bonus_points: 5,
     disability_bonus_points: 5,
-    developing_region_female_bonus_points: 10,
-    developing_region_disability_bonus_points: 10,
+    minority_bonus_points: 5,
+    minority_male_bonus_points: 5,
+    minority_female_bonus_points: 10,
+    minority_disability_bonus_points: 10,
+    female_disability_minority_bonus_points: 15,
     general_quota_percent: 80,
     reserved_female_quota_percent: 20,
     guideTitle: 'Placement Information & Student Guide',
@@ -140,6 +144,27 @@ const defaultSettings = {
   ],
 };
 
+const maintenanceReasonTemplates = {
+  'Scheduled System Maintenance & Updates': {
+    title: 'Scheduled System Maintenance',
+    message: 'We are performing scheduled maintenance and system updates to improve the reliability and performance of the DTU Placement Portal. Please check back soon.',
+  },
+  'Security Inspection & Data Protection': {
+    title: 'Security Inspection & Data Protection',
+    message: 'We are conducting a security inspection and data protection review to help keep your information secure. The portal will be available again once this work is complete.',
+  },
+  'Student Department Placement Processing': {
+    title: 'Student Department Placement Processing',
+    message: 'We are processing student department placements. The portal will reopen when placement processing is complete.',
+  },
+  'Database Optimization & Server Upgrades': {
+    title: 'Database Optimization & Server Upgrades',
+    message: 'We are optimizing the database and upgrading our servers to improve portal performance and reliability. Please check back soon.',
+  },
+};
+const customMaintenanceReason = 'Custom Reason';
+const maintenanceReasonOptions = [...Object.keys(maintenanceReasonTemplates), customMaintenanceReason];
+
 const settingCards = [
   { id: 'contact', title: 'Contact Page Settings', description: 'Manage campus, phone, and support details.', icon: FiMapPin },
   { id: 'placement', title: 'Placement Dates & Deadlines', description: 'Set submission, processing, results, and appeal dates.', icon: FiCalendar },
@@ -149,15 +174,13 @@ const settingCards = [
 ];
 
 const placementWeightFields = [
-  ['grade_12_weight', 'Grade 12 Entrance / Remedial Result Weight (%)'],
-  ['gpa_weight', 'Semester GPA / CGPA Weight (%)'],
-  ['coc_weight', 'Department / COC Entrance Exam Weight (%)'],
   ['g12_total_base', 'Grade 12 Total Base Mark (Out of)'],
-  ['max_score_cap', 'Maximum Score Cap (%)'],
   ['female_bonus_points', 'Female Bonus Points'],
   ['disability_bonus_points', 'Disability Bonus Points'],
-  ['developing_region_female_bonus_points', 'Developing Region / Minority (Female) Bonus Points'],
-  ['developing_region_disability_bonus_points', 'Developing Region / Minority (Disability) Bonus Points'],
+  ['minority_male_bonus_points', 'Minority / Developing Region (Male) Bonus Points'],
+  ['minority_female_bonus_points', 'Minority / Developing Region (Female) Bonus Points'],
+  ['minority_disability_bonus_points', 'Minority / Developing Region (Disability) Bonus Points'],
+  ['female_disability_minority_bonus_points', 'Female + Disability + Minority Bonus Points'],
   ['general_quota_percent', 'General / Open Competition Quota (%)'],
   ['reserved_female_quota_percent', 'Reserved Female Quota (%)'],
 ];
@@ -220,10 +243,10 @@ const placementGuideFields = [
 const mergeSettings = (value) => {
   const placement = { ...defaultSettings.placement, ...(value?.placement || {}) };
   const baseWeightTotal = Number(placement.gpa_weight) + Number(placement.grade_12_weight) + Number(placement.coc_weight);
-  if (baseWeightTotal !== 100) {
-    placement.gpa_weight = 30;
+  if (baseWeightTotal !== 100 || Number(placement.gpa_weight) !== 50 || Number(placement.grade_12_weight) !== 20 || Number(placement.coc_weight) !== 30) {
+    placement.gpa_weight = 50;
     placement.grade_12_weight = 20;
-    placement.coc_weight = 50;
+    placement.coc_weight = 30;
   }
   return {
   ...defaultSettings,
@@ -333,6 +356,7 @@ const SystemConfig = () => {
           setMaintenanceForm({
             ...defaultSettings.maintenance,
             ...savedMaintenance,
+            reason: savedMaintenance.reason || customMaintenanceReason,
             enabled: normalizeBoolean(savedMaintenance.enabled),
           });
         }
@@ -371,8 +395,8 @@ const SystemConfig = () => {
       const placement = settings.placement;
       const baseTotal = Number(placement.grade_12_weight) + Number(placement.gpa_weight) + Number(placement.coc_weight);
       const quotaTotal = Number(placement.general_quota_percent) + Number(placement.reserved_female_quota_percent);
-      if (baseTotal !== 100 || Number(placement.max_score_cap) !== 100 || quotaTotal !== 100) {
-        setSaveError('Base weights and quotas must each total 100%, and the score cap must be 100%.');
+      if (baseTotal !== 100 || Number(placement.gpa_weight) !== 50 || Number(placement.grade_12_weight) !== 20 || Number(placement.coc_weight) !== 30 || quotaTotal !== 100) {
+        setSaveError('The scoring formula is fixed at CGPA 50%, Grade 12 20%, and COC 30%; quotas must total 100%.');
         return;
       }
     }
@@ -393,11 +417,13 @@ const SystemConfig = () => {
           grade_12_weight: Number(placement.grade_12_weight),
           coc_weight: Number(placement.coc_weight),
           g12_total_base: Number(placement.g12_total_base),
-          max_score_cap: Number(placement.max_score_cap),
           female_bonus_points: Number(placement.female_bonus_points),
           disability_bonus_points: Number(placement.disability_bonus_points),
-          developing_region_female_bonus_points: Number(placement.developing_region_female_bonus_points),
-          developing_region_disability_bonus_points: Number(placement.developing_region_disability_bonus_points),
+          minority_bonus_points: Number(placement.minority_male_bonus_points),
+          minority_male_bonus_points: Number(placement.minority_male_bonus_points),
+          minority_female_bonus_points: Number(placement.minority_female_bonus_points),
+          minority_disability_bonus_points: Number(placement.minority_disability_bonus_points),
+          female_disability_minority_bonus_points: Number(placement.female_disability_minority_bonus_points),
           general_quota_percent: Number(placement.general_quota_percent),
           reserved_female_quota_percent: Number(placement.reserved_female_quota_percent),
         });
@@ -617,6 +643,28 @@ const SystemConfig = () => {
                   </div>
                   <div className="row g-3">
                     <div className="col-12">
+                      <label className="form-label" htmlFor="maintenance-reason">Reason for Maintenance</label>
+                      <select
+                        id="maintenance-reason"
+                        className="form-select"
+                        value={maintenanceForm.reason}
+                        onChange={(event) => {
+                          const reason = event.target.value;
+                          const template = maintenanceReasonTemplates[reason];
+                          setMaintenanceForm((previous) => ({
+                            ...previous,
+                            reason,
+                            ...(template || {}),
+                          }));
+                        }}
+                        disabled={saving}
+                      >
+                        {maintenanceReasonOptions.map((reason) => (
+                          <option key={reason} value={reason}>{reason}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12">
                       <label className="form-label" htmlFor="maintenance-title">Maintenance Notice Title</label>
                       <input
                         id="maintenance-title"
@@ -624,7 +672,7 @@ const SystemConfig = () => {
                         value={maintenanceForm.title}
                         onChange={(event) => setMaintenanceForm((previous) => ({ ...previous, title: event.target.value }))}
                         maxLength="180"
-                        disabled={saving}
+                        disabled={saving || maintenanceForm.reason !== customMaintenanceReason}
                         required
                       />
                     </div>
@@ -637,7 +685,7 @@ const SystemConfig = () => {
                         value={maintenanceForm.message}
                         onChange={(event) => setMaintenanceForm((previous) => ({ ...previous, message: event.target.value }))}
                         maxLength="2000"
-                        disabled={saving}
+                        disabled={saving || maintenanceForm.reason !== customMaintenanceReason}
                         required
                       />
                     </div>
@@ -682,6 +730,7 @@ const SystemConfig = () => {
                     ))}
                     <div className="col-12 mt-4">
                       <h4 className="h6 fw-bold mb-0">Placement Scoring Weights</h4>
+                      <p className="small text-muted mb-0 mt-1">The cumulative score uses CGPA (out of 4.0) × 50%, Grade 12 mark (out of the configured base) × 20%, and COC (out of 30) × 30%, then adds each eligible bonus.</p>
                     </div>
                     {placementWeightFields.map(([key, label]) => (
                       <div className="col-md-6" key={key}>
@@ -694,6 +743,7 @@ const SystemConfig = () => {
                           step="any"
                           className="form-control"
                           value={settings.placement[key]}
+                          placeholder={String(defaultSettings.placement[key] ?? '')}
                           onChange={(event) => updateSetting('placement', key, event.target.value)}
                           readOnly={key === 'max_score_cap'}
                           required

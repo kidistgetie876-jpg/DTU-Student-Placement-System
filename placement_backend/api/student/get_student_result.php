@@ -137,8 +137,6 @@ if (!$student) {
 
 $admissionNumber = trim((string) ($student['admission_number'] ?? '')) ?: $studentId;
 $numericId = (int) ($student['user_id'] ?? 0);
-$department = trim((string) ($student['department'] ?? ''));
-$isAssigned = $department !== '' && !in_array(strtolower($department), ['not assigned', 'null'], true);
 
 $placementColumnsResult = $db->query('SHOW COLUMNS FROM placement_results');
 $placement = null;
@@ -150,13 +148,17 @@ if ($placementColumnsResult) {
         static fn (string $column): bool => in_array($column, $placementColumns, true)
     ));
     if ($placementIdentifiers) {
+        $publishedCondition = in_array('is_published', $placementColumns, true)
+            ? 'is_published = 1'
+            : "LOWER(TRIM(status)) IN ('approved', 'published')";
         $placementWhere = implode(' OR ', array_map(
             static fn (string $column): string => "`{$column}` = ?",
             $placementIdentifiers
         ));
         $order = in_array('id', $placementColumns, true) ? ' ORDER BY `id` DESC' : '';
         $placementStatement = $db->prepare(
-            "SELECT * FROM placement_results WHERE ({$placementWhere}){$order} LIMIT 1"
+            "SELECT * FROM placement_results
+             WHERE ({$placementWhere}) AND {$publishedCondition}{$order} LIMIT 1"
         );
         if ($placementStatement) {
             $placementParameters = array_map(
@@ -185,9 +187,16 @@ if ($placementColumnsResult) {
     error_log('Unable to inspect placement result columns: ' . $db->error);
 }
 
-$effectiveDepartment = $isAssigned ? $department : trim((string) ($placement['dept_name'] ?? 'Not assigned'));
-$resultStatus = strtolower(trim((string) ($placement['status'] ?? '')));
-$isPublished = in_array($resultStatus, ['approved', 'published'], true);
+$publishedDepartment = trim((string) ($placement['dept_name'] ?? ''));
+$isPublished = $placement !== null
+    && (isset($placement['is_published'])
+        ? (int) $placement['is_published'] === 1
+        : in_array(strtolower(trim((string) ($placement['status'] ?? ''))), ['approved', 'published'], true));
+$isAssigned = $isPublished
+    && $publishedDepartment !== ''
+    && !in_array(strtolower($publishedDepartment), ['not assigned', 'unassigned', 'null'], true);
+$effectiveDepartment = $isAssigned ? $publishedDepartment : '';
+$resultStatus = $isPublished ? 'Published' : 'Pending';
 $db->close();
 
 studentResultResponse([
@@ -199,7 +208,7 @@ studentResultResponse([
         'id_number' => $admissionNumber,
         'name' => trim((string) ($student['given_name'] ?? '') . ' ' . (string) ($student['father_name'] ?? '')),
         'email' => $student['email'] ?? '',
-        'status' => $student['status'] ?? ($isAssigned ? 'Assigned' : 'Pending'),
+        'status' => $resultStatus,
         'department' => $effectiveDepartment,
     ],
     'placement' => [
@@ -209,7 +218,7 @@ studentResultResponse([
         'stream' => $placement['stream'] ?? $student['stream'] ?? 'N/A',
         'choice_rank' => (int) ($placement['choice_rank'] ?? 0),
         'merit_score' => (float) ($placement['final_score'] ?? $student['cumulative_score'] ?? 0),
-        'placement_status' => $placement['status'] ?? ($isAssigned ? 'Assigned' : 'Pending'),
+        'placement_status' => $resultStatus,
     ],
     'is_placed' => $isAssigned,
     'top_preferences' => [],

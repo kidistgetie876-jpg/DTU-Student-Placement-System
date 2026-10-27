@@ -23,10 +23,11 @@ const normalizeStream = (value) => {
   return stream;
 };
 
-const formatCumulativeScore = (value) => {
+const formatCumulativeScore = (value, cap = 100) => {
   if (value === null || value === undefined || value === "") return "0.00";
   const score = Number(value);
-  return Number.isFinite(score) ? score.toFixed(2) : "0.00";
+  const scoreCap = Number.isFinite(Number(cap)) ? Math.min(100, Math.max(0, Number(cap))) : 100;
+  return Number.isFinite(score) ? Math.min(scoreCap, Math.max(0, score)).toFixed(2) : "0.00";
 };
 
 const StudentInformation = ({
@@ -39,6 +40,7 @@ const StudentInformation = ({
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [streamFilter, setStreamFilter] = useState("all");
+  const [expandedScoreStudent, setExpandedScoreStudent] = useState(null);
   const itemsPerPage = 5;
 
   const loadStudents = async () => {
@@ -189,26 +191,35 @@ const StudentInformation = ({
                       <th>Admission Number</th>
                       <th>First Name</th>
                       <th>Father Name</th>
+                      <th>Grandfather Name</th>
                       <th>Sex</th>
+                      <th>Region</th>
                       <th>Field of Study</th>
-                      <th>G12 Mark</th>
+                      <th>Total Mark (G12)</th>
                       <th>CGPA</th>
                       <th>COC</th>
+                      <th>Disability</th>
+                      <th>Minority</th>
                       <th className="bg-warning text-dark fw-bold text-center">
                         Cumulative Score
                       </th>
-                      <th>Disability</th>
-                      <th>Minority</th>
-                      <th>Status</th>
+                      <th>Placement Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
 
                   <tbody>
-                    {currentStudents.map((student) => {
+                    {currentStudents.map((student, index) => {
                       const disabilityFlag = parseYesNo(student.disability);
-                      const minorityFlag = parseYesNo(student.minority);
+                      const minorityFlag = student.minority_flag ?? (
+                        parseYesNo(student.minority)
+                        || parseYesNo(student.developing_region)
+                      );
+                      const femaleFlag = student.female_flag ?? String(student.sex || "").trim().toLowerCase() === "female";
                       const status = student.placement_status || "Pending";
+                      const normalizedPlacementStatus = String(status).trim().toLowerCase();
+                      const scoreBreakdown = student.score_breakdown;
+                      const scoreExpanded = expandedScoreStudent === student.admission_number;
                       const fieldOfStudy = String(
                         student.field_of_study ||
                           student.fieldOfStudy ||
@@ -218,25 +229,31 @@ const StudentInformation = ({
                       ).trim();
 
                       return (
-                        <tr key={student.admission_number}>
+                        <React.Fragment key={`${student.id ?? student.admission_number ?? student.id_number ?? "student"}-${index}`}>
+                        <tr>
                           <td className="fw-bold text-primary">
                             {student.admission_number || "—"}
                           </td>
                           <td>{student.given_name ?? "—"}</td>
                           <td>{student.father_name ?? "—"}</td>
+                          <td>{student.grandfather_name ?? "—"}</td>
                           <td>{student.sex || "—"}</td>
+                          <td>{student.region || "—"}</td>
                           <td>{fieldOfStudy || "—"}</td>
                           <td className="text-center">
                             {student.total_mark ?? "—"}
                           </td>
-                          <td className="text-center">{student.cgpa ?? "—"}</td>
                           <td className="text-center">
-                            {student.coc_score ?? "—"}
+                            {Number.isFinite(Number(student.cgpa))
+                              ? Number(student.cgpa).toFixed(2)
+                              : "0.00"}
                           </td>
-                          <td className="text-center fw-bold text-success bg-light" style={{ fontSize: '1.05rem' }}>
-                            {formatCumulativeScore(student.cumulative_score)}
+                          <td className="text-center">
+                            {student.coc_score !== null && student.coc_score !== undefined
+                              && Number.isFinite(Number(student.coc_score))
+                              ? Number(student.coc_score)
+                              : "—"}
                           </td>
-
                           <td className="text-center">
                             <span
                               className={`badge px-2 py-1 ${disabilityFlag ? "bg-danger text-white" : "bg-secondary text-white"}`}
@@ -253,12 +270,27 @@ const StudentInformation = ({
                             </span>
                           </td>
 
+                          <td className="text-center fw-bold text-success bg-light" style={{ fontSize: '1.05rem' }}>
+                            {formatCumulativeScore(student.cumulative_score, scoreBreakdown?.score_cap)}
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm d-block mx-auto p-0 mt-1"
+                              aria-expanded={scoreExpanded}
+                              aria-label={`${scoreExpanded ? "Hide" : "Show"} score breakdown for ${student.admission_number}`}
+                              onClick={() => setExpandedScoreStudent(
+                                scoreExpanded ? null : student.admission_number,
+                              )}
+                            >
+                              {scoreExpanded ? "Hide breakdown" : "Score breakdown"}
+                            </button>
+                          </td>
+
                           <td className="text-center">
                             <span
                               className={`badge px-2 py-1 ${
-                                status === "Placed" || status === "Approved"
+                                ["placed", "placed in semester 1", "allocated", "approved"].includes(normalizedPlacementStatus)
                                   ? "bg-success text-white"
-                                  : status === "Pending"
+                                  : normalizedPlacementStatus === "pending"
                                     ? "bg-warning text-dark"
                                     : "bg-secondary text-white"
                               }`}
@@ -280,6 +312,64 @@ const StudentInformation = ({
                             )}
                           </td>
                         </tr>
+                        {scoreExpanded && (
+                          <tr>
+                            <td colSpan={15} className="bg-body-tertiary px-4 py-3">
+                              <section
+                                aria-label={`Cumulative score breakdown for ${student.admission_number}`}
+                                className="border rounded bg-white p-3"
+                              >
+                                <h6 className="fw-bold mb-3">Cumulative Score Breakdown</h6>
+                                {scoreBreakdown ? (
+                                  <div className="row g-3">
+                                    <div className="col-md-4">
+                                      <div className="fw-semibold">Base Score</div>
+                                      <div>CGPA contribution: {Number(scoreBreakdown.cgpa_contribution).toFixed(2)}</div>
+                                      <div>G12 contribution: {Number(scoreBreakdown.grade12_contribution).toFixed(2)}</div>
+                                      <div>COC contribution: {Number(scoreBreakdown.coc_contribution).toFixed(2)}</div>
+                                      <div className="fw-semibold mt-1">Base total: {Number(scoreBreakdown.base_score).toFixed(2)}</div>
+                                    </div>
+                                    <div className="col-md-5">
+                                      <div className="fw-semibold">Applied Affirmative Action Bonuses</div>
+                                      {scoreBreakdown.applied_scenario ? (
+                                        <>
+                                          <div>Female: {femaleFlag ? "Yes" : "No"}</div>
+                                          <div>Minority / developing region{student.region ? ` (${student.region})` : ""}: {minorityFlag ? "Yes" : "No"}</div>
+                                          <div>Disability: {disabilityFlag ? "Yes" : "No"}</div>
+                                          <div>
+                                            Applied rule: {{
+                                              minority_male: "Minority / Developing Region (Male)",
+                                              minority_female: "Minority / Developing Region (Female)",
+                                              minority_disability: "Minority / Developing Region (Disability)",
+                                              female_disability_minority: "Female + Disability + Minority",
+                                            }[scoreBreakdown.applied_scenario] || scoreBreakdown.applied_scenario}
+                                          </div>
+                                          <div>Scenario bonus: +{Number(scoreBreakdown.scenario_bonus).toFixed(2)}</div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div>Female: {femaleFlag ? "Yes" : "No"} ({femaleFlag ? "+" : ""}{Number(scoreBreakdown.female_bonus).toFixed(2)})</div>
+                                          <div>
+                                            Minority / developing region{student.region ? ` (${student.region})` : ""}: {minorityFlag ? "Yes" : "No"} ({minorityFlag ? "+" : ""}{Number(scoreBreakdown.minority_bonus).toFixed(2)})
+                                          </div>
+                                          <div>Disability: {disabilityFlag ? "Yes" : "No"} ({disabilityFlag ? "+" : ""}{Number(scoreBreakdown.disability_bonus).toFixed(2)})</div>
+                                        </>
+                                      )}
+                                      <div className="fw-semibold mt-1">Total bonus: +{Number(scoreBreakdown.affirmative_action_bonus).toFixed(2)}</div>
+                                    </div>
+                                    <div className="col-md-3">
+                                      <div className="fw-semibold">Final Cumulative Score</div>
+                                      <div>{Number(scoreBreakdown.base_score).toFixed(2)} + {Number(scoreBreakdown.affirmative_action_bonus).toFixed(2)} = <strong>{formatCumulativeScore(scoreBreakdown.cumulative_score, scoreBreakdown.score_cap)}</strong></div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-muted mb-0">Score breakdown is unavailable until CGPA, G12 mark, and COC score are recorded.</p>
+                                )}
+                              </section>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>

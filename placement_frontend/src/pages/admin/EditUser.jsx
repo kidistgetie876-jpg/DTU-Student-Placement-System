@@ -83,8 +83,8 @@ const EditUser = () => {
       setError('Username is required.');
       return false;
     }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      setError('Please enter a valid email address.');
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email.trim())) {
+      setError('A valid @gmail.com address is required.');
       return false;
     }
     if (!role) {

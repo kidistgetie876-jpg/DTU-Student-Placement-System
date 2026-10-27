@@ -26,8 +26,8 @@ $db = getDbConnection();
 
 function loadPlacementWeights(mysqli $db): array
 {
-    $weights = ['gpa' => 30.0, 'grade12' => 20.0, 'coc' => 50.0, 'g12_total_base' => 600.0, 'gender' => 0.0, 'disability' => 0.0, 'minority' => 0.0];
-    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, gender_weight, disability_weight, minority_weight FROM placement_settings WHERE id = 1 LIMIT 1');
+    $weights = ['gpa' => 50.0, 'grade12' => 20.0, 'coc' => 30.0, 'g12_total_base' => 600.0, 'femaleBonusPoints' => 5.0, 'disabilityBonusPoints' => 5.0, 'minorityBonusPoints' => 5.0, 'minorityMaleBonusPoints' => 5.0, 'minorityFemaleBonusPoints' => 10.0, 'minorityDisabilityBonusPoints' => 10.0, 'femaleDisabilityMinorityBonusPoints' => 15.0];
+    $result = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, female_bonus_points, disability_bonus_points, minority_bonus_points, minority_male_bonus_points, minority_female_bonus_points, minority_disability_bonus_points, female_disability_minority_bonus_points FROM placement_settings WHERE id = 1 LIMIT 1');
     if ($result) {
         $row = $result->fetch_assoc();
         $columns = [
@@ -35,9 +35,13 @@ function loadPlacementWeights(mysqli $db): array
             'grade12' => 'grade_12_weight',
             'coc' => 'coc_weight',
             'g12_total_base' => 'g12_total_base',
-            'gender' => 'gender_weight',
-            'disability' => 'disability_weight',
-            'minority' => 'minority_weight',
+            'femaleBonusPoints' => 'female_bonus_points',
+            'disabilityBonusPoints' => 'disability_bonus_points',
+            'minorityBonusPoints' => 'minority_bonus_points',
+            'minorityMaleBonusPoints' => 'minority_male_bonus_points',
+            'minorityFemaleBonusPoints' => 'minority_female_bonus_points',
+            'minorityDisabilityBonusPoints' => 'minority_disability_bonus_points',
+            'femaleDisabilityMinorityBonusPoints' => 'female_disability_minority_bonus_points',
         ];
         foreach ($columns as $key => $column) {
             if (isset($row[$column]) && is_numeric($row[$column]) && (float) $row[$column] >= 0) {

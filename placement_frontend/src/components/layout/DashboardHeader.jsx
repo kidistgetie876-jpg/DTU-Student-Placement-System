@@ -18,6 +18,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import getAttachmentUrl from '../../utils/getAttachmentUrl.js';
 import EditProfileModal from './EditProfileModal.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import './DashboardHeader.css';
@@ -29,6 +31,19 @@ const readStoredUser = () => {
   } catch {
     return {};
   }
+};
+
+const getStudentNotificationIdentity = () => {
+  const user = readStoredUser();
+  return {
+    student_id: String(user.user_id || user.id || localStorage.getItem('student_id') || ''),
+    admission_number: String(
+      user.admission_number
+      || user.id_number
+      || localStorage.getItem('admission_number')
+      || '',
+    ),
+  };
 };
 
 const getFullName = (user = {}) => user.full_name
@@ -57,6 +72,7 @@ const DashboardHeader = ({
 }) => {
   const { isDarkMode, isEyeCareMode, toggleTheme, toggleEyeCareMode, setThemeMode } = useTheme();
   const { language, setLanguage, t } = useLanguage();
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [openMenu, setOpenMenu] = useState(null);
   const [modal, setModal] = useState(null);
@@ -69,15 +85,18 @@ const DashboardHeader = ({
   const [markingNotificationId, setMarkingNotificationId] = useState(null);
   const [modalError, setModalError] = useState('');
   const [modalSuccess, setModalSuccess] = useState('');
+  const [profileToast, setProfileToast] = useState('');
   const [passwordForm, setPasswordForm] = useState({
     current_password: '',
     new_password: '',
     confirm_password: '',
   });
   const actionsRef = useRef(null);
-  const displayName = fullName || getFullName(profile) || username || 'User';
-  const displayEmail = email || profile.email || '';
-  const rawRole = String(profile.role || role || 'User').trim().toLowerCase();
+  const profileSavedRef = useRef(false);
+  const activeProfile = { ...profile, ...(user || {}) };
+  const displayName = getFullName(activeProfile) || fullName || username || 'User';
+  const displayEmail = activeProfile.email || email || '';
+  const rawRole = String(activeProfile.role || role || localStorage.getItem('role') || 'User').trim().toLowerCase();
   const profileRole = ({
     admin: 'System Admin',
     registrar: 'Registrar',
@@ -86,12 +105,24 @@ const DashboardHeader = ({
     student: 'Student',
   })[rawRole] || rawRole;
   const displayRole = t(profileRole);
-  const avatarUrl = getAvatarUrl(profile);
+  const avatarUrl = getAvatarUrl(activeProfile);
   const showControls = variant !== 'welcome';
   const showGreeting = variant !== 'navigation';
   const unreadNotifications = notifications.filter((notification) => (
     Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false
   )).length;
+
+  useEffect(() => {
+    if (!profileToast) return undefined;
+    const timeoutId = window.setTimeout(() => setProfileToast(''), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [profileToast]);
+
+  useEffect(() => {
+    if (user) {
+      setProfile((current) => ({ ...current, ...user }));
+    }
+  }, [user]);
 
   useEffect(() => {
     const storedUser = readStoredUser();
@@ -112,31 +143,43 @@ const DashboardHeader = ({
         if (!response.data?.success || !response.data?.profile) {
           throw new Error(response.data?.message || 'Unable to load profile.');
         }
-        if (isCurrent) {
+        if (isCurrent && !profileSavedRef.current) {
           setProfile((current) => ({ ...current, ...response.data.profile }));
         }
       })
       .catch((error) => {
         if (!isCurrent) return;
         if (error.response?.status === 401 || error.response?.status === 404) {
-          localStorage.removeItem('user');
+          ['user', 'role', 'admission_number', 'token', 'accessToken', 'authToken'].forEach((key) => {
+            localStorage.removeItem(key);
+            sessionStorage.removeItem(key);
+          });
+          navigate('/login', { replace: true });
           return;
         }
         console.error('Unable to load the current user profile:', error);
       });
 
-    const syncProfile = () => setProfile((current) => ({ ...current, ...readStoredUser() }));
+    const syncProfile = (event) => {
+      const updatedUser = event.detail;
+      setProfile((current) => ({
+        ...current,
+        ...(updatedUser && typeof updatedUser === 'object' ? updatedUser : readStoredUser()),
+      }));
+    };
     window.addEventListener('user-profile-updated', syncProfile);
     return () => {
       isCurrent = false;
       window.removeEventListener('user-profile-updated', syncProfile);
     };
-  }, [showControls]);
+  }, [navigate, showControls]);
 
   useEffect(() => {
     const storedUser = readStoredUser();
     const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
-    if (!showControls || !hasStoredUser || !api || typeof api.get !== 'function') return undefined;
+    const identity = rawRole === 'student' ? getStudentNotificationIdentity() : {};
+    if (!showControls || (!hasStoredUser && !identity.student_id && !identity.admission_number)
+      || !api || typeof api.get !== 'function') return undefined;
 
     let isCurrent = true;
     let requestInProgress = false;
@@ -145,7 +188,11 @@ const DashboardHeader = ({
       if (requestInProgress) return;
       requestInProgress = true;
       try {
-        const response = await Promise.resolve(api.get('api/common/get_notifications.php'));
+        const params = Object.fromEntries(Object.entries(identity).filter(([, value]) => value));
+        const response = await Promise.resolve(api.get('api/common/get_notifications.php', {
+          params,
+          withCredentials: true,
+        }));
         if (!response?.data) {
           setNotifications([]);
           setNotificationsError('');
@@ -184,7 +231,7 @@ const DashboardHeader = ({
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshOnFocus);
     };
-  }, [showControls]);
+  }, [showControls, rawRole]);
 
   useEffect(() => {
     if (!showControls || (!openMenu && !modal)) return undefined;
@@ -250,6 +297,8 @@ const DashboardHeader = ({
     setModal(nextModal);
   };
 
+  const openProfileModal = () => openModal('profile');
+
   const closeModal = () => {
     setModal(null);
     setModalError('');
@@ -294,7 +343,8 @@ const DashboardHeader = ({
       const response = await api.post('api/common/mark_notifications_read.php', {
         notification_id: Number(notification.id),
         notification_type: notification.notification_type || 'general',
-      });
+        ...(rawRole === 'student' ? getStudentNotificationIdentity() : {}),
+      }, { withCredentials: true });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to mark notification as read.');
       }
@@ -316,7 +366,10 @@ const DashboardHeader = ({
     setNotificationActionError('');
     setMarkingAllNotifications(true);
     try {
-      const response = await api.post('api/common/mark_notifications_read.php', { mark_all: true });
+      const response = await api.post('api/common/mark_notifications_read.php', {
+        mark_all: true,
+        ...(rawRole === 'student' ? getStudentNotificationIdentity() : {}),
+      }, { withCredentials: true });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to mark notifications as read.');
       }
@@ -329,22 +382,27 @@ const DashboardHeader = ({
     }
   };
 
-  const handleProfileSaved = (updatedProfile) => {
-    setProfile((current) => ({ ...current, ...updatedProfile }));
-    const storedUser = readStoredUser();
-    localStorage.setItem('user', JSON.stringify({ ...storedUser, ...updatedProfile }));
-    window.dispatchEvent(new Event('user-profile-updated'));
+  const handleProfileSaved = (updatedProfile, message) => {
+    profileSavedRef.current = true;
+    const nextProfile = { ...activeProfile, ...updatedProfile };
+    updateUser(nextProfile);
+    setProfile(nextProfile);
+    setModal(null);
+    setModalError('');
+    setModalSuccess('');
+    setProfileToast(message || 'Profile updated successfully.');
   };
 
   const count = unreadNotifications;
 
   return (
     <>
+      {profileToast && <div className="dashboard-profile-save-toast" role="status" aria-live="polite">{profileToast}</div>}
       {showGreeting && (
         <header className="dashboard-topbar mb-4">
           <div className="dashboard-topbar-copy">
             <h2 className="fw-bold mb-0">
-              {t(greeting)}, <span>{username || profile.username || displayName}</span>!
+              {t(greeting)}, <span>{username || activeProfile.username || displayName}</span>!
             </h2>
           </div>
         </header>
@@ -421,6 +479,7 @@ const DashboardHeader = ({
                   {notifications.map((notification) => {
                     const unread = Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false;
                     const key = `${notification.notification_type || 'general'}-${notification.id}`;
+                    const attachmentUrl = getAttachmentUrl(notification.file_path, notification.id);
                     return (
                       <li key={key}>
                         <button
@@ -436,6 +495,16 @@ const DashboardHeader = ({
                           <span className="dashboard-notification-message">{notification.message || ''}</span>
                           <small>{notification.created_at ? new Date(notification.created_at).toLocaleString() : ''}</small>
                         </button>
+                        {attachmentUrl !== '#' && (
+                          <a
+                            className="dashboard-notification-file"
+                            href={attachmentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {t('Open attachment')}
+                          </a>
+                        )}
                       </li>
                     );
                   })}
@@ -502,9 +571,9 @@ const DashboardHeader = ({
                   <LayoutDashboard size={18} aria-hidden="true" />
                   <span>{t('My Dashboard')}</span>
                 </button>
-                <button type="button" role="menuitem" onClick={() => openModal('profile')}>
+                <button type="button" role="menuitem" onClick={openProfileModal}>
                   <UserRound size={18} aria-hidden="true" />
-                  <span>{t('View Profile / Edit Profile')}</span>
+                  <span>{t('Edit Profile')}</span>
                 </button>
                 <button type="button" role="menuitem" onClick={() => openModal('password')}>
                   <LockKeyhole size={18} aria-hidden="true" />
@@ -527,7 +596,12 @@ const DashboardHeader = ({
 
       {modal === 'profile' && (
         createPortal(
-          <EditProfileModal profile={{ ...profile, full_name: getFullName(profile) || displayName }} onClose={closeModal} onSaved={handleProfileSaved} />,
+          <EditProfileModal
+            isOpen
+            profile={{ ...activeProfile, full_name: getFullName(activeProfile) || displayName }}
+            onClose={closeModal}
+            onSaved={handleProfileSaved}
+          />,
           document.body
         )
       )}

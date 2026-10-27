@@ -6,7 +6,7 @@ import api from '../../services/api';
 jest.mock('../../services/api', () => ({
   __esModule: true,
   default: {
-    defaults: { baseURL: 'http://localhost/student-placement/placement_backend' },
+    defaults: { baseURL: 'http://127.0.0.1:8888/student-placement/placement_backend/' },
     get: jest.fn(),
     post: jest.fn(),
   },
@@ -41,7 +41,7 @@ describe('Reports attachment', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open attachment' }));
 
     expect(openSpy).toHaveBeenCalledWith(
-      'http://localhost/student-placement/placement_backend/api/common/download_report.php?notification_id=1',
+      'http://127.0.0.1:8888/student-placement/placement_backend/api/common/download_report.php?notification_id=1',
       '_blank',
       'noopener,noreferrer'
     );
@@ -64,6 +64,42 @@ describe('Reports attachment', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Hide Details/ }));
     expect(screen.queryByText('Direction: Received')).not.toBeInTheDocument();
+  });
+
+  it('renders reports and student options safely when identifiers are missing or duplicated', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        reports: [
+          { direction: 'received', message: 'Report without an ID.' },
+          undefined,
+        ],
+      },
+    });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <Reports
+        leader={{ id: 7 }}
+        students={[
+          { student_id: 12, username: 'First Student' },
+          { student_id: 12, username: 'Duplicate ID Student' },
+          { username: 'Student Without ID' },
+          undefined,
+        ]}
+      />
+    );
+
+    expect(await screen.findByText('Report without an ID.')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'First Student (ID: 12)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Duplicate ID Student (ID: 12)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Student Without ID' })).toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('Each child in a list should have a unique "key" prop'),
+      expect.anything(),
+    );
+
+    consoleError.mockRestore();
   });
 
   it('permanently clears report history after confirmation', async () => {

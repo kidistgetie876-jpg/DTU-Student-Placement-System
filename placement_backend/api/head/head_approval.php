@@ -1,6 +1,7 @@
 <?php
 include __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/../../config/logger.php';
+require_once __DIR__ . '/head_department.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -30,11 +31,11 @@ try {
         respond(['success' => false, 'message' => 'You must be logged in as a HoD.'], 401);
     }
 
-    if (!in_array(strtolower((string) ($_SESSION['role'] ?? '')), ['head', 'hod', 'coordinator'], true)) {
+    if (!in_array(strtolower(trim((string) ($_SESSION['role'] ?? ''))), ['head', 'department head', 'department_head', 'head of department', 'hod', 'coordinator'], true)) {
         respond(['success' => false, 'message' => 'Only department heads can approve placements.'], 403);
     }
 
-    $headSql = $db->prepare("SELECT id, username FROM users WHERE id = ? AND role IN ('head', 'hod', 'coordinator') LIMIT 1");
+    $headSql = $db->prepare("SELECT id, username FROM users WHERE id = ? AND LOWER(TRIM(role)) IN ('head', 'department head', 'department_head', 'hod', 'coordinator') LIMIT 1");
     if (!$headSql) throw new Exception('Unable to validate HoD account.');
     $headSql->bind_param('i', $headId);
     $headSql->execute();
@@ -45,12 +46,11 @@ try {
         respond(['success' => false, 'message' => 'Only department heads can approve placements.'], 403);
     }
 
-    $departmentSql = $db->prepare("SELECT id, name FROM departments WHERE head_id = ? AND status = 'active' LIMIT 1");
-    if (!$departmentSql) throw new Exception('Unable to load assigned department.');
-    $departmentSql->bind_param('i', $headId);
-    $departmentSql->execute();
-    $department = $departmentSql->get_result()->fetch_assoc();
-    $departmentSql->close();
+    $department = resolveHeadDepartment(
+        $db,
+        $_SESSION['user_id'],
+        isset($_SESSION['email']) ? (string) $_SESSION['email'] : null
+    );
 
     if (!$department) {
         respond(['success' => false, 'message' => 'No active department is assigned to this HoD.'], 404);

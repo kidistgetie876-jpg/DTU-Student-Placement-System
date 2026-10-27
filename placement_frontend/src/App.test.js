@@ -7,9 +7,14 @@ import StudentRegistration from './pages/registrar/StudentRegistration.jsx';
 import {
   parseYesNo as parseRegistrarYesNo,
   filterStudentIdsForPlacement,
+  filterPlacementCandidates,
+  getPlacementCollegeOptions,
+  getPlacementStreamOptions,
+  normalizePlacementStream,
 } from './pages/registrar/RegistrarDashboard.jsx';
 import { parseYesNo as parseStudentYesNo } from './pages/student/StudentDashboard.jsx';
 import api from './services/api';
+import { AuthProvider } from './contexts/AuthContext.jsx';
 
 jest.mock('./services/api', () => ({
   __esModule: true,
@@ -42,6 +47,17 @@ describe('Login', () => {
     expect(localStorage.getItem('darkMode')).toBe('true');
   });
 
+  test('removes the student and staff login toggles', () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: 'Staff Login' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Student Login' })).not.toBeInTheDocument();
+  });
+
   test('submits login and stores the user payload for a dynamic role', async () => {
     api.post.mockResolvedValue({
       data: {
@@ -56,23 +72,52 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
-      target: { value: 'marta' },
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
+      target: { value: 'marta@dtu.edu' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('auth/login.php', {
-        username_or_email: 'marta',
+        email: 'marta@dtu.edu',
         password: 'secret123',
+      }, {
+        timeout: 15000,
       });
     });
 
     await waitFor(() => {
       expect(JSON.parse(localStorage.getItem('user')).role).toBe('head');
+    });
+  });
+
+  test('resets the login button after a timed-out request', async () => {
+    api.post.mockRejectedValue({ code: 'ECONNABORTED' });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
+      target: { value: 'DTU16R2001' },
+    });
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
+      target: { value: 'Abebe' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /login/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The login request timed out.');
+    expect(screen.getByRole('button', { name: 'LOGIN' })).toBeEnabled();
+    expect(api.post).toHaveBeenCalledWith('auth/login.php', {
+      admission_number: 'DTU16R2001',
+      given_name: 'Abebe',
+    }, {
+      timeout: 15000,
     });
   });
 
@@ -152,10 +197,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
-      target: { value: 'registrar' },
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
+      target: { value: 'registrar@dtu.edu' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -166,10 +211,44 @@ describe('Login', () => {
     expect(localStorage.getItem('activeTab')).toBe('overview');
   });
 
+  test('keeps registrar sidebar navigation on its dashboard routes', async () => {
+    api.get.mockResolvedValue({
+      data: { success: true, settings: { maintenance: { enabled: false } } },
+    });
+    localStorage.setItem('user', JSON.stringify({
+      id: 9,
+      username: 'registrar',
+      role: 'Registrar',
+    }));
+    window.history.pushState({}, '', '/registrar-dashboard');
+
+    render(<App />);
+
+    const studentInfoLink = await screen.findByRole('button', { name: 'Student Information' });
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/registrar-dashboard/overview');
+    });
+
+    fireEvent.click(studentInfoLink);
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/registrar-dashboard/student-info');
+    });
+    expect(screen.getByRole('button', { name: 'Student Information' })).toHaveAttribute('aria-current', 'page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unassigned Students' }));
+    await waitFor(() => {
+      expect(window.location.pathname).toBe('/registrar-dashboard/unassigned-students');
+    });
+    expect(screen.getByRole('button', { name: 'Unassigned Students' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('button', { name: 'Overview' })).not.toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('dialog', { name: /user login/i })).not.toBeInTheDocument();
+  });
+
   test.each([
     ['admin', '/admin-dashboard', 'dashboard'],
     ['student', '/student-dashboard', 'overview'],
     ['head', '/head-dashboard', 'overview'],
+    ['department_head', '/head-dashboard', 'overview'],
     ['hod', '/head-dashboard', 'overview'],
     ['coordinator', '/head-dashboard', 'overview'],
     ['head of department', '/head-dashboard', 'overview'],
@@ -189,10 +268,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
-      target: { value: role },
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
+      target: { value: `${role}@dtu.edu` },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -210,10 +289,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
       target: { value: 'marta@' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -231,10 +310,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
       target: { value: 'missing-user' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -251,10 +330,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
       target: { value: 'samuel@gmail.com' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'wrong-password' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -271,10 +350,10 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.change(screen.getByLabelText(/username or email/i), {
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
       target: { value: 'samue1@gmail.com' },
     });
-    fireEvent.change(screen.getByLabelText('Password', { exact: true }), {
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
       target: { value: 'secret123' },
     });
     fireEvent.click(screen.getByRole('button', { name: /login/i }));
@@ -282,9 +361,9 @@ describe('Login', () => {
     expect(await screen.findByText('Please enter the correct email or username.')).toBeInTheDocument();
   });
 
-  test('completes the password reset flow in the dedicated login page tab', async () => {
+  test('completes the password reset flow from the login page dialog', async () => {
     api.post
-      .mockResolvedValueOnce({ data: { message: 'Reset code sent.' } })
+      .mockResolvedValueOnce({ data: { success: true, message: 'Reset code sent.' } })
       .mockResolvedValueOnce({ data: { success: true, message: 'Password updated.' } });
 
     render(
@@ -293,13 +372,12 @@ describe('Login', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Reset your password' }));
-    expect(screen.getByRole('tab', { name: 'Reset your password' })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'marta@dtu.edu' } });
-    fireEvent.click(screen.getByRole('button', { name: /send reset code/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot Password?' }));
+    fireEvent.change(screen.getByLabelText('Registered email address'), { target: { value: 'marta@dtu.edu' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send Reset Request' }));
 
     expect(await screen.findByLabelText('Six-digit verification code')).toBeInTheDocument();
-    expect(api.post).toHaveBeenNthCalledWith(1, 'auth/forgot_password.php', { email: 'marta@dtu.edu' });
+    expect(api.post).toHaveBeenNthCalledWith(1, 'http://127.0.0.1:8888/student-placement/placement_backend/auth/forgot_password.php', { email: 'marta@dtu.edu' });
     fireEvent.change(screen.getByLabelText('Six-digit verification code'), { target: { value: '123456' } });
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'updated123' } });
     fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'updated123' } });
@@ -309,7 +387,7 @@ describe('Login', () => {
     expect(api.post).toHaveBeenNthCalledWith(2, 'auth/reset_password.php', {
       email: 'marta@dtu.edu',
       code: '123456',
-      newPassword: 'updated123',
+      new_password: 'updated123',
     });
   });
 
@@ -324,13 +402,19 @@ describe('Login', () => {
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <>
-          <Header />
-          <CurrentRoute />
-        </>
+        <AuthProvider>
+          <>
+            <Header />
+            <CurrentRoute />
+          </>
+        </AuthProvider>
       </MemoryRouter>
     );
 
+    const navigation = screen.getByRole('navigation');
+    for (const label of ['Home', 'Placement Info', 'Announcements', 'Contact']) {
+      expect(await within(navigation).findByRole('link', { name: label })).toBeInTheDocument();
+    }
     fireEvent.click(await screen.findByRole('link', { name: 'Contact' }));
     expect(screen.getByTestId('current-route')).toHaveTextContent('/contact');
   });
@@ -340,14 +424,16 @@ describe('Login', () => {
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <>
-          <Header />
-          <CurrentRoute />
-        </>
+        <AuthProvider>
+          <>
+            <Header />
+            <CurrentRoute />
+          </>
+        </AuthProvider>
       </MemoryRouter>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^login$/i }));
+    fireEvent.click(screen.getByRole('link', { name: /^login$/i }));
     expect(screen.getByTestId('current-route')).toHaveTextContent('/login');
     expect(screen.queryByRole('dialog', { name: /portal login/i })).not.toBeInTheDocument();
     expect(localStorage.getItem('darkMode')).toBe('true');
@@ -359,10 +445,12 @@ describe('Login', () => {
 
     render(
       <MemoryRouter initialEntries={["/admin-dashboard"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <>
-          <Header />
-          <CurrentRoute />
-        </>
+        <AuthProvider>
+          <>
+            <Header />
+            <CurrentRoute />
+          </>
+        </AuthProvider>
       </MemoryRouter>
     );
 
@@ -382,6 +470,79 @@ describe('Login', () => {
     expect(parseRegistrarYesNo('No')).toBe(false);
     expect(parseStudentYesNo('Yes')).toBe(true);
     expect(parseStudentYesNo('No')).toBe(false);
+  });
+
+  test('normalizes Natural Science stream aliases for placement filters', () => {
+    const selectedStream = normalizePlacementStream(' Natural Science ');
+
+    expect(normalizePlacementStream('')).toBe('all');
+    expect(normalizePlacementStream('natural_science')).toBe(selectedStream);
+    expect(normalizePlacementStream('NaturalScience')).toBe(selectedStream);
+    expect(normalizePlacementStream('Natural')).toBe(selectedStream);
+    expect(normalizePlacementStream('Social')).toBe(normalizePlacementStream('Social Science'));
+  });
+
+  test('always provides default placement stream options before department data loads', () => {
+    expect(getPlacementStreamOptions([])).toEqual(['Natural Science', 'Social Science']);
+    expect(getPlacementStreamOptions([
+      { stream: 'Natural', college: 'College of Agriculture' },
+      { stream: 'Social Science', college: 'School of Law' },
+    ])).toEqual(['Natural Science', 'Social Science']);
+  });
+
+  test('limits placement college options to the selected stream', () => {
+    const departments = [
+      { stream: 'Natural', college: 'College of Natural & Computational Sciences' },
+      { stream: 'Natural Science', college: 'College of Agriculture' },
+      { stream: 'Natural Science', college: 'College of Health Sciences' },
+      { stream: 'Social', college: 'College of Business & Economics' },
+      { stream: 'Social Science', college: 'School of Law' },
+    ];
+
+    expect(getPlacementCollegeOptions(departments, 'Natural Science')).toEqual([
+      'College of Agriculture',
+      'College of Health Sciences',
+      'College of Natural & Computational Sciences',
+    ]);
+    expect(getPlacementCollegeOptions(departments, 'Social Science')).toEqual([
+      'College of Business & Economics',
+      'School of Law',
+    ]);
+  });
+
+  test('filters candidates by both selected stream and college', () => {
+    const students = [
+      { id: 1, stream: 'Natural', choices: [{ college_name: 'College of Agriculture' }] },
+      { id: 2, stream: 'NaturalScience', choices: [{ college_name: 'College of Health Sciences' }] },
+      { id: 3, stream: 'Social Science', choices: [{ college_name: 'College of Health Sciences' }] },
+      { id: 4, stream: 'Natural Science', choices: [{ college_name: 'College of Business & Economics' }] },
+      { id: 5, stream: 'Natural Science', choices: [] },
+    ];
+    const visibleCandidates = filterPlacementCandidates(
+      students,
+      'Natural Science',
+      'College of Health Sciences',
+    );
+
+    expect(visibleCandidates.map((student) => student.id)).toEqual([2]);
+    expect(visibleCandidates).toHaveLength(1);
+  });
+
+  test('includes candidates without saved choices when requested', () => {
+    const students = [
+      { id: 1, stream: 'Natural Science', choices: [] },
+      { id: 2, stream: 'Social Science', choices: [] },
+    ];
+
+    const visibleCandidates = filterPlacementCandidates(
+      students,
+      'Natural Science',
+      'all',
+      false,
+      true,
+    );
+
+    expect(visibleCandidates.map((student) => student.id)).toEqual([1]);
   });
 
   test('does not assign a department by default during registration', async () => {

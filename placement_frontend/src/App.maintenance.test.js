@@ -19,6 +19,7 @@ jest.mock('./pages/admin/Admin_Dashboard.jsx', () => ({
 
 const maintenanceSettings = {
   enabled: true,
+  reason: 'Student Department Placement Processing',
   title: 'Scheduled maintenance',
   message: 'The placement portal is updating.',
   expectedReturn: 'Estimated Return: 2:00 PM',
@@ -36,12 +37,13 @@ describe('App maintenance lockdown', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Scheduled maintenance' })).toBeInTheDocument();
+    expect(screen.getByText('Student Department Placement Processing')).toBeInTheDocument();
     expect(screen.getByText('The placement portal is updating.')).toBeInTheDocument();
     expect(screen.getByText('Estimated Return: 2:00 PM')).toBeInTheDocument();
     expect(screen.queryByText('Site header')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('link', { name: 'Admin Login' }));
-    expect(await screen.findByLabelText(/username or email/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Admission ID / Email')).toBeInTheDocument();
   });
 
   it('allows an authenticated administrator to open the dashboard during maintenance', async () => {
@@ -59,7 +61,7 @@ describe('App maintenance lockdown', () => {
     window.history.pushState({}, '', '/login');
     render(<App />);
 
-    expect(await screen.findByLabelText(/username or email/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText('Admission ID / Email')).toBeInTheDocument();
     expect(screen.getByText('Site footer')).toBeInTheDocument();
   });
 });

@@ -130,13 +130,15 @@ $db = getDbConnection();
 $inserted = 0;
 $updated = 0;
 $skipped = [];
-$defaultPassword = password_hash('123456', PASSWORD_DEFAULT);
+$defaultPassword = password_hash('12345678', PASSWORD_DEFAULT);
 
 try {
     $db->begin_transaction();
 
     $weightsResult = $db->query(
-        'SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, gender_weight, disability_weight, minority_weight
+        'SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, female_bonus_points, disability_bonus_points, minority_bonus_points,
+                minority_male_bonus_points, minority_female_bonus_points, minority_disability_bonus_points,
+                female_disability_minority_bonus_points
          FROM placement_settings WHERE id = 1 LIMIT 1'
     );
     if (!$weightsResult) {
@@ -147,13 +149,17 @@ try {
         throw new RuntimeException('Placement score weights are not configured.');
     }
     $weights = [
-        'gpa' => (float) $weightRow['gpa_weight'],
-        'grade12' => (float) $weightRow['grade_12_weight'],
-        'coc' => (float) $weightRow['coc_weight'],
+        'gpa_weight' => (float) ($weightRow['gpa_weight'] ?? 50),
+        'grade_12_weight' => (float) ($weightRow['grade_12_weight'] ?? 20),
+        'coc_weight' => (float) ($weightRow['coc_weight'] ?? 30),
         'g12_total_base' => (float) ($weightRow['g12_total_base'] ?? 600),
-        'gender' => (float) $weightRow['gender_weight'],
-        'disability' => (float) $weightRow['disability_weight'],
-        'minority' => (float) $weightRow['minority_weight'],
+        'femaleBonusPoints' => (float) ($weightRow['female_bonus_points'] ?? 5),
+        'disabilityBonusPoints' => (float) ($weightRow['disability_bonus_points'] ?? 5),
+        'minorityBonusPoints' => (float) ($weightRow['minority_bonus_points'] ?? 5),
+        'minorityMaleBonusPoints' => (float) ($weightRow['minority_male_bonus_points'] ?? 5),
+        'minorityFemaleBonusPoints' => (float) ($weightRow['minority_female_bonus_points'] ?? 10),
+        'minorityDisabilityBonusPoints' => (float) ($weightRow['minority_disability_bonus_points'] ?? 10),
+        'femaleDisabilityMinorityBonusPoints' => (float) ($weightRow['female_disability_minority_bonus_points'] ?? 15),
     ];
 
     $findUser = $db->prepare(
@@ -217,7 +223,9 @@ try {
         $firstName = trim((string) (getImportField($student, ['first_name', 'given_name']) ?? ''));
         $lastName = trim((string) (getImportField($student, ['last_name', 'surname', 'family_name']) ?? ''));
         $phone = trim((string) (getImportField($student, ['phone', 'phone_number', 'mobile']) ?? ''));
-        $emailValid = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
+        $emailValid = $email !== ''
+            && filter_var($email, FILTER_VALIDATE_EMAIL)
+            && preg_match('/^[a-zA-Z0-9._%+-]+@gmail\.com$/', $email) === 1;
 
         if ($firstName === '' && $lastName === '' && $username === '' && $requestedIdNumber === '') {
             $skipped[] = ['row' => $index + 2, 'reason' => 'Missing student name, username, or ID number.'];
@@ -262,7 +270,7 @@ try {
             continue;
         }
         if (!$existingUser && !$emailValid) {
-            $skipped[] = ['row' => $index + 2, 'reason' => 'A valid email is required to create a new student account.'];
+            $skipped[] = ['row' => $index + 2, 'reason' => 'A valid @gmail.com address is required to create a new student account.'];
             continue;
         }
 
@@ -357,7 +365,8 @@ try {
         if ($existingUser) {
             $userId = (int) $existingUser['id'];
         } else {
-            $insertUser->bind_param('sssss', $idNumber, $username, $email, $defaultPassword, $phone);
+            $userPhone = $phone !== '' ? $phone : null;
+            $insertUser->bind_param('sssss', $idNumber, $username, $email, $defaultPassword, $userPhone);
             if (!$insertUser->execute()) throw new Exception('Unable to create student account.');
             $userId = $db->insert_id;
         }

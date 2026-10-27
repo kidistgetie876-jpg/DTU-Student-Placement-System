@@ -31,6 +31,24 @@
   padding: 2rem;
 }
 
+.admin-account-notice-success {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #a7f3d0;
+  border-radius: 0.75rem;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.admin-account-notice-danger {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
 .admin-account-label {
   margin-bottom: 0.55rem;
   color: #334155;

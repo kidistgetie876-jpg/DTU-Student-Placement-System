@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from "react";
+import {
+  BadgeCheck,
+  Calculator,
+  FileText,
+  ListOrdered,
+  Scale,
+  ShieldCheck,
+} from "lucide-react";
 import api from '../../services/api.js';
+import './PlacementInfo.css';
 
 const defaultPlacementSettings = {
   submissionStart: '2026-10-01',
@@ -9,12 +18,6 @@ const defaultPlacementSettings = {
   resultsDate: '2026-08-27',
   appealStart: '2026-08-27',
   appealEnd: '2026-08-30',
-  gpa_weight: 40,
-  grade_12_weight: 20,
-  coc_weight: 30,
-  gender_weight: 3,
-  disability_weight: 3,
-  minority_weight: 4,
   guideTitle: 'Placement Information & Student Guide',
   guideDescription: 'This guide explains the university placement process, criteria, login steps, department capacity rules, and result timelines for students at Debre Tabor University.',
   rulesTabLabel: 'Rules & Criteria',
@@ -23,15 +26,8 @@ const defaultPlacementSettings = {
   preferencesTabLabel: 'Rank Preferences',
   resultsTabLabel: 'Results & Appeal',
   scheduleTabLabel: 'Schedule',
-  rulesTitle: 'Placement Rules & Criteria',
+  rulesTitle: 'Placement Rules and Criteria',
   rulesSummary: 'The university uses a transparent and fair merit-based placing process to assign students to departments based on academic performance and approved support points.',
-  rulesIntroduction: 'Every student is evaluated using a weighted placement formula that reflects academic achievement and eligible support considerations.',
-  genderEquityTitle: 'Gender Equity',
-  genderEquityText: 'Female students may receive affirmative action points as approved by the university.',
-  disabilitySupportTitle: 'Disability Support',
-  disabilitySupportText: 'Students with documented disability status may be granted additional points under the placement policy.',
-  minoritySupportTitle: 'Minority / Emerging Region',
-  minoritySupportText: 'Eligible minority and emerging-region students may receive additional points as part of the affirmative action guideline.',
   capacityTitle: 'Department Capacity Overview',
   capacitySummary: 'Each department has a fixed number of available seats determined by the university council and academic leadership.',
   capacityDescription: 'Capacity is limited and may vary by department, stream, and academic year. Students are ranked according to their placement score and department preferences.',
@@ -59,6 +55,71 @@ const defaultPlacementSettings = {
   scheduleSummary: 'The university follows a structured timeline to allow enough time for student decision-making, processing, and review.',
 };
 
+const defaultPlacementRules = {
+  formula: {
+    gpa_weight: 50,
+    grade_12_weight: 20,
+    coc_weight: 30,
+    g12_total_base: 600,
+  },
+  affirmative_action: {
+    female_bonus_points: 5,
+    disability_bonus_points: 5,
+    minority_male_bonus_points: 5,
+    minority_female_bonus_points: 10,
+    minority_disability_bonus_points: 10,
+    female_disability_minority_bonus_points: 15,
+    description: 'Without minority or emerging-region status, eligible female and disability bonuses are added together. For students with minority or emerging-region status, the applicable combined scenario amount is used instead of stacking separate bonuses.',
+  },
+  choice_preference: {
+    title: 'Department Choice Preference Order Policy',
+    details: [
+      'Eligible students are considered in descending order of total merit score.',
+      'For each student, the system checks the submitted department choices in preference order: 1st, then 2nd, then 3rd.',
+      'The student is assigned to the highest-ranked choice with an eligible stream, matching scope, and available quota/capacity.',
+      'If all listed choices are full or ineligible, the student remains unassigned for review.',
+    ],
+  },
+  capacity_quota: {
+    departments: [],
+  },
+  tie_breaking: {
+    title: 'Tie-Breaking Policy',
+    criteria: [
+      'Higher CGPA',
+      'Higher Grade 12 examination result',
+    ],
+    details: 'If these measures are also equal, the placement system applies its additional affirmative-action priority rules.',
+  },
+  appeals: {
+    title: 'Appeals Policy and Criteria',
+    criteria: [
+      'A suspected error in the placement score or its underlying academic records.',
+      'Missing or incorrect eligibility, affirmative-action, or student profile information.',
+      'A concern that submitted department choices or capacity rules were not applied correctly.',
+    ],
+    submission: 'Sign in to the student portal and submit an appeal to the Registrar with a clear explanation and supporting evidence.',
+    deadline_start: '2026-08-27',
+    deadline_end: '2026-08-30',
+    deadline_note: 'Appeals must be submitted within the published appeal window. Check the dates below and university announcements for any approved changes.',
+  },
+  publishing: {
+    title: 'Provisional and Official Result Publishing',
+    provisional: 'Placement outcomes produced during processing are provisional and remain subject to verification and Registrar review.',
+    official: 'Results become official only after the Registrar publishes them in the system. Students should rely on the published result in their portal.',
+    appeal: 'Use the appeal process during the published appeal window if you identify a result or record issue.',
+  },
+  schedule: {
+    submissionStart: '2026-10-01',
+    submissionDeadline: '2026-10-11',
+    processingStart: '2026-08-16',
+    processingEnd: '2026-08-24',
+    resultsDate: '2026-08-27',
+    appealStart: '2026-08-27',
+    appealEnd: '2026-08-30',
+  },
+};
+
 const getWithServiceUnavailableRetry = async (url, attempts = 3) => {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -72,6 +133,35 @@ const getWithServiceUnavailableRetry = async (url, attempts = 3) => {
   }
 
   throw new Error(`Unable to load ${url} after ${attempts} attempts.`);
+};
+
+const normalizePlacementRules = (value) => {
+  const source = value && typeof value === 'object' ? value : {};
+  const normalized = {
+    ...defaultPlacementRules,
+    ...source,
+    formula: { ...defaultPlacementRules.formula, ...(source.formula || {}) },
+    affirmative_action: { ...defaultPlacementRules.affirmative_action, ...(source.affirmative_action || {}) },
+    choice_preference: { ...defaultPlacementRules.choice_preference, ...(source.choice_preference || {}) },
+    capacity_quota: { ...defaultPlacementRules.capacity_quota, ...(source.capacity_quota || {}) },
+    tie_breaking: { ...defaultPlacementRules.tie_breaking, ...(source.tie_breaking || {}) },
+    appeals: { ...defaultPlacementRules.appeals, ...(source.appeals || {}) },
+    publishing: { ...defaultPlacementRules.publishing, ...(source.publishing || {}) },
+    schedule: { ...defaultPlacementRules.schedule, ...(source.schedule || {}) },
+  };
+  if (!Array.isArray(normalized.choice_preference.details)) {
+    normalized.choice_preference.details = defaultPlacementRules.choice_preference.details;
+  }
+  if (!Array.isArray(normalized.tie_breaking.criteria)) {
+    normalized.tie_breaking.criteria = defaultPlacementRules.tie_breaking.criteria;
+  }
+  if (!Array.isArray(normalized.appeals.criteria)) {
+    normalized.appeals.criteria = defaultPlacementRules.appeals.criteria;
+  }
+  if (!Array.isArray(normalized.capacity_quota.departments)) {
+    normalized.capacity_quota.departments = [];
+  }
+  return normalized;
 };
 
 const formatPlacementDate = (value) => {
@@ -92,49 +182,110 @@ const guidanceTabs = [
   { id: "schedule", label: "Schedule" },
 ];
 
+function RuleCard({ icon: Icon, title, children }) {
+  return (
+    <section className="border rounded-4 h-100 p-3 bg-white shadow-sm" aria-label={title}>
+      <div className="d-flex align-items-center gap-2 mb-3">
+        <Icon size={20} aria-hidden="true" style={{ color: '#0a2d6d', flexShrink: 0 }} />
+        <h3 className="h6 fw-bold mb-0" style={{ color: '#0a2d6d' }}>{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PlacementRulesContent({ rules }) {
+  const formula = rules.formula;
+  const bonuses = rules.affirmative_action;
+  const choices = rules.choice_preference;
+  const tieBreaking = rules.tie_breaking;
+  const appeals = rules.appeals;
+  const publishing = rules.publishing;
+  const bonusRows = [
+    ['Female students', bonuses.female_bonus_points],
+    ['Students with a disability', bonuses.disability_bonus_points],
+    ['Minority / emerging-region students', bonuses.minority_male_bonus_points],
+  ];
+  const list = (items) => (
+    <ul className="small text-muted ps-3 mb-0">
+      {items.map((item, index) => <li className="mb-2" key={`${index}-${item}`}>{item}</li>)}
+    </ul>
+  );
+
+  return (
+    <div className="row g-3">
+      <div className="col-12">
+        <RuleCard icon={Calculator} title="Placement Formula and Merit Score">
+          <p className="small text-muted mb-2">
+            Total score = (CGPA / 4.0 × {formula.gpa_weight})
+            {' + '} (Grade 12 mark / {formula.g12_total_base} × {formula.grade_12_weight})
+            {' + '} (COC / 30 × {formula.coc_weight})
+            {' + '} applicable affirmative-action bonus.
+          </p>
+          <p className="small text-muted mb-0">
+            Each academic component is limited to its stated maximum before weighting. Bonus eligibility and amounts are applied using the rules below.
+          </p>
+        </RuleCard>
+      </div>
+
+      <div className="col-12 col-lg-6">
+        <RuleCard icon={BadgeCheck} title="Affirmative-Action Bonus Points">
+          <ul className="small text-muted ps-3 mb-3">
+            {bonusRows.map(([label, points]) => (
+              <li className="mb-2" key={label}>{label}: <strong>+{points} points</strong></li>
+            ))}
+          </ul>
+          <p className="small text-muted mb-0">{bonuses.description}</p>
+        </RuleCard>
+      </div>
+
+      <div className="col-12 col-lg-6">
+        <RuleCard icon={ListOrdered} title={choices.title}>
+          {list(choices.details)}
+        </RuleCard>
+      </div>
+
+      <div className="col-12 col-lg-6">
+        <RuleCard icon={Scale} title={tieBreaking.title}>
+          <ol className="small text-muted ps-3 mb-2">
+            {tieBreaking.criteria.slice(0, 2).map((criterion, index) => (
+              <li className="mb-2" key={`${index}-${criterion}`}>{criterion}</li>
+            ))}
+          </ol>
+          <p className="small text-muted mb-0">{tieBreaking.details}</p>
+        </RuleCard>
+      </div>
+
+      <div className="col-12 col-lg-6">
+        <RuleCard icon={FileText} title={appeals.title}>
+          {list(appeals.criteria)}
+          <p className="small text-muted mt-3 mb-2">{appeals.submission}</p>
+          <p className="small fw-semibold mb-1" style={{ color: '#0a2d6d' }}>
+            Submission window: {formatPlacementDate(appeals.deadline_start || rules.schedule.appealStart)}
+            {' – '}{formatPlacementDate(appeals.deadline_end || rules.schedule.appealEnd)}
+          </p>
+          <p className="small text-muted mb-0">{appeals.deadline_note}</p>
+        </RuleCard>
+      </div>
+
+      <div className="col-12 col-lg-6">
+        <RuleCard icon={ShieldCheck} title={publishing.title}>
+          <p className="small text-muted"><strong>Provisional:</strong> {publishing.provisional}</p>
+          <p className="small text-muted"><strong>Official:</strong> {publishing.official}</p>
+          <p className="small text-muted mb-0">{publishing.appeal}</p>
+        </RuleCard>
+      </div>
+
+    </div>
+  );
+}
+
 const placementGuidance = {
   rules: {
     titleKey: 'rulesTitle',
     summaryKey: 'rulesSummary',
     body: (settings) => (
-      <div>
-        <p className="mb-3 text-muted">
-          {settings.rulesIntroduction}
-        </p>
-        <div className="alert alert-light border rounded-4 p-3 mb-3" style={{ background: "rgba(10, 45, 109, 0.04)" }}>
-          <strong className="d-block mb-2" style={{ color: "#0a2d6d" }}>
-            Total Placement Score = (GPA × {settings.gpa_weight}%) + (Grade 12 Result × {settings.grade_12_weight}%) + (COC Score × {settings.coc_weight}%) + Affirmative Action Points
-          </strong>
-          <div className="small text-muted">
-            <div>GPA weight: {settings.gpa_weight}%</div>
-            <div>Grade 12 result: {settings.grade_12_weight}%</div>
-            <div>COC score: {settings.coc_weight}%</div>
-            <div>Gender affirmative action: {settings.gender_weight}%</div>
-            <div>Disability affirmative action: {settings.disability_weight}%</div>
-            <div>Minority affirmative action: {settings.minority_weight}%</div>
-          </div>
-        </div>
-        <div className="row g-3">
-          <div className="col-md-4">
-            <div className="border rounded-4 h-100 p-3 bg-white shadow-sm">
-              <h6 className="fw-bold mb-2" style={{ color: "#0a2d6d" }}>{settings.genderEquityTitle} ({settings.gender_weight}%)</h6>
-              <p className="small text-muted mb-0">{settings.genderEquityText}</p>
-            </div>
-          </div>
-          <div className="col-md-4">
-            <div className="border rounded-4 h-100 p-3 bg-white shadow-sm">
-              <h6 className="fw-bold mb-2" style={{ color: "#0a2d6d" }}>{settings.disabilitySupportTitle} ({settings.disability_weight}%)</h6>
-              <p className="small text-muted mb-0">{settings.disabilitySupportText}</p>
-            </div>
-          </div>
-          <div className="col-md-4">
-            <div className="border rounded-4 h-100 p-3 bg-white shadow-sm">
-              <h6 className="fw-bold mb-2" style={{ color: "#0a2d6d" }}>{settings.minoritySupportTitle} ({settings.minority_weight}%)</h6>
-              <p className="small text-muted mb-0">{settings.minoritySupportText}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PlacementRulesContent rules={settings.rulesData} />
     ),
   },
   capacity: {
@@ -276,7 +427,7 @@ const placementGuidance = {
 function PlacementInfo() {
   const [activeTab, setActiveTab] = useState("rules");
   const [placementSettings, setPlacementSettings] = useState(defaultPlacementSettings);
-  const [rulesSettings, setRulesSettings] = useState(defaultPlacementSettings);
+  const [rulesData, setRulesData] = useState(defaultPlacementRules);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState('');
   const [capacityDepartments, setCapacityDepartments] = useState([]);
@@ -325,7 +476,7 @@ function PlacementInfo() {
       }
       const [portalResult, rulesResult] = await Promise.allSettled([
         getWithServiceUnavailableRetry('api/common/system_settings_api.php'),
-        getWithServiceUnavailableRetry('api/registrar/get_placement_settings.php'),
+        getWithServiceUnavailableRetry('api/common/get_placement_rules.php'),
       ]);
       if (!isMounted) return;
 
@@ -333,19 +484,35 @@ function PlacementInfo() {
       const dates = portalResult.status === 'fulfilled'
         ? portalResult.value.data?.settings?.placement || {}
         : {};
-      const registrarRules = rulesResult.status === 'fulfilled'
-        ? rulesResult.value.data?.settings || rulesResult.value.data?.data || rulesResult.value.data || {}
-        : {};
-      const weightKeys = ['gpa_weight', 'grade_12_weight', 'coc_weight', 'gender_weight', 'disability_weight', 'minority_weight'];
-
-      setPlacementSettings((current) => ({ ...current, ...dates }));
-      setRulesSettings((current) => weightKeys.reduce((next, key) => {
-        const value = dates[key] ?? registrarRules[key] ?? current[key];
-        return { ...next, [key]: Number.isFinite(Number(value)) ? Number(value) : current[key] };
-      }, current));
-      setSettingsError(failedRequests.length > 0
-        ? 'Some placement settings could not be loaded. Default values are shown.'
-        : '');
+      const response = rulesResult.status === 'fulfilled' ? rulesResult.value.data : null;
+      const rulesFailed = rulesResult.status === 'rejected' || !response?.success;
+      const liveRules = !rulesFailed
+        ? normalizePlacementRules(response.data)
+        : defaultPlacementRules;
+      const schedule = {
+        ...defaultPlacementRules.schedule,
+        ...liveRules.schedule,
+        ...dates,
+      };
+      setRulesData({
+        ...liveRules,
+        schedule,
+        appeals: {
+          ...liveRules.appeals,
+          deadline_start: dates.appealStart || liveRules.appeals.deadline_start || schedule.appealStart,
+          deadline_end: dates.appealEnd || liveRules.appeals.deadline_end || schedule.appealEnd,
+        },
+      });
+      setPlacementSettings((current) => ({
+        ...current,
+        ...schedule,
+        ...dates,
+      }));
+      setSettingsError(rulesFailed
+        ? 'Placement rules are temporarily unavailable. Complete default rules are shown.'
+        : failedRequests.length > 0
+          ? 'Some portal schedule details could not be loaded. Available placement rules are shown.'
+          : '');
       setSettingsLoading(false);
     };
 
@@ -361,11 +528,11 @@ function PlacementInfo() {
   }, []);
 
   return (
-    <div className="container py-5 pt-5" style={{ maxWidth: "1200px", paddingTop: "40px" }}>
+    <div className="container placement-info-page py-5 pt-5" style={{ maxWidth: "1200px", paddingTop: "40px" }}>
       <div className="text-center mb-4 pt-3">
         <span className="badge rounded-pill px-3 py-2 mb-3" style={{ background: "rgba(10, 45, 109, 0.08)", color: "#0a2d6d" }}>Student Guidance</span>
-        <h1 className="display-6 fw-bold mb-3" style={{ color: "#0a2d6d" }}>{placementSettings.guideTitle}</h1>
-        <p className="mx-auto text-muted" style={{ maxWidth: "760px" }}>
+        <h1 className="mb-4 text-2xl font-bold text-slate-800" style={{ color: "#0a2d6d" }}>{placementSettings.guideTitle}</h1>
+        <p className="placement-info-description mx-auto mb-6 max-w-2xl text-center text-sm text-slate-600">
           {placementSettings.guideDescription}
         </p>
       </div>
@@ -378,31 +545,30 @@ function PlacementInfo() {
       )}
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden" style={{ background: "#ffffff" }}>
-        <div className="card-header border-0 p-3" style={{ background: "linear-gradient(135deg, #0a2d6d, #123f8a)" }}>
-          <div className="d-flex flex-wrap gap-2">
+        <div className="card-header placement-info-tabs flex flex-wrap items-center justify-center gap-3 p-3" role="group" aria-label="Placement information sections" style={{ background: "linear-gradient(135deg, #0a2d6d, #123f8a)" }}>
             {guidanceTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                className={`btn btn-sm rounded-pill px-3 ${activeTab === tab.id ? "btn-warning text-dark fw-bold" : "btn-outline-light"}`}
+                className="placement-info-tab inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                aria-pressed={activeTab === tab.id}
                 onClick={() => setActiveTab(tab.id)}
               >
                 {placementSettings[`${tab.id}TabLabel`] || tab.label}
               </button>
             ))}
-          </div>
         </div>
 
         <div className="card-body p-4 p-lg-5">
           <div className="mb-4">
-            <h2 className="h3 fw-bold mb-2" style={{ color: "#0a2d6d" }}>{placementSettings[activeContent.titleKey] || activeContent.title}</h2>
-            <p className="text-muted mb-0">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
+            <h2 className="placement-info-section-title mb-4 text-2xl font-bold text-slate-800">{placementSettings[activeContent.titleKey] || activeContent.title}</h2>
+            <p className="placement-info-section-description mb-0 text-sm leading-relaxed text-slate-600">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
           </div>
 
           {typeof activeContent.body === 'function'
             ? activeContent.body({
               ...placementSettings,
-              ...rulesSettings,
+              rulesData,
               capacityDepartments,
               capacitiesLoading,
               capacitiesError,

@@ -21,7 +21,7 @@ const AuditLogs = () => {
         setError(response.data?.message || 'Unable to load audit logs.');
       }
     } catch (err) {
-      setError("Failed to load logs. Please ensure you are logged in as admin.");
+      setError(err.response?.data?.message || "Failed to load logs. Please ensure you are logged in as admin.");
       console.error(err);
     } finally {
       setLoading(false);

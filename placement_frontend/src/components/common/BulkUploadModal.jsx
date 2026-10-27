@@ -133,8 +133,8 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, departments = [] }) => {
 
       // Validate email format
       if (columnMapping.email && row[columnMapping.email]) {
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row[columnMapping.email])) {
-          errors_row.push('Invalid email format');
+        if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(row[columnMapping.email].trim())) {
+          errors_row.push('A valid @gmail.com address is required.');
         }
       }
 

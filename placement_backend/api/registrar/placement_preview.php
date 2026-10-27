@@ -20,7 +20,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
-if ((int) ($_SESSION['user_id'] ?? 0) <= 0 || ($role !== 'registrar' && $role !== 'admin')) {
+if ((int) ($_SESSION['user_id'] ?? 0) <= 0) {
+    placementPreviewRespond(['success' => false, 'message' => 'Your session has expired. Please sign in again.'], 401);
+}
+if ($role !== 'registrar' && $role !== 'admin') {
     placementPreviewRespond(['success' => false, 'message' => 'Registrar access is required.'], 403);
 }
 
@@ -37,7 +40,7 @@ if (!$db instanceof mysqli) {
 
 $isDevelopingRegion = static function (string $region, string $benefitGroup): bool {
     $source = strtolower($region . ' ' . $benefitGroup);
-    if (preg_match('/developing|emerging/', $source)) {
+    if (preg_match('/developing|emerging|\byes\b|minority/', $source)) {
         return true;
     }
     return (bool) preg_match('/\b(afar|somali|gambella|benishangul[\s-]*gumuz|benishangul|harari)\b/', $region);
@@ -56,9 +59,9 @@ try {
     $settings = [];
     try {
         $settingsResult = $db->query(
-            'SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, max_score_cap,
-                    female_bonus_points, disability_bonus_points,
-                    developing_region_female_bonus_points, developing_region_disability_bonus_points
+            'SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, max_score_cap, female_bonus_points, disability_bonus_points, minority_bonus_points,
+                    minority_male_bonus_points, minority_female_bonus_points, minority_disability_bonus_points,
+                    female_disability_minority_bonus_points
              FROM placement_settings WHERE id = 1 LIMIT 1'
         );
         if ($settingsResult) {
@@ -68,20 +71,18 @@ try {
     } catch (Throwable $error) {
         error_log('Placement preview scoring settings unavailable; using placement policy defaults: ' . $error->getMessage());
     }
-    $gpaWeight = (float) ($settings['gpa_weight'] ?? 30);
-    $grade12Weight = (float) ($settings['grade_12_weight'] ?? 20);
-    $cocWeight = (float) ($settings['coc_weight'] ?? 50);
-    if (abs($gpaWeight + $grade12Weight + $cocWeight - 100.0) > 0.00001) {
-        $gpaWeight = 30.0;
-        $grade12Weight = 20.0;
-        $cocWeight = 50.0;
-    }
     $g12TotalBase = max(0.01, (float) ($settings['g12_total_base'] ?? 600));
-    $scoreCap = min(100.0, max(0.0, (float) ($settings['max_score_cap'] ?? 100)));
+    $gpaWeight = (float) ($settings['gpa_weight'] ?? 50);
+    $grade12Weight = (float) ($settings['grade_12_weight'] ?? 20);
+    $cocWeight = (float) ($settings['coc_weight'] ?? 30);
+    $maxScoreCap = (float) ($settings['max_score_cap'] ?? 100);
     $femaleBonusPoints = (float) ($settings['female_bonus_points'] ?? 5);
     $disabilityBonusPoints = (float) ($settings['disability_bonus_points'] ?? 5);
-    $developingRegionFemaleBonusPoints = (float) ($settings['developing_region_female_bonus_points'] ?? 10);
-    $developingRegionDisabilityBonusPoints = (float) ($settings['developing_region_disability_bonus_points'] ?? 10);
+    $minorityBonusPoints = (float) ($settings['minority_bonus_points'] ?? 5);
+    $minorityMaleBonusPoints = (float) ($settings['minority_male_bonus_points'] ?? 5);
+    $minorityFemaleBonusPoints = (float) ($settings['minority_female_bonus_points'] ?? 10);
+    $minorityDisabilityBonusPoints = (float) ($settings['minority_disability_bonus_points'] ?? 10);
+    $femaleDisabilityMinorityBonusPoints = (float) ($settings['female_disability_minority_bonus_points'] ?? 15);
 
     $studentColumns = studentPlacementTableColumns($db, 'student_data');
     $userColumns = studentPlacementTableColumns($db, 'users');
@@ -138,6 +139,8 @@ try {
         : "COALESCE(u.username, 'Student')";
     $regionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['region']);
     $genderExpression = studentPlacementTextExpression($studentColumns, 'sd', ['sex', 'gender']);
+    $disabilityExpression = studentPlacementTextExpression($studentColumns, 'sd', ['disability'], "'No'");
+    $minorityExpression = studentPlacementTextExpression($studentColumns, 'sd', ['minority'], "'No'");
     $benefitExpression = studentPlacementTextExpression($studentColumns, 'sd', ['benefit_group', 'minority'], "'None'");
     $fieldExpression = studentPlacementTextExpression($studentColumns, 'sd', ['field_of_study', 'stream']);
     $grade12Expression = studentPlacementColumnExpression($studentColumns, 'sd', ['total_mark', 'grade_12_result']);
@@ -175,7 +178,8 @@ try {
     $result = $db->query(
         "SELECT {$studentAccountId} AS user_id, {$admissionExpression} AS admission_number,
                 {$regionExpression} AS region, {$nameExpression} AS full_name,
-                {$genderExpression} AS sex, {$grade12Expression} AS total_mark,
+                {$genderExpression} AS sex, {$disabilityExpression} AS disability,
+                {$minorityExpression} AS minority, {$grade12Expression} AS total_mark,
                 {$benefitExpression} AS benefit_group, {$fieldExpression} AS field_of_study,
                 {$studentIdExpression} AS student_id, {$cgpaExpression} AS cgpa,
                 {$cocExpression} AS coc_score, {$programExpression} AS program,
@@ -199,8 +203,30 @@ try {
         $grade12 = $row['total_mark'] !== null ? (float) $row['total_mark'] : null;
         $benefits = (string) $row['benefit_group'];
         $isFemale = strtolower(trim((string) $row['sex'])) === 'female';
-        $hasDisability = $containsBenefit($benefits, ['disability', 'disabled']);
-        $isDeveloping = $isDevelopingRegion((string) $row['region'], $benefits);
+        $hasDisability = placementScoringFlag($row['disability'])
+            || $containsBenefit($benefits, ['disability', 'disabled']);
+        $isDeveloping = placementScoringFlag($row['minority'])
+            || $isDevelopingRegion((string) $row['region'], $benefits);
+        $scoreRules = [
+            'gpa_weight' => $gpaWeight,
+            'grade_12_weight' => $grade12Weight,
+            'coc_weight' => $cocWeight,
+            'g12_total_base' => $g12TotalBase,
+            'max_score_cap' => $maxScoreCap,
+            'femaleBonusPoints' => $femaleBonusPoints,
+            'disabilityBonusPoints' => $disabilityBonusPoints,
+            'minorityBonusPoints' => $minorityBonusPoints,
+            'minorityMaleBonusPoints' => $minorityMaleBonusPoints,
+            'minorityFemaleBonusPoints' => $minorityFemaleBonusPoints,
+            'minorityDisabilityBonusPoints' => $minorityDisabilityBonusPoints,
+            'femaleDisabilityMinorityBonusPoints' => $femaleDisabilityMinorityBonusPoints,
+        ];
+        $bonusBreakdown = getPlacementAffirmativeActionBonusBreakdown(
+            (string) $row['sex'],
+            $hasDisability,
+            $isDeveloping,
+            $scoreRules
+        );
         $score = null;
         if ($hasScores) {
             $score = calculatePlacementCumulativeScore(
@@ -210,17 +236,7 @@ try {
                 $isFemale ? 'Female' : (string) $row['sex'],
                 $hasDisability,
                 $isDeveloping,
-                [
-                    'gpaWeight' => $gpaWeight,
-                    'grade12Weight' => $grade12Weight,
-                    'cocWeight' => $cocWeight,
-                    'g12_total_base' => $g12TotalBase,
-                    'maxScoreCap' => $scoreCap,
-                    'femaleBonusPoints' => $femaleBonusPoints,
-                    'disabilityBonusPoints' => $disabilityBonusPoints,
-                    'developingRegionFemaleBonusPoints' => $developingRegionFemaleBonusPoints,
-                    'developingRegionDisabilityBonusPoints' => $developingRegionDisabilityBonusPoints,
-                ]
+                $scoreRules
             );
         }
         $students[] = [
@@ -239,9 +255,11 @@ try {
             'stream' => $row['stream'],
             'year' => $row['year'],
             'registrationType' => $row['registration_type'],
-            'femaleBonus' => $isFemale ? $femaleBonusPoints : 0,
-            'disabilityBonus' => $hasDisability ? $disabilityBonusPoints : 0,
-            'developingRegionBonus' => $isDeveloping ? max($developingRegionFemaleBonusPoints, $developingRegionDisabilityBonusPoints) : 0,
+            'femaleBonus' => $bonusBreakdown['female_bonus'],
+            'disabilityBonus' => $bonusBreakdown['disability_bonus'],
+            'minorityBonus' => $bonusBreakdown['minority_bonus'],
+            'scenarioBonus' => $bonusBreakdown['scenario_bonus'],
+            'appliedScenario' => $bonusBreakdown['applied_scenario'],
             'cumulativeScore' => $score,
             'ready' => $hasScores,
         ];

@@ -6,6 +6,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/head_department.php';
 
 function headSendResponse(array $payload, int $status = 200): void
 {
@@ -19,13 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') headSendResponse(['success' => false,
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 
 $senderId = (int) ($_SESSION['user_id'] ?? 0);
-$senderRole = strtolower((string) ($_SESSION['role'] ?? ''));
+$senderRole = strtolower(trim((string) ($_SESSION['role'] ?? '')));
 $recipientType = strtolower(trim((string) ($_POST['recipient_type'] ?? '')));
 $recipientId = $_POST['recipient_id'] ?? $_POST['student_id'] ?? null;
 $studentId = is_numeric($recipientId) ? (int) $recipientId : 0;
 $message = trim((string) ($_POST['message'] ?? ''));
 
-if ($senderId <= 0 || !in_array($senderRole, ['head', 'hod', 'coordinator'], true)) headSendResponse(['success' => false, 'message' => 'Only department heads can send messages.'], 403);
+if ($senderId <= 0 || !in_array($senderRole, ['head', 'department head', 'department_head', 'head of department', 'hod', 'coordinator'], true)) headSendResponse(['success' => false, 'message' => 'Only department heads can send messages.'], 403);
 if (!in_array($recipientType, ['student', 'all_students', 'registrar'], true)) headSendResponse(['success' => false, 'message' => 'Choose a valid recipient.'], 400);
 if ($message === '') headSendResponse(['success' => false, 'message' => 'Enter a message before sending.'], 400);
 if (strlen($message) > 10000) headSendResponse(['success' => false, 'message' => 'The message is too long.'], 400);
@@ -34,12 +35,11 @@ $db = getDbConnection();
 $absoluteFilePath = null;
 $transactionStarted = false;
 try {
-    $departmentStatement = $db->prepare("SELECT id FROM departments WHERE head_id = ? AND status = 'active' LIMIT 1");
-    if (!$departmentStatement) throw new Exception('Unable to load the assigned department.');
-    $departmentStatement->bind_param('i', $senderId);
-    $departmentStatement->execute();
-    $department = $departmentStatement->get_result()->fetch_assoc();
-    $departmentStatement->close();
+    $department = resolveHeadDepartment(
+        $db,
+        $_SESSION['user_id'],
+        isset($_SESSION['email']) ? (string) $_SESSION['email'] : null
+    );
     if (!$department) headSendResponse(['success' => false, 'message' => 'No active department is assigned to this head.'], 403);
     $departmentId = (int) $department['id'];
 

@@ -1,0 +1,75 @@
+.placement-info-page > .text-center > h1 {
+  margin-bottom: 1rem !important;
+  color: #1e293b !important;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.placement-info-description {
+  max-width: 42rem;
+  margin-right: auto;
+  margin-left: auto;
+  margin-bottom: 1.5rem;
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  text-align: center;
+}
+
+.placement-info-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem !important;
+}
+
+.placement-info-tab {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: color 200ms ease, background 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+.placement-info-tab:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.placement-info-tab[aria-selected="true"] {
+  border-color: transparent;
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(120, 53, 15, 0.24);
+}
+
+.placement-info-tab:focus-visible {
+  outline: 2px solid #fcd34d;
+  outline-offset: 2px;
+}
+
+.placement-info-section-title {
+  margin-bottom: 1rem !important;
+  color: #1e293b;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.placement-info-section-description {
+  color: #475569;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}

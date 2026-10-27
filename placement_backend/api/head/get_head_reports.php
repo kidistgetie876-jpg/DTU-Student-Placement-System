@@ -1,79 +1,164 @@
 <?php
-// 1. Error Reporting ማብራት (ስህተቱን ለማየት)
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+require_once __DIR__ . '/../../config/cors.php';
+sendCorsHeaders();
 
-header('Access-Control-Allow-Origin: http://localhost:3000');
-header('Access-Control-Allow-Credentials: true');
-header('Content-Type: application/json');
+if (session_status() === PHP_SESSION_NONE) {
+    session_name('DTUPLACEMENTSESSID');
+    session_start();
+}
 
+header('Content-Type: application/json; charset=UTF-8');
+
+function headReportsRespond(array $payload, int $status = 200): void
+{
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+}
+
+$requestMethod = $_SERVER['REQUEST_METHOD'] ?? '';
+if ($requestMethod === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+if ($requestMethod !== 'GET') {
+    headReportsRespond(['success' => false, 'message' => 'Only GET requests are allowed.'], 405);
+    exit;
+}
+
+$db = null;
 try {
     require_once __DIR__ . '/../../config/db_config.php';
-
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
-    }
-
+    require_once __DIR__ . '/head_department.php';
     $headId = (int) ($_SESSION['user_id'] ?? 0);
-    $role = strtolower((string) ($_SESSION['role'] ?? ''));
-    if ($headId <= 0 || !in_array($role, ['head', 'hod', 'coordinator'], true)) {
-        throw new Exception('Only department heads can access reports.');
+    $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+    if ($headId <= 0 || !in_array($role, ['head', 'department head', 'department_head', 'head of department', 'hod', 'coordinator'], true)) {
+        headReportsRespond(['success' => false, 'message' => 'Only department heads can access reports.'], 403);
+        exit;
     }
-    
+
     $db = getDbConnection();
-    if (!$db) {
-        throw new Exception("Database connection failed.");
+    if (!$db instanceof mysqli) {
+        throw new RuntimeException('Database connection failed.');
     }
-
-    $departmentStatement = $db->prepare("SELECT id FROM departments WHERE head_id = ? AND status = 'active' LIMIT 1");
-    if (!$departmentStatement) {
-        throw new Exception('Unable to load the assigned department.');
-    }
-    $departmentStatement->bind_param('i', $headId);
-    $departmentStatement->execute();
-    $department = $departmentStatement->get_result()->fetch_assoc();
-    $departmentStatement->close();
-
+    $department = resolveHeadDepartment(
+        $db,
+        $_SESSION['user_id'],
+        isset($_SESSION['email']) ? (string) $_SESSION['email'] : null
+    );
     if (!$department) {
-        throw new Exception('No active department is assigned to this head.');
+        headReportsRespond(['success' => false, 'message' => 'No active department is assigned to this head.'], 404);
+        exit;
     }
-
     $departmentId = (int) $department['id'];
 
-    // 3. SQL Query (ሁሉንም ኮለምኖች በጥንቃቄ መጥራት)
-    $query = "SELECT id, title, message, sender_role, recipient_role, file_path, is_read, created_at,
-                     CASE WHEN sender_id = ? AND sender_role IN ('head', 'hod', 'coordinator') THEN 'sent' ELSE 'received' END AS direction
-              FROM notifications 
-              WHERE (recipient_role = 'head'
-                     AND (recipient_id = ? OR department_id = ? OR department_id IS NULL))
-                 OR (sender_id = ? AND sender_role IN ('head', 'hod', 'coordinator'))
-              ORDER BY created_at DESC";
-              
-    $stmt = $db->prepare($query);
-    if (!$stmt) {
-        throw new Exception("Prepare failed: " . $db->error);
+    $tableResult = $db->query(
+        "SELECT COUNT(*) AS table_count
+         FROM information_schema.tables
+         WHERE table_schema = DATABASE() AND table_name = 'notifications'"
+    );
+    if (!$tableResult) {
+        throw new RuntimeException('Unable to inspect report storage: ' . $db->error);
+    }
+    $notificationsExist = (int) ($tableResult->fetch_assoc()['table_count'] ?? 0) > 0;
+    $tableResult->free();
+    if (!$notificationsExist) {
+        headReportsRespond(['success' => true, 'reports' => []]);
+        exit;
     }
 
-    $stmt->bind_param("iiii", $headId, $headId, $departmentId, $headId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
+    $columnsResult = $db->query('SHOW COLUMNS FROM notifications');
+    if (!$columnsResult) {
+        throw new RuntimeException('Unable to inspect report columns: ' . $db->error);
+    }
+    $notificationColumns = array_column($columnsResult->fetch_all(MYSQLI_ASSOC), 'Field');
+    $columnsResult->free();
+    $hasColumn = static fn (string $column): bool => in_array($column, $notificationColumns, true);
+
+    $selectFields = [];
+    foreach (['id', 'title', 'message', 'sender_role', 'recipient_role', 'file_path', 'is_read', 'created_at'] as $column) {
+        $selectFields[] = $hasColumn($column) ? "`{$column}`" : "NULL AS `{$column}`";
+    }
+    if ($hasColumn('sender_id')) {
+        $selectFields[] = "CASE WHEN sender_id = ? THEN 'sent' ELSE 'received' END AS direction";
+    } else {
+        $selectFields[] = "'received' AS direction";
+    }
+
+    $whereConditions = [];
+    $parameters = [];
+    if ($hasColumn('recipient_role')) {
+        $recipientMatches = [];
+        if ($hasColumn('recipient_id')) {
+            $recipientMatches[] = 'recipient_id = ?';
+            $parameters[] = $headId;
+        }
+        $departmentColumn = $hasColumn('department_id')
+            ? 'department_id'
+            : ($hasColumn('dept_id') ? 'dept_id' : '');
+        if ($departmentColumn !== '' && $departmentId > 0) {
+            $recipientMatches[] = "`{$departmentColumn}` = ?";
+            $parameters[] = $departmentId;
+        }
+        if ($departmentColumn !== '') {
+            $recipientMatches[] = "`{$departmentColumn}` IS NULL";
+        }
+        if ($recipientMatches) {
+            $whereConditions[] = "(LOWER(recipient_role) = 'head' AND (" . implode(' OR ', $recipientMatches) . '))';
+        }
+    }
+    if ($hasColumn('sender_id')) {
+        $senderCondition = 'sender_id = ?';
+        $parameters[] = $headId;
+        if ($hasColumn('sender_role')) {
+            $senderCondition .= " AND LOWER(sender_role) IN ('head', 'department head', 'department_head', 'hod', 'coordinator')";
+        }
+        $whereConditions[] = '(' . $senderCondition . ')';
+    }
+
+    if (!$whereConditions) {
+        headReportsRespond(['success' => true, 'reports' => []]);
+        exit;
+    }
+
+    $orderBy = $hasColumn('created_at')
+        ? ' ORDER BY created_at DESC' . ($hasColumn('id') ? ', id DESC' : '')
+        : ($hasColumn('id') ? ' ORDER BY id DESC' : '');
+    $query = 'SELECT ' . implode(', ', $selectFields)
+        . ' FROM notifications WHERE ' . implode(' OR ', $whereConditions) . $orderBy;
+    $statement = $db->prepare($query);
+    if (!$statement) {
+        throw new RuntimeException('Unable to prepare department reports: ' . $db->error);
+    }
+
+    $types = str_repeat('i', count($parameters) + ($hasColumn('sender_id') ? 1 : 0));
+    $bindValues = $hasColumn('sender_id') ? array_merge([$headId], $parameters) : $parameters;
+    if ($bindValues) {
+        $arguments = [$types];
+        foreach ($bindValues as $index => $value) {
+            $arguments[] = &$bindValues[$index];
+        }
+        if (!call_user_func_array([$statement, 'bind_param'], $arguments)) {
+            throw new RuntimeException('Unable to bind department report filters: ' . $statement->error);
+        }
+    }
+    if (!$statement->execute()) {
+        throw new RuntimeException('Unable to load department reports: ' . $statement->error);
+    }
+
+    $result = $statement->get_result();
     $reports = [];
     while ($row = $result->fetch_assoc()) {
         $reports[] = $row;
     }
+    $statement->close();
 
-    echo json_encode([
-        'success' => true,
-        'reports' => $reports
-    ]);
-
-} catch (Exception $e) {
-    // ስህተት ካለ እዚህ ጋር በJSON ይነግረናል
-    http_response_code(500);
-    echo json_encode([
-        'success' => false, 
-        'message' => $e->getMessage()
-    ]);
+    headReportsRespond(['success' => true, 'reports' => $reports]);
+} catch (Throwable $error) {
+    error_log('Head reports load failed: ' . $error->getMessage());
+    headReportsRespond(['success' => false, 'message' => 'Unable to load department reports.'], 500);
+} finally {
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
 }
 ?>

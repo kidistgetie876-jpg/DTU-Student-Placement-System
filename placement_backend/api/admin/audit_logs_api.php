@@ -35,8 +35,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     }
 }
 
-$pdo = getAuditPdo();
-$actor = getAuditActor($pdo);
+try {
+    $pdo = getAuditPdo();
+    $actor = getAuditActor($pdo);
+} catch (Throwable $error) {
+    error_log('Audit API initialization failed: ' . $error->getMessage());
+    auditResponse(['success' => false, 'message' => 'Audit logs are temporarily unavailable.'], 503);
+}
+
 if ($actor['role'] !== 'admin') {
     auditResponse(['success' => false, 'message' => 'Admin access is required.'], 403);
 }
@@ -76,26 +82,26 @@ $offset = isset($_GET['offset']) && ctype_digit((string) $_GET['offset'])
 $action = isset($_GET['action']) ? trim((string) $_GET['action']) : '';
 
 $sql = 'SELECT id, user_id, full_name, action, details, ip_address, created_at FROM audit_logs';
-$parameters = [];
 if ($action !== '') {
     if (strlen($action) > 100 || !preg_match('/^[A-Za-z0-9_.:-]+$/', $action)) {
         auditResponse(['success' => false, 'message' => 'Invalid action filter.'], 400);
     }
-    $sql .= ' WHERE action = ?';
-    $parameters[':action'] = $action;
+    $sql .= ' WHERE action = :action';
 }
 $sql .= ' ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset';
-$parameters[':limit'] = $limit;
-$parameters[':offset'] = $offset;
 
 try {
-    if ($action !== '') $sql = str_replace('action = ?', 'action = :action', $sql);
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($parameters);
+    if ($action !== '') {
+        $stmt->bindValue(':action', $action, PDO::PARAM_STR);
+    }
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $logs = $stmt->fetchAll();
 } catch (Throwable $error) {
     error_log('Audit API query failed: ' . $error->getMessage());
-    auditResponse(['success' => false, 'message' => 'Unable to load audit logs.'], 500);
+    auditResponse(['success' => false, 'message' => 'Audit logs are unavailable. Apply the audit log database migration and try again.'], 503);
 }
 
 auditResponse(['success' => true, 'logs' => $logs, 'limit' => $limit, 'offset' => $offset]);

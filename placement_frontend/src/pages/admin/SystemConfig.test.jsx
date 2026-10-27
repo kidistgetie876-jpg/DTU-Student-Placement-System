@@ -14,6 +14,7 @@ jest.mock('../../services/api.js', () => ({
 const savedSettings = {
   maintenance: {
     enabled: false,
+    reason: 'Custom Reason',
     title: 'System Under Maintenance',
     message: 'The DTU Placement Portal is currently undergoing scheduled system updates. Services will resume shortly.',
     expectedReturn: 'Soon',
@@ -42,6 +43,7 @@ describe('SystemConfig maintenance settings', () => {
       settings: {
         maintenance: {
           enabled: true,
+          reason: 'Custom Reason',
           title: 'Maintenance window',
           message: 'Please check back soon.',
           expectedReturn: '2:00 PM',
@@ -63,5 +65,21 @@ describe('SystemConfig maintenance settings', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open System Maintenance & Status' }));
     expect(await screen.findByRole('button', { name: '🔴 ON' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('fills the title and public message from a predefined reason', async () => {
+    render(<SystemConfig />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open System Maintenance & Status' }));
+    fireEvent.change(screen.getByLabelText('Reason for Maintenance'), {
+      target: { value: 'Database Optimization & Server Upgrades' },
+    });
+
+    expect(screen.getByLabelText('Maintenance Notice Title')).toHaveValue('Database Optimization & Server Upgrades');
+    expect(screen.getByLabelText('Custom Message for Public/Students')).toHaveValue(
+      'We are optimizing the database and upgrading our servers to improve portal performance and reliability. Please check back soon.'
+    );
+    expect(screen.getByLabelText('Maintenance Notice Title')).toBeDisabled();
+    expect(screen.getByLabelText('Custom Message for Public/Students')).toBeDisabled();
   });
 });

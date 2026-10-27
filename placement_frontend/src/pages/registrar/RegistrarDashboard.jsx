@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api.js';
 import getAttachmentUrl from '../../utils/getAttachmentUrl';
 import StudentRegistration from './StudentRegistration';
+import PlacedStudents from './PlacedStudents.jsx';
 import UnassignedStudents from './UnassignedStudents.jsx';
 import MinistryImport from './MinistryImport.jsx';
 import SIMSImport from './SIMSImport.jsx';
@@ -18,7 +19,18 @@ import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { FaTrash } from 'react-icons/fa';
 import { FiCalendar } from 'react-icons/fi';
-import { ChevronDown, ChevronUp, Eye, Pencil, Save } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, Info, Pencil, Save } from 'lucide-react';
+import ChoiceMatrix from './ChoiceMatrix.jsx';
+import SecondSemToggle from './SecondSemToggle.jsx';
+import ResetStudentChoices from './ResetStudentChoices.jsx';
+
+const capacitySelectionCheckboxStyle = {
+  width: '1.15rem',
+  height: '1.15rem',
+  border: '2px solid #334155',
+  accentColor: '#2563eb',
+  appearance: 'auto',
+};
 
 export const parseYesNo = (value) => {
   if (value === null || value === undefined) return false;
@@ -31,33 +43,94 @@ export const parseYesNo = (value) => {
 
 const formatCumulativeScore = (value) => {
   const score = Number(value);
-  return Number.isFinite(score) ? score.toFixed(2) : '0.00';
+  return Number.isFinite(score) ? Math.min(100, Math.max(0, score)).toFixed(2) : '0.00';
 };
 
-const calculateCumulativeScore = (student, rules = {}) => {
+const calculateCumulativeScoreBreakdown = (student, rules = {}) => {
   const gpa = Number(student.gpa ?? student.cgpa ?? 0);
   const grade12 = Number(student.grade12 ?? student.grade_12_result ?? 0);
   const coc = Number(student.coc ?? student.coc_result ?? 0);
   const benefitGroup = String(student.benefitGroup ?? student.benefit_group ?? '').toLowerCase();
   const region = String(student.region ?? '').toLowerCase();
+  const minorityStatus = String(student.minority ?? student.isMinority ?? '').toLowerCase();
   const isFemale = String(student.gender ?? student.sex ?? '').toLowerCase() === 'female';
   const hasDisability = parseYesNo(student.disability ?? student.hasDisability)
     || /disability|disabled/.test(benefitGroup);
-  const developingRegion = parseYesNo(student.developingRegion ?? student.minority ?? student.isMinority)
-    || /developing|emerging/.test(`${region} ${benefitGroup}`)
+  const developingRegion = parseYesNo(student.developingRegion ?? minorityStatus)
+    || /developing|emerging|\byes\b|minority/.test(`${region} ${benefitGroup} ${minorityStatus}`)
     || /\b(afar|somali|gambella|benishangul[\s-]*gumuz|benishangul|harari)\b/.test(region);
   const grade12TotalBase = Math.max(0.01, Number(rules.g12TotalBase ?? 600));
-  const baseScore = Math.min(grade12TotalBase, Math.max(0, grade12)) / grade12TotalBase * Number(rules.grade12Weight ?? 20)
-    + Math.min(100, Math.max(0, (gpa <= 4 ? gpa / 4 : gpa / 100) * 100)) * Number(rules.gpaWeight ?? 30) / 100
-    + Math.min(100, Math.max(0, (coc / 30) * 100)) * Number(rules.cocWeight ?? 50) / 100;
-  const developingBonus = Math.max(
-    Number(rules.developingRegionFemaleBonusPoints ?? 10),
-    Number(rules.developingRegionDisabilityBonusPoints ?? 10),
+  const cgpaContribution = Math.min(4, Math.max(0, gpa)) / 4 * Number(rules.gpaWeight ?? rules.gpa_weight ?? 50);
+  const grade12Contribution = Math.min(grade12TotalBase, Math.max(0, grade12)) / grade12TotalBase * Number(rules.grade12Weight ?? rules.grade_12_weight ?? 20);
+  const cocContribution = Math.min(30, Math.max(0, coc)) / 30 * Number(rules.cocWeight ?? rules.coc_weight ?? 30);
+  const femaleRule = Number(rules.femaleBonusPoints ?? 5);
+  const disabilityRule = Number(rules.disabilityBonusPoints ?? 5);
+  const minorityMaleRule = Number(rules.minorityMaleBonusPoints ?? rules.minorityBonusPoints ?? 5);
+  const minorityFemaleRule = Number(rules.minorityFemaleBonusPoints ?? (femaleRule + minorityMaleRule));
+  const minorityDisabilityRule = Number(rules.minorityDisabilityBonusPoints ?? (disabilityRule + minorityMaleRule));
+  const femaleDisabilityMinorityRule = Number(
+    rules.femaleDisabilityMinorityBonusPoints ?? (femaleRule + disabilityRule + minorityMaleRule),
   );
-  const bonus = (isFemale ? Number(rules.femaleBonusPoints ?? 5) : 0)
-    + (hasDisability ? Number(rules.disabilityBonusPoints ?? 5) : 0)
-    + (developingRegion ? developingBonus : 0);
-  return Math.round(Math.min(100, Number(rules.maxScoreCap ?? 100), Math.max(0, baseScore + bonus)) * 100) / 100;
+  let appliedScenario = '';
+  let scenarioBonus = 0;
+  let femaleBonus = isFemale ? femaleRule : 0;
+  let disabilityBonus = hasDisability ? disabilityRule : 0;
+  let minorityBonus = developingRegion ? minorityMaleRule : 0;
+  if (developingRegion) {
+    if (isFemale && hasDisability) {
+      appliedScenario = 'female_disability_minority';
+      scenarioBonus = femaleDisabilityMinorityRule;
+    } else if (isFemale) {
+      appliedScenario = 'minority_female';
+      scenarioBonus = minorityFemaleRule;
+    } else if (hasDisability) {
+      appliedScenario = 'minority_disability';
+      scenarioBonus = minorityDisabilityRule;
+    } else {
+      appliedScenario = 'minority_male';
+      scenarioBonus = minorityMaleRule;
+    }
+    femaleBonus = 0;
+    disabilityBonus = 0;
+    minorityBonus = 0;
+  }
+  const baseScore = cgpaContribution + grade12Contribution + cocContribution;
+  const affirmativeActionBonus = developingRegion
+    ? scenarioBonus
+    : femaleBonus + disabilityBonus;
+  const roundScore = (score) => Math.round(score * 100) / 100;
+  const configuredScoreCap = Number(rules.maxCumulativeScore ?? rules.max_cumulative_score ?? rules.maxScoreCap ?? rules.max_score_cap ?? 100);
+  const scoreCap = Number.isFinite(configuredScoreCap)
+    ? Math.min(100, Math.max(0, configuredScoreCap))
+    : 100;
+
+  return {
+    cgpa_contribution: roundScore(cgpaContribution),
+    grade12_contribution: roundScore(grade12Contribution),
+    coc_contribution: roundScore(cocContribution),
+    base_score: roundScore(baseScore),
+    female_bonus: roundScore(femaleBonus),
+    disability_bonus: roundScore(disabilityBonus),
+    minority_bonus: roundScore(minorityBonus),
+    scenario_bonus: roundScore(scenarioBonus),
+    applied_scenario: appliedScenario,
+    affirmative_action_bonus: roundScore(affirmativeActionBonus),
+    score_cap: scoreCap,
+    cumulative_score: roundScore(Math.min(scoreCap, Math.max(0, baseScore + affirmativeActionBonus))),
+    female_flag: isFemale,
+    disability_flag: hasDisability,
+    minority_flag: developingRegion,
+  };
+};
+
+const calculateCumulativeScore = (student, rules = {}) => (
+  calculateCumulativeScoreBreakdown(student, rules).cumulative_score
+);
+const placementScenarioLabels = {
+  minority_male: 'Minority / Developing Region (Male)',
+  minority_female: 'Minority / Developing Region (Female)',
+  minority_disability: 'Minority / Developing Region (Disability)',
+  female_disability_minority: 'Female + Disability + Minority',
 };
 
 export const filterStudentIdsForPlacement = (studentRecords, selectedStudentIds) => {
@@ -70,11 +143,17 @@ export const filterStudentIdsForPlacement = (studentRecords, selectedStudentIds)
 const hasPlacementResult = (student) => {
   if (!student) return false;
 
-  const status = String(student.status || student.placement_status || '').trim();
+  const status = String(student.status || student.placement_status || '').trim().toLowerCase();
   const result = student.placementResult ?? student.placement_result ?? student.result ?? student.placement;
 
-  return /placed|approved/i.test(status)
+  return ['placed', 'approved'].includes(status)
     || (result !== null && result !== undefined && result !== '' && result !== false);
+};
+
+const isActivePlacementCandidate = (student) => {
+  if (!student || hasPlacementResult(student)) return false;
+  const status = String(student.status || student.placement_status || '').trim().toLowerCase();
+  return !['inactive', 'disabled'].includes(status);
 };
 
 const emptyDepartments = [];
@@ -95,6 +174,10 @@ const defaultPlacementDates = {
   appealStart: '2026-08-27',
   appealEnd: '2026-08-30',
 };
+const getPlacementBatchForSemester = (batch, semester) => {
+  const batchPrefix = String(batch || '').replace(/\/\d+$/, '') || `DTU-${new Date().getFullYear()}`;
+  return `${batchPrefix}/${semester}`;
+};
 const placementDateFields = [
   ['submissionStart', 'Preference Submission Start Date'],
   ['submissionDeadline', 'Preference Submission Deadline'],
@@ -112,10 +195,12 @@ const registrarTabs = [
   'capacity',
   'department-status',
   'placement-rules',
+  'settings',
   'deadlines',
   'placements',
   'run-placement',
   'approve-results',
+  'placed-students',
   'unassigned-students',
   'appeals',
   'reports',
@@ -231,7 +316,7 @@ const downloadPdf = async (filename, title, headers, rows) => {
 };
 
 export const exportStudentInformation = (students, format = 'csv') => {
-  const headers = ['Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Cumulative Score', 'Disability', 'Minority', 'Placement Status'];
+  const headers = ['Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Disability', 'Minority', 'Cumulative Score', 'Placement Status'];
   const rows = students.map((student) => ({
     'Admission Number': student.admission_number || '',
     'First Name': student.given_name || '',
@@ -243,9 +328,9 @@ export const exportStudentInformation = (students, format = 'csv') => {
     'Total Mark (G12)': student.total_mark ?? '',
     CGPA: student.cgpa ?? '',
     'COC Score': student.coc_score ?? '',
-    'Cumulative Score': formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score),
     Disability: parseYesNo(student.disability) ? 'Yes' : 'No',
     Minority: parseYesNo(student.minority) ? 'Yes' : 'No',
+    'Cumulative Score': formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score),
     'Placement Status': student.placement_status || '',
   }));
 
@@ -261,9 +346,32 @@ export const exportStudentInformation = (students, format = 'csv') => {
 };
 
 export const exportChoiceMatrix = (students, format = 'csv') => {
+  const normalizeChoiceDepartment = (choice) => String(
+    choice?.dept_name ?? choice?.department_name ?? choice?.department ?? choice?.name ?? '',
+  ).trim();
+  const getPrioritySlotLabel = (student, index) => {
+    const priority = index + 1;
+    const rankedChoices = (Array.isArray(student?.choices) ? student.choices : [])
+      .filter((choice) => Number(choice?.priority ?? 0) === priority)
+      .sort((left, right) => Number(left?.semester ?? 1) - Number(right?.semester ?? 1));
+
+    if (rankedChoices.length > 0) {
+      return rankedChoices.map((choice) => {
+        const department = normalizeChoiceDepartment(choice);
+        const college = String(choice?.college_name ?? choice?.college ?? choice?.collegeName ?? '').trim();
+        return college ? `[${college}] ${department}` : department;
+      }).join(' / ');
+    }
+
+    return student?.prioritySlots?.[index] || '-';
+  };
+
   const maxChoicesCount = students.length > 0
-    ? Math.max(...students.map((student) => Math.max(student.prioritySlots?.length || 0, student.choices?.length || 0)), 1)
-    : 5;
+    ? Math.max(1, ...students.map((student) => Math.max(
+      student.prioritySlots?.length || 0,
+      ...(student.choices || []).map((choice) => Number(choice?.priority) || 0),
+    )))
+    : 1;
   const choiceHeaders = Array.from({ length: maxChoicesCount }, (_, index) => `Choice ${index + 1}`);
   const headers = ['Student ID', 'Student Name', 'Stream', 'Status', ...choiceHeaders];
   const rows = students.map((student) => {
@@ -274,7 +382,7 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
       Status: student.status || '',
     };
     choiceHeaders.forEach((header, index) => {
-      row[header] = student.prioritySlots?.[index] || '-';
+      row[header] = getPrioritySlotLabel(student, index);
     });
     return row;
   });
@@ -292,9 +400,14 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
 
 export const exportPlacementResults = (placements, format = 'csv', statusFilter = 'all') => {
   const headers = ['Student ID', 'Student Name', 'Merit Score', 'Department', 'College', 'Stream', 'Choice Rank', 'Status'];
+  const isDeferred = (placement) => (
+    placement.status === 'deferred'
+    || String(placement.status || '').trim().toLowerCase() === 'pending 2nd semester'
+  );
   const filteredPlacements = placements.filter((placement) => {
     if (statusFilter === 'assigned') return placement.status === 'placed';
-    if (statusFilter === 'unassigned') return placement.status !== 'placed';
+    if (statusFilter === 'deferred') return isDeferred(placement);
+    if (statusFilter === 'unassigned') return placement.status === 'unassigned';
     return true;
   });
   const rows = filteredPlacements.map((placement) => ({
@@ -305,10 +418,23 @@ export const exportPlacementResults = (placements, format = 'csv', statusFilter 
     College: placement.college || '-',
     Stream: placement.stream || '-',
     'Choice Rank': placement.choiceRank || '-',
-    Status: placement.status === 'placed' ? 'Assigned' : 'Unassigned',
+    Status: placement.status === 'placed'
+      ? 'Assigned'
+      : isDeferred(placement)
+        ? 'Pending 2nd Semester'
+        : 'Unassigned',
   }));
-  const label = statusFilter === 'all' ? 'placement-results' : `${statusFilter}-students`;
-  const title = statusFilter === 'all' ? 'Placement Results' : `${statusFilter === 'assigned' ? 'Assigned' : 'Unassigned'} Students`;
+  const exportLabels = {
+    assigned: 'Assigned',
+    deferred: 'Pending 2nd Semester',
+    unassigned: 'Unassigned',
+  };
+  const label = statusFilter === 'all'
+    ? 'placement-results'
+    : `${String(statusFilter).replace(/_/g, '-')}-students`;
+  const title = statusFilter === 'all'
+    ? 'Placement Results'
+    : `${exportLabels[statusFilter] || 'Placement'} Students`;
 
   if (format === 'pdf') {
     downloadPdf(`${label}.pdf`, title, headers, rows);
@@ -329,14 +455,18 @@ const getDepartmentStream = (department) => {
   const college = String(department?.college || department?.college_name || department?.collegeName || '').toLowerCase().trim();
   const name = String(department?.name || '').toLowerCase();
 
-  if (college.includes('business') || college.includes('economics')) return 'Business & Economics';
-  if (college.includes('agric') || name.includes('agric')) return 'Agriculture';
-  if (college.includes('medicine') || college.includes('health') || college.includes('nursing')) return 'Medicine & Health Sciences';
-  if (college.includes('law') || name.includes('law')) return 'Law';
-  if (college.includes('educ') || name.includes('education')) return 'Education';
-  if (college.includes('social') || college.includes('humanit') || name.includes('history') || name.includes('english') || name.includes('social') || name.includes('psychology')) return 'Humanities';
-  if (college.includes('engineer')) return 'Engineering';
-  if (college.includes('natural') || college.includes('computational') || college.includes('environment') || /biology|chemistry|physics|mathematics|computer|statistics/.test(name)) return 'Natural Science';
+  if (
+    college.includes('business') || college.includes('economics') || college.includes('law')
+    || college.includes('educ') || college.includes('social') || college.includes('humanit')
+    || name.includes('law') || name.includes('education') || name.includes('history')
+    || name.includes('english') || name.includes('social') || name.includes('psychology')
+  ) return 'Social Science';
+  if (
+    college.includes('agric') || college.includes('medicine') || college.includes('health')
+    || college.includes('nursing') || college.includes('engineer') || college.includes('technology')
+    || college.includes('natural') || college.includes('computational') || college.includes('environment')
+    || /biology|chemistry|physics|mathematics|computer|statistics/.test(name)
+  ) return 'Natural Science';
 
   return 'Natural Science';
 };
@@ -345,9 +475,87 @@ const formatStudentStream = (value) => {
   const stream = String(value ?? '').trim();
   const normalized = stream.toLowerCase().replace(/[^a-z]/g, '');
   const singularStream = normalized.replace(/sciences$/, 'science');
-  if (singularStream === 'natural' || singularStream === 'naturalscience') return 'Natural Science';
-  if (singularStream === 'social' || singularStream === 'socialscience') return 'Social Science';
+  if (
+    singularStream.includes('natural') || /agricultur|medicine|health|nursing|engineer|technology/.test(singularStream)
+  ) return 'Natural Science';
+  if (
+    singularStream.includes('social') || /business|economics|law|education|humanit/.test(singularStream)
+  ) return 'Social Science';
   return stream;
+};
+
+export const normalizePlacementStream = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+  if (normalized === '' || normalized === 'all') return 'all';
+  if (['natural', 'naturalscience', 'naturalsciences'].includes(normalized)) return 'naturalscience';
+  if (['social', 'socialscience', 'socialsciences'].includes(normalized)) return 'socialscience';
+  return normalized;
+};
+
+export const hasInvalidStreamChoice = (studentStream, choiceStream) => {
+  const studentStreamKey = normalizePlacementStream(formatStudentStream(studentStream));
+  const choiceStreamKey = normalizePlacementStream(formatStudentStream(choiceStream));
+  return ['naturalscience', 'socialscience'].includes(studentStreamKey)
+    && ['naturalscience', 'socialscience'].includes(choiceStreamKey)
+    && studentStreamKey !== choiceStreamKey;
+};
+
+export const getPlacementStreamOptions = (departments = []) => {
+  const streams = new Map([
+    ['naturalscience', 'Natural Science'],
+    ['socialscience', 'Social Science'],
+  ]);
+
+  departments.forEach((department) => {
+    const stream = formatStudentStream(getDepartmentStream(department));
+    const streamKey = normalizePlacementStream(stream);
+    if (streamKey !== 'all' && !streams.has(streamKey)) streams.set(streamKey, stream);
+  });
+
+  return Array.from(streams.values()).sort((left, right) => left.localeCompare(right));
+};
+
+const normalizePlacementCollege = (value) => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+export const getPlacementCollegeOptions = (departments, selectedStream) => {
+  const selectedStreamKey = normalizePlacementStream(selectedStream);
+  const colleges = new Map();
+
+  departments.forEach((department) => {
+    if (
+      selectedStreamKey !== 'all'
+      && normalizePlacementStream(formatStudentStream(getDepartmentStream(department))) !== selectedStreamKey
+    ) return;
+
+    const college = String(department.college || department.college_name || department.collegeName || '').trim();
+    const collegeKey = normalizePlacementCollege(college);
+    if (collegeKey && !colleges.has(collegeKey)) colleges.set(collegeKey, college);
+  });
+
+  return Array.from(colleges.values()).sort((left, right) => left.localeCompare(right));
+};
+
+export const filterPlacementCandidates = (
+  students,
+  selectedStream,
+  selectedCollege,
+  loadAllStudentsInStream = false,
+  includeCandidatesWithoutChoices = false,
+) => {
+  const selectedStreamKey = normalizePlacementStream(selectedStream);
+  const selectedCollegeKey = normalizePlacementCollege(selectedCollege);
+
+  return students.filter((student) => {
+    const choices = Array.isArray(student.choices) ? student.choices : [];
+    if (choices.length === 0 && !includeCandidatesWithoutChoices) return false;
+    if (selectedStreamKey !== 'all' && normalizePlacementStream(student.stream) !== selectedStreamKey) return false;
+    if (
+      !loadAllStudentsInStream
+      && selectedCollegeKey !== 'all'
+      && !choices.some((choice) => normalizePlacementCollege(choice.college_name || choice.college) === selectedCollegeKey)
+    ) return false;
+    return true;
+  });
 };
 
 const normalizeDepartmentPayload = (payload) => {
@@ -363,7 +571,12 @@ const normalizeDepartmentPayload = (payload) => {
     id: dept.id || dept.department_id || dept.department || dept.name?.toLowerCase().replace(/\s+/g, '-'),
     name: dept.name || dept.department || '',
     capacity: Number(dept.capacity ?? dept.seats ?? dept.quota ?? 0),
+    approval_status: String(dept.approval_status || (Number(dept.capacity_approved) === 1 ? 'approved' : 'pending'))
+      .trim()
+      .toLowerCase(),
+    is_locked: Number(dept.is_locked ?? dept.capacity_approved ?? 0) === 1,
     college: dept.college || dept.college_name || dept.collegeName || dept.program_college || '',
+    standardized_college_name: dept.standardized_college_name || '',
     status: dept.status || 'active',
     stream: dept.stream || dept.academic_stream || dept.category || getDepartmentStream({
       name: dept.name || dept.department || '',
@@ -380,6 +593,9 @@ const RegistrarDashboard = () => {
   const [registrar, setRegistrar] = useState(null);
   const [studentRecordsRefreshToken, setStudentRecordsRefreshToken] = useState(0);
   const tab = registrarTabs.includes(routeTab) ? routeTab : 'overview';
+  const activeSidebarItem = location.pathname.includes('/unassigned-students')
+    ? 'unassigned-students'
+    : tab;
   const setTab = (nextTab) => {
     if (!registrarTabs.includes(nextTab)) return;
     localStorage.setItem('activeTab', nextTab);
@@ -401,23 +617,26 @@ const RegistrarDashboard = () => {
     }
   }, [location.state, navigate, routeTab]);
   const [summary, setSummary] = useState({
-    departments: 0,
-    activeStudents: 0,
+    totalDepartments: 0,
+    verifiedStudents: 0,
+    finalizedDepartments: 0,
     placementsCompleted: 0,
-    unplacedStudents: 0,
+    awaitingPlacement: 0,
     pendingApprovals: 0,
   });
   const [placementRules, setPlacementRules] = useState(() => {
     const defaultRules = {
-      gpaWeight: 30,
+      gpaWeight: 50,
       grade12Weight: 20,
       g12TotalBase: 600,
-      cocWeight: 50,
+      cocWeight: 30,
       maxScoreCap: 100,
       femaleBonusPoints: 5,
       disabilityBonusPoints: 5,
-      developingRegionFemaleBonusPoints: 10,
-      developingRegionDisabilityBonusPoints: 10,
+      minorityMaleBonusPoints: 5,
+      minorityFemaleBonusPoints: 10,
+      minorityDisabilityBonusPoints: 10,
+      femaleDisabilityMinorityBonusPoints: 15,
       generalQuotaPercent: 80,
       reservedFemaleQuotaPercent: 20,
       minGpa: 1.75,
@@ -434,6 +653,7 @@ const RegistrarDashboard = () => {
       return defaultRules;
     }
   });
+  const placementRulesRef = useRef(placementRules);
   const [isEditingPlacementRules, setIsEditingPlacementRules] = useState(false);
   const placementRulesSnapshot = useRef(null);
   const [rulesSaved, setRulesSaved] = useState(false);
@@ -443,6 +663,17 @@ const RegistrarDashboard = () => {
   const [deadlineError, setDeadlineError] = useState('');
   const [deadlineSuccess, setDeadlineSuccess] = useState('');
   const [running, setRunning] = useState(false);
+  const [rerunningPlacement, setRerunningPlacement] = useState(false);
+  const [clearingPlacements, setClearingPlacements] = useState(false);
+  const [showRerunConfirmation, setShowRerunConfirmation] = useState(false);
+  const [forceRerunAvailable, setForceRerunAvailable] = useState(false);
+  const [hasPublishedPlacementResults, setHasPublishedPlacementResults] = useState(false);
+  const [hasUnpublishedPlacementResults, setHasUnpublishedPlacementResults] = useState(false);
+  const [activeSemester, setActiveSemester] = useState(1);
+  const [placementMode, setPlacementMode] = useState(1);
+  const [activatingSemester, setActivatingSemester] = useState(null);
+  const [semesterActivationError, setSemesterActivationError] = useState('');
+  const [completeSemesterRun, setCompleteSemesterRun] = useState(false);
   const [runResult, setRunResult] = useState(null);
   const [unassignedStudentsRefreshToken, setUnassignedStudentsRefreshToken] = useState(0);
   const [pendingResults, setPendingResults] = useState([]);
@@ -453,12 +684,15 @@ const RegistrarDashboard = () => {
   const [placementError, setPlacementError] = useState('');
   const [departments, setDepartments] = useState(emptyDepartments);
   const [capacityDrafts, setCapacityDrafts] = useState({});
+  const [selectedCapacityDepartmentIds, setSelectedCapacityDepartmentIds] = useState([]);
   const [editingRowId, setEditingRowId] = useState(null);
   const capacityInputRef = useRef(null);
   const [departmentStatusDrafts, setDepartmentStatusDrafts] = useState({});
   const [selectedCollegeStatus, setSelectedCollegeStatus] = useState('');
   const [selectedDepartmentStatus, setSelectedDepartmentStatus] = useState('');
   const [capacitySaving, setCapacitySaving] = useState(false);
+  const [capacitySavingAction, setCapacitySavingAction] = useState('');
+  const [capacityLoading, setCapacityLoading] = useState(true);
   const [capacityMessage, setCapacityMessage] = useState('');
   const [capacityError, setCapacityError] = useState('');
   const [departmentStatusSaving, setDepartmentStatusSaving] = useState(false);
@@ -496,46 +730,59 @@ const RegistrarDashboard = () => {
   const [expandedReportId, setExpandedReportId] = useState(null);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesError, setRulesError] = useState('');
+  const reportMessageInputRef = useRef(null);
   
   // State for card detail modals
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'departments', 'activeStudents', 'placementsCompleted', 'unplacedStudents', 'pendingApprovals'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
   const [studentRecords, setStudentRecords] = useState([]);
+  const [expandedStudentScoreId, setExpandedStudentScoreId] = useState(null);
+  const [showStudentRegistrationModal, setShowStudentRegistrationModal] = useState(false);
   const [streamFilter, setStreamFilter] = useState('all');
   const [deptSearch, setDeptSearch] = useState('');
   const [studentInfoLoading, setStudentInfoLoading] = useState(false);
+  const [studentInfoError, setStudentInfoError] = useState('');
   const [editingStudent, setEditingStudent] = useState(null);
   const [studentEditForm, setStudentEditForm] = useState(null);
   const [savingStudentAttributes, setSavingStudentAttributes] = useState(false);
   const [studentAttributesError, setStudentAttributesError] = useState('');
   const [studentAttributesSuccess, setStudentAttributesSuccess] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [selectedPreferenceAdmissions, setSelectedPreferenceAdmissions] = useState([]);
+  const [clearingStudentPreferences, setClearingStudentPreferences] = useState(false);
+  const [clearPreferencesFeedback, setClearPreferencesFeedback] = useState('');
+  const [clearPreferencesError, setClearPreferencesError] = useState('');
+  const [deletingStudents, setDeletingStudents] = useState(false);
+  const [deleteStudentsFeedback, setDeleteStudentsFeedback] = useState('');
+  const [deleteStudentsError, setDeleteStudentsError] = useState('');
   const [choiceMatrixSearch, setChoiceMatrixSearch] = useState('');
   const [choiceMatrixSelectedStream, setChoiceMatrixSelectedStream] = useState('All');
   const [choiceMatrixPage, setChoiceMatrixPage] = useState(1);
-  const [choiceDetailsStudent, setChoiceDetailsStudent] = useState(null);
-  const [selectedStream, setSelectedStream] = useState('all');
-  const [placementCollege, setPlacementCollege] = useState('all');
+  const [choiceMatrixRecords, setChoiceMatrixRecords] = useState([]);
+  const [choiceMatrixLoading, setChoiceMatrixLoading] = useState(false);
+  const [choiceMatrixError, setChoiceMatrixError] = useState('');
+  const [selectedStream, setSelectedStream] = useState('');
   const [placementCandidatesData, setPlacementCandidatesData] = useState([]);
   const [placementCandidatesLoading, setPlacementCandidatesLoading] = useState(false);
   const [placementCandidatesError, setPlacementCandidatesError] = useState('');
   const [placementPreviewData, setPlacementPreviewData] = useState([]);
   const [placementPreviewLoading, setPlacementPreviewLoading] = useState(false);
   const [placementPreviewError, setPlacementPreviewError] = useState('');
-  const [loadAllStudentsInStream, setLoadAllStudentsInStream] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [expandedCandidateIds, setExpandedCandidateIds] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [capacityPage, setCapacityPage] = useState(1);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const reportFileInputRef = useRef(null);
   const PAGE_SIZE = 10;
+  const CHOICE_MATRIX_PAGE_SIZE = 5;
   const STUDENT_PAGE_SIZE = 5;
   const [placementBatch, setPlacementBatch] = useState(() => {
     try {
-      return localStorage.getItem('dtuPlacementBatch') || 'DTU-2026/1';
+      return localStorage.getItem('dtuPlacementBatch') || getPlacementBatchForSemester('', 1);
     } catch (error) {
-      return 'DTU-2026/1';
+      return getPlacementBatchForSemester('', 1);
     };
   });
 
@@ -561,20 +808,23 @@ const RegistrarDashboard = () => {
   }, []);
 
   const fetchDepartments = useCallback(async () => {
-    const response = await api.get('api/common/departments_api.php');
+    const response = await api.get('api/common/departments_api.php?status=all');
     if (response.data?.success === false) {
       throw new Error(response.data?.message || 'Unable to load departments.');
     }
     const normalized = normalizeDepartmentPayload(response.data ?? {});
     setDepartments(normalized);
+    const departmentIds = new Set(normalized.map((department) => String(department.id)));
+    setSelectedCapacityDepartmentIds((current) => current.filter((id) => departmentIds.has(id)));
     setCapacityDrafts(Object.fromEntries(normalized.map((department) => [String(department.id), department.capacity])));
     setDepartmentStatusDrafts(Object.fromEntries(normalized.map((department) => [String(department.id), String(department.status || 'active').toLowerCase()])));
+    setCapacityError('');
     return normalized;
   }, []);
 
-  const saveCapacityUpdates = async (updates) => {
+  const saveCapacityUpdates = async (updates, approveCapacities = false) => {
     if (!updates.length) {
-      setCapacityError('No department capacities are available to approve.');
+      setCapacityError('There are no capacity changes to save.');
       setCapacityMessage('');
       return;
     }
@@ -585,36 +835,114 @@ const RegistrarDashboard = () => {
     }
 
     setCapacitySaving(true);
+    setCapacitySavingAction(approveCapacities ? 'approve' : 'save');
     setCapacityError('');
     setCapacityMessage('');
     try {
       const response = await api.post('api/common/departments_update.php', {
-        departments: updates,
-        approve_capacities: true,
+        capacities: updates.map((department) => ({
+          department_id: department.id,
+          capacity: Number(department.capacity),
+        })),
+        ...(approveCapacities ? { approve_capacities: true } : {}),
       });
-      if (!response.data?.success) {
+      if (!response.data?.success && response.data?.status !== 'success') {
         throw new Error(response.data?.message || 'Unable to save department capacities.');
       }
-      const refreshedDepartments = await fetchDepartments();
-      const refreshedById = new Map(refreshedDepartments.map((department) => [String(department.id), Number(department.capacity)]));
-      const hasUnpersistedUpdates = updates.some((department) => refreshedById.get(String(department.id)) !== Number(department.capacity));
-      if (hasUnpersistedUpdates) {
-        throw new Error('Some capacities were not updated. Refresh the page and try again.');
+      if (approveCapacities) {
+        const refreshedDepartments = await fetchDepartments();
+        const refreshedById = new Map(refreshedDepartments.map((department) => [String(department.id), Number(department.capacity)]));
+        const hasUnpersistedUpdates = updates.some((department) => refreshedById.get(String(department.id)) !== Number(department.capacity));
+        if (hasUnpersistedUpdates) {
+          throw new Error('Some capacities were not updated. Refresh the page and try again.');
+        }
+        const refreshedByDepartmentId = new Map(
+          refreshedDepartments.map((department) => [String(department.id), department]),
+        );
+        if (updates.some((department) => {
+          const refreshedDepartment = refreshedByDepartmentId.get(String(department.id));
+          return !refreshedDepartment?.is_locked || refreshedDepartment.approval_status !== 'approved';
+        })) {
+          throw new Error('Capacity values were saved, but one or more departments did not enter the approved and locked state. Please refresh and try again.');
+        }
+        setSelectedCapacityDepartmentIds((current) => current.filter(
+          (id) => !updates.some((department) => String(department.id) === id),
+        ));
+      } else {
+        const updatedById = new Map(updates.map((department) => [String(department.id), Number(department.capacity)]));
+        setDepartments((current) => current.map((department) => (
+          updatedById.has(String(department.id))
+            ? { ...department, capacity: updatedById.get(String(department.id)), approval_status: 'pending', is_locked: false }
+            : department
+        )));
+        setCapacityDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(updates.map((department) => [String(department.id), Number(department.capacity)])),
+        }));
       }
-      setCapacityMessage('Department capacities successfully approved and updated.');
+      setCapacityError('');
+      setCapacityMessage(approveCapacities
+        ? 'Department capacities successfully approved and updated.'
+        : 'Capacities updated successfully!');
     } catch (error) {
       setCapacityError(error.response?.data?.message || error.message || 'Unable to save department capacities.');
     } finally {
       setCapacitySaving(false);
+      setCapacitySavingAction('');
     }
   };
 
-  const approveAllDepartmentCapacities = () => {
-    const updates = departments.map((department) => ({
+  const approveSelectedDepartmentCapacities = () => {
+    const selectedIds = new Set(selectedCapacityDepartmentIds);
+    const updates = departments.filter((department) => selectedIds.has(String(department.id))).map((department) => ({
       id: department.id,
       capacity: capacityDrafts[String(department.id)] ?? department.capacity,
     }));
-    saveCapacityUpdates(updates);
+    saveCapacityUpdates(updates, true);
+  };
+
+  const unlockDepartmentCapacities = async () => {
+    if (!window.confirm('Unlock approved department capacities so department heads can edit and resubmit them?')) {
+      return;
+    }
+
+    setCapacitySaving(true);
+    setCapacitySavingAction('unlock');
+    setCapacityError('');
+    setCapacityMessage('');
+    try {
+      const response = await api.post('api/common/departments_update.php', {
+        allow_head_edit: true,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to unlock department capacities.');
+      }
+      await fetchDepartments();
+      setCapacityMessage(response.data.message || 'Department capacities are unlocked for editing.');
+    } catch (error) {
+      setCapacityError(error.response?.data?.message || error.message || 'Unable to unlock department capacities.');
+    } finally {
+      setCapacitySaving(false);
+      setCapacitySavingAction('');
+    }
+  };
+
+  const lockedCapacityCount = departments.filter((department) => (
+    department.is_locked || department.approval_status === 'approved'
+  )).length;
+
+  const pendingCapacityUpdates = departments
+    .filter((department) => (
+      String(capacityDrafts[String(department.id)] ?? department.capacity).trim() === ''
+      || Number(capacityDrafts[String(department.id)] ?? department.capacity) !== Number(department.capacity)
+    ))
+    .map((department) => ({
+      id: department.id,
+      capacity: capacityDrafts[String(department.id)] ?? department.capacity,
+    }));
+
+  const saveEditedDepartmentCapacities = () => {
+    saveCapacityUpdates(pendingCapacityUpdates);
   };
 
   const departmentStatusGroups = useMemo(() => {
@@ -809,13 +1137,13 @@ const RegistrarDashboard = () => {
 
     try {
       const parsed = JSON.parse(data);
-      if (parsed.role === 'registrar') {
+      if (String(parsed.role || '').trim().toLowerCase() === 'registrar') {
         setRegistrar(parsed);
       } else {
         navigate('/login');
       }
     } catch (error) {
-      localStorage.clear();
+      localStorage.removeItem('user');
       navigate('/login');
     }
   }, [navigate]);
@@ -949,20 +1277,27 @@ const RegistrarDashboard = () => {
         const response = await api.get('api/registrar/get_placement_settings.php');
         const settings = response.data?.data || response.data || {};
         const loadedRules = {
-          gpaWeight: Number(settings.gpa_weight ?? 30),
+          gpaWeight: Number(settings.gpa_weight ?? 50),
           grade12Weight: Number(settings.grade_12_weight ?? 20),
           g12TotalBase: Number(settings.g12_total_base ?? 600),
-          cocWeight: Number(settings.coc_weight ?? 50),
-          maxScoreCap: Number(settings.max_score_cap ?? 100),
+          cocWeight: Number(settings.coc_weight ?? 30),
+          maxScoreCap: Number(settings.max_cumulative_score ?? settings.max_score_cap ?? 100),
           femaleBonusPoints: Number(settings.female_bonus_points ?? 5),
           disabilityBonusPoints: Number(settings.disability_bonus_points ?? 5),
-          developingRegionFemaleBonusPoints: Number(settings.developing_region_female_bonus_points ?? 10),
-          developingRegionDisabilityBonusPoints: Number(settings.developing_region_disability_bonus_points ?? 10),
+          minorityMaleBonusPoints: Number(settings.minority_male_bonus_points ?? settings.minority_bonus_points ?? 5),
+          minorityFemaleBonusPoints: Number(settings.minority_female_bonus_points ?? 10),
+          minorityDisabilityBonusPoints: Number(settings.minority_disability_bonus_points ?? 10),
+          femaleDisabilityMinorityBonusPoints: Number(settings.female_disability_minority_bonus_points ?? 15),
           generalQuotaPercent: Number(settings.general_quota_percent ?? 80),
           reservedFemaleQuotaPercent: Number(settings.reserved_female_quota_percent ?? 20),
           minGpa: Number(settings.min_gpa ?? 1.75),
         };
 
+        const configuredSemester = Number(settings.active_semester || 1);
+        setActiveSemester(configuredSemester);
+        setPlacementMode(configuredSemester);
+        setHasPublishedPlacementResults(Boolean(settings.has_published_results));
+        setHasUnpublishedPlacementResults(Boolean(settings.has_unpublished_results));
         setPlacementRules(loadedRules);
         localStorage.setItem('placementRules', JSON.stringify(loadedRules));
       } catch (error) {
@@ -1165,9 +1500,12 @@ const RegistrarDashboard = () => {
   };
 
   useEffect(() => {
-    fetchDepartments().catch(() => {
-      // Keep the dashboard available when the departments API is offline.
-    });
+    setCapacityLoading(true);
+    fetchDepartments()
+      .catch((error) => {
+        setCapacityError(error.response?.data?.message || error.message || 'Unable to load department capacity data.');
+      })
+      .finally(() => setCapacityLoading(false));
   }, [fetchDepartments]);
 
   useEffect(() => {
@@ -1205,11 +1543,26 @@ const RegistrarDashboard = () => {
   }, [placementBatch]);
 
   useEffect(() => {
+    placementRulesRef.current = placementRules;
+  }, [placementRules]);
+
+  useEffect(() => {
+    if (!registrar || tab !== 'student-info') {
+      setStudentInfoLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let isCurrent = true;
     const fetchStudentRecords = async () => {
       setStudentInfoLoading(true);
+      setStudentInfoError('');
 
       try {
-        const usersResponse = await api.get('api/admin/users_api.php');
+        const [usersResponse, officialResponse] = await Promise.all([
+          api.get('api/admin/users_api.php', { signal: controller.signal }),
+          api.get('api/registrar/student_information.php', { signal: controller.signal }),
+        ]);
         const usersPayload = Array.isArray(usersResponse.data)
           ? usersResponse.data
           : Array.isArray(usersResponse.data?.users)
@@ -1222,7 +1575,6 @@ const RegistrarDashboard = () => {
           .filter((user) => String(user?.role || '').trim().toLowerCase() === 'student')
           .filter((user) => String(user?.id_number || '').trim() !== '')
           .map((user) => [String(user.id_number).trim(), user]));
-        const officialResponse = await api.get('api/registrar/student_information.php');
         const officialStudents = Array.isArray(officialResponse.data?.students)
           ? officialResponse.data.students
           : [];
@@ -1235,19 +1587,29 @@ const RegistrarDashboard = () => {
           studentRecordsFromOfficialData.map(async ({ official, user }) => {
             const studentId = user?.id ?? user?.student_id;
             const email = user?.email || '';
-            let profile = {};
-
-            if (studentId || email) {
-              try {
-                const lookup = studentId
-                  ? `student_id=${encodeURIComponent(studentId)}`
-                  : `email=${encodeURIComponent(email)}`;
-                const profileResponse = await api.get(`api/student/student_profile.php?${lookup}`);
-                profile = profileResponse.data?.student || profileResponse.data?.data || {};
-              } catch (error) {
-                profile = {};
-              }
-            }
+            const admissionNumber = String(official.admission_number || official.id_number || '').trim();
+            const optionalRequest = (url) => api.get(url, { signal: controller.signal }).catch((error) => {
+              if (controller.signal.aborted) throw error;
+              console.error('Optional student details request failed:', error);
+              return null;
+            });
+            const profileLookup = studentId
+              ? `student_id=${encodeURIComponent(studentId)}`
+              : `email=${encodeURIComponent(email)}`;
+            const profileRequest = studentId || email
+              ? optionalRequest(`api/student/student_profile.php?${profileLookup}`)
+              : Promise.resolve(null);
+            const preferenceParams = new URLSearchParams();
+            if (studentId) preferenceParams.set('student_id', String(studentId));
+            if (admissionNumber) preferenceParams.set('admission_number', admissionNumber);
+            const preferencesRequest = studentId || admissionNumber
+              ? optionalRequest(`api/student/student_preferences.php?${preferenceParams.toString()}`)
+              : Promise.resolve(null);
+            const [profileResponse, preferencesResponse] = await Promise.all([
+              profileRequest,
+              preferencesRequest,
+            ]);
+            const profile = profileResponse?.data?.student || profileResponse?.data?.data || {};
 
             const cgpaValue = Number(official.cgpa ?? profile?.cgpa ?? profile?.gpa ?? user?.cgpa ?? 0);
             const numericCgpa = Number.isFinite(cgpaValue) ? cgpaValue : 0;
@@ -1258,58 +1620,62 @@ const RegistrarDashboard = () => {
             const gender = String(official.sex || '');
             const hasDisability = parseYesNo(official.disability);
             const minority = parseYesNo(official.minority);
+            const hasCgpaScore = official.cgpa !== null && official.cgpa !== undefined
+              || profile?.cgpa !== null && profile?.cgpa !== undefined
+              || profile?.gpa !== null && profile?.gpa !== undefined
+              || user?.cgpa !== null && user?.cgpa !== undefined;
             const fullName = [
               official.given_name,
               official.father_name,
               official.grandfather_name,
             ].filter(Boolean).join(' ');
-            const cumulativeScore = calculateCumulativeScore({
+            const calculatedScoreBreakdown = hasCgpaScore && g12 !== null && cocValue !== null
+              ? calculateCumulativeScoreBreakdown({
               gpa: numericCgpa,
               grade12: g12,
               coc: cocValue,
               gender,
+              region: official.region,
               disability: hasDisability,
               minority,
-            }, placementRules);
+              }, placementRulesRef.current)
+              : null;
+            const scoreBreakdown = official.score_breakdown || calculatedScoreBreakdown;
+            const cumulativeScore = scoreBreakdown?.cumulative_score
+              ?? calculateCumulativeScore({
+                gpa: numericCgpa,
+                grade12: g12,
+                coc: cocValue,
+                gender,
+                region: official.region,
+                disability: hasDisability,
+                minority,
+              }, placementRulesRef.current);
 
-            let choices = [];
-            const admissionNumber = String(official.admission_number || official.id_number || '').trim();
-            if (studentId || admissionNumber) {
-              try {
-                const preferenceParams = new URLSearchParams();
-                if (studentId) preferenceParams.set('student_id', String(studentId));
-                if (admissionNumber) preferenceParams.set('admission_number', admissionNumber);
-                const preferencesResponse = await api.get(`api/student/student_preferences.php?${preferenceParams.toString()}`);
-                const preferencesPayload = preferencesResponse.data || {};
-                const preferences = Array.isArray(preferencesPayload.choices)
-                  ? preferencesPayload.choices
-                  : Array.isArray(preferencesPayload.data)
-                    ? preferencesPayload.data
-                    : Array.isArray(preferencesPayload)
-                      ? preferencesPayload
-                      : [];
-
-                choices = preferences
-                  .map((preference, index) => {
-                    const departmentId = preference?.dept_id ?? preference?.department_id ?? null;
-                    const name = preference?.dept_name || preference?.department || preference?.name || preference?.department_name || preference?.label
-                      || (departmentId !== null ? `Department #${departmentId}` : '');
-                    if (!name) return null;
-                    return {
-                      dept_id: departmentId,
-                      priority: Number(preference?.priority ?? preference?.rank ?? index + 1),
-                      department: name,
-                      college: preference?.college_name || preference?.collegeName || preference?.college || '',
-                      stream: preference?.stream || '',
-                    };
-                  })
-                  .filter(Boolean)
-                  .sort((a, b) => (Number(a.priority) || 99) - (Number(b.priority) || 99));
-              } catch (error) {
-                console.error(`Failed to fetch preferences for student ${admissionNumber || studentId}:`, error);
-                choices = [];
-              }
-            }
+            const preferencesPayload = preferencesResponse?.data || {};
+            const preferences = Array.isArray(preferencesPayload.choices)
+              ? preferencesPayload.choices
+              : Array.isArray(preferencesPayload.data)
+                ? preferencesPayload.data
+                : Array.isArray(preferencesPayload)
+                  ? preferencesPayload
+                  : [];
+            const choices = preferences
+              .map((preference, index) => {
+                const departmentId = preference?.dept_id ?? preference?.department_id ?? null;
+                const name = preference?.dept_name || preference?.department || preference?.name || preference?.department_name || preference?.label
+                  || (departmentId !== null ? `Department #${departmentId}` : '');
+                if (!name) return null;
+                return {
+                  dept_id: departmentId,
+                  priority: Number(preference?.priority ?? preference?.rank ?? index + 1),
+                  department: name,
+                  college: preference?.college_name || preference?.collegeName || preference?.college || '',
+                  stream: preference?.stream || '',
+                };
+              })
+              .filter(Boolean)
+              .sort((a, b) => (Number(a.priority) || 99) - (Number(b.priority) || 99));
 
             return {
               id: studentId ?? official.admission_number,
@@ -1349,6 +1715,7 @@ const RegistrarDashboard = () => {
                 : (official.placement_status || 'Pending'),
               cumulativeScore,
               cumulative_score: cumulativeScore,
+              score_breakdown: scoreBreakdown,
               placement_result_score: profile?.placement_result_score ?? null,
               department: profile?.department || profile?.placement_result_department || '',
               department_id: profile?.department_id ?? null,
@@ -1360,19 +1727,26 @@ const RegistrarDashboard = () => {
             };
           })
         );
-        setStudentRecords(records.filter((record) => record.name.trim()));
+        if (isCurrent) setStudentRecords(records.filter((record) => record.name.trim()));
       } catch (error) {
+        if (!isCurrent || controller.signal.aborted) return;
         console.error('Failed to fetch student records:', error);
         setStudentRecords([]);
+        setStudentInfoError(
+          error.response?.data?.message || error.message || 'Unable to load student records.',
+        );
       } finally {
-        setStudentInfoLoading(false);
+        if (isCurrent) setStudentInfoLoading(false);
       }
     };
 
-    if (registrar) {
-      fetchStudentRecords();
-    }
-  }, [placementRules, registrar, studentRecordsRefreshToken]);
+    fetchStudentRecords();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+      setStudentInfoLoading(false);
+    };
+  }, [registrar, tab, studentRecordsRefreshToken]);
 
   /*
   useEffect(() => {
@@ -1392,14 +1766,15 @@ const RegistrarDashboard = () => {
       try {
         const response = await api.get('api/common/dashboard_overview_api.php');
         
-        if (response.data?.success && response.data?.data) {
-          const { departments, activeStudents, placementsCompleted, unplacedStudents, pendingApprovals } = response.data.data;
+        if (response.data?.success) {
+          const stats = response.data?.data ?? response.data;
           setSummary({
-            departments: Number(departments ?? 0),
-            activeStudents: Number(activeStudents ?? 0),
-            placementsCompleted: Number(placementsCompleted ?? 0),
-            unplacedStudents: Number(unplacedStudents ?? 0),
-            pendingApprovals: Number(pendingApprovals ?? 0),
+            totalDepartments: Number(stats.total_departments ?? stats.departments ?? 0),
+            verifiedStudents: Number(stats.verified_students ?? stats.activeStudents ?? 0),
+            finalizedDepartments: Number(stats.finalized_departments ?? stats.placementsCompleted ?? 0),
+            placementsCompleted: Number(stats.placementsCompleted ?? 0),
+            awaitingPlacement: Number(stats.awaiting_placement ?? stats.unplacedStudents ?? 0),
+            pendingApprovals: Number(stats.pending_approvals ?? stats.pendingApprovals ?? 0),
           });
         }
       } catch (error) {
@@ -1585,14 +1960,14 @@ const RegistrarDashboard = () => {
       try {
         const response = await api.get('api/common/dashboard_overview_api.php');
         
-        if (response.data?.success && response.data?.data) {
-          const { departments, activeStudents, placementsCompleted, unplacedStudents, pendingApprovals } = response.data.data;
+        if (response.data?.success) {
+          const stats = response.data?.data ?? response.data;
           setSummary({
-            departments: Number(departments ?? 0),
-            activeStudents: Number(activeStudents ?? 0),
-            placementsCompleted: Number(placementsCompleted ?? 0),
-            unplacedStudents: Number(unplacedStudents ?? 0),
-            pendingApprovals: Number(pendingApprovals ?? 0),
+            totalDepartments: Number(stats.total_departments ?? stats.departments ?? 0),
+            verifiedStudents: Number(stats.verified_students ?? stats.activeStudents ?? 0),
+            finalizedDepartments: Number(stats.finalized_departments ?? stats.placementsCompleted ?? 0),
+            awaitingPlacement: Number(stats.awaiting_placement ?? stats.unplacedStudents ?? 0),
+            pendingApprovals: Number(stats.pending_approvals ?? stats.pendingApprovals ?? 0),
           });
         }
       } catch (error) {
@@ -1605,29 +1980,81 @@ const RegistrarDashboard = () => {
     }
   }, [registrar, tab]);
 
-  const departmentPreferenceCounts = studentRecords.reduce((accumulator, student) => {
+  useEffect(() => {
+    if (!registrar || tab !== 'choice-matrix') {
+      setChoiceMatrixLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let isCurrent = true;
+    const loadChoiceMatrix = async () => {
+      setChoiceMatrixLoading(true);
+      setChoiceMatrixError('');
+      try {
+        const response = await api.get('api/registrar/get_student_choice_matrix.php', {
+          signal: controller.signal,
+        });
+        if (response.data?.success !== true) {
+          throw new Error(response.data?.message || 'Unable to load student choice data.');
+        }
+        const rows = Array.isArray(response.data?.data)
+          ? response.data.data
+          : Array.isArray(response.data?.students)
+            ? response.data.students
+            : Array.isArray(response.data)
+              ? response.data
+              : [];
+        if (isCurrent) setChoiceMatrixRecords(rows);
+      } catch (error) {
+        if (!isCurrent || controller.signal.aborted) return;
+        console.error('Failed to fetch student choice matrix:', error);
+        setChoiceMatrixRecords([]);
+        setChoiceMatrixError(
+          error.response?.data?.message || error.message || 'Unable to load student choice data.',
+        );
+      } finally {
+        if (isCurrent) setChoiceMatrixLoading(false);
+      }
+    };
+
+    loadChoiceMatrix();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [registrar, tab, studentRecordsRefreshToken]);
+
+  const departmentPreferenceCounts = choiceMatrixRecords.reduce((accumulator, student) => {
     (student.choices || []).forEach((choice) => {
       const departmentName = String(choice.department || '').trim();
-      if (!departmentName) return;
+      if (!departmentName || departmentName === 'Broad Group / Semester 2 Queue') return;
       accumulator[departmentName] = (accumulator[departmentName] || 0) + 1;
     });
     return accumulator;
   }, {});
 
-  const maxChoicesCount = useMemo(() => {
-    const counts = studentRecords.map((student) => (student.choices || []).length);
-    return counts.length > 0 ? Math.max(...counts, 1) : 5;
-  }, [studentRecords]);
-
-  const choiceMatrixRows = studentRecords
-    .map((student) => {
-      const prioritySlots = Array.from({ length: maxChoicesCount }, (_, index) => {
-        const preferredChoice = (student.choices || []).find((choice) => Number(choice.priority || 0) === index + 1);
-        return preferredChoice?.department || '—';
-      });
-
+  const maxChoicesCount = Math.max(
+    1,
+    ...choiceMatrixRecords.flatMap((record) => (
+      (record.choices || []).map((choice) => Number(choice.priority) || 0)
+    )),
+  );
+  const choiceMatrixRows = choiceMatrixRecords
+    .map((record) => {
+      const choices = Array.isArray(record.choices) ? record.choices : [];
+      const prioritySlots = Array.from({ length: maxChoicesCount }, (_, index) => (
+        record[`choice_${index + 1}`]
+        || choices.find((choice) => Number(choice.priority || 0) === index + 1)?.department
+        || '—'
+      ));
       return {
-        ...student,
+        ...record,
+        id: record.student_id,
+        id_number: record.student_id,
+        name: record.student_name || record.name || 'Unknown Student',
+        email: record.email || '',
+        choices,
         prioritySlots,
       };
     })
@@ -1654,10 +2081,10 @@ const RegistrarDashboard = () => {
       const rightId = String(right.id_number || right.id || '');
       return leftId.localeCompare(rightId, undefined, { numeric: true, sensitivity: 'base' });
     });
-  const choiceMatrixTotalPages = Math.max(1, Math.ceil(choiceMatrixRows.length / PAGE_SIZE));
+  const choiceMatrixTotalPages = Math.max(1, Math.ceil(choiceMatrixRows.length / CHOICE_MATRIX_PAGE_SIZE));
   const paginatedChoiceMatrixRows = choiceMatrixRows.slice(
-    (choiceMatrixPage - 1) * PAGE_SIZE,
-    choiceMatrixPage * PAGE_SIZE
+    (choiceMatrixPage - 1) * CHOICE_MATRIX_PAGE_SIZE,
+    choiceMatrixPage * CHOICE_MATRIX_PAGE_SIZE
   );
 
   const filteredStudents = [...studentRecords]
@@ -1689,12 +2116,90 @@ const RegistrarDashboard = () => {
     (currentPage - 1) * STUDENT_PAGE_SIZE,
     currentPage * STUDENT_PAGE_SIZE,
   );
+  const visibleStudentAdmissions = paginatedStudents
+    .map((student) => String(student.admission_number || student.id_number || '').trim())
+    .filter(Boolean);
+  const allVisibleStudentsSelected = visibleStudentAdmissions.length > 0
+    && visibleStudentAdmissions.every((admissionNumber) => selectedPreferenceAdmissions.includes(admissionNumber));
+
+  const toggleVisibleStudentSelection = (checked) => {
+    setSelectedPreferenceAdmissions((current) => {
+      const visibleSet = new Set(visibleStudentAdmissions);
+      const remaining = current.filter((admissionNumber) => !visibleSet.has(admissionNumber));
+      return checked ? [...remaining, ...visibleStudentAdmissions] : remaining;
+    });
+  };
+
+  const clearSelectedStudentPreferences = async () => {
+    const admissionNumbers = selectedPreferenceAdmissions.filter(Boolean);
+    if (!admissionNumbers.length || clearingStudentPreferences) return;
+    const confirmed = window.confirm(
+      `Clear saved preferences for ${admissionNumbers.length} selected student(s)? Student records will not be deleted.`,
+    );
+    if (!confirmed) return;
+
+    setClearingStudentPreferences(true);
+    setClearPreferencesFeedback('');
+    setClearPreferencesError('');
+    try {
+      const response = await api.post(
+        'api/registrar/clear_student_preferences.php',
+        { admissionNumbers },
+        { withCredentials: true },
+      );
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to clear selected student preferences.');
+      }
+      setClearPreferencesFeedback(response.data.message || 'Selected student preferences were cleared.');
+      setSelectedPreferenceAdmissions([]);
+      setStudentRecordsRefreshToken((current) => current + 1);
+    } catch (error) {
+      setClearPreferencesError(
+        error.response?.data?.message || error.message || 'Unable to clear selected student preferences.',
+      );
+    } finally {
+      setClearingStudentPreferences(false);
+    }
+  };
+
+  const deleteStudentRecords = async (admissionNumbers) => {
+    const studentsToDelete = [...new Set(admissionNumbers.map((value) => String(value || '').trim()).filter(Boolean))];
+    if (!studentsToDelete.length || deletingStudents) return;
+    const confirmed = window.confirm(
+      `Permanently delete ${studentsToDelete.length} student record(s), including their account, profile, preferences, placements, appeals, notifications, and pending allocations? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingStudents(true);
+    setDeleteStudentsFeedback('');
+    setDeleteStudentsError('');
+    try {
+      const response = await api.post(
+        'api/registrar/delete_student.php',
+        { admissionNumbers: studentsToDelete },
+        { withCredentials: true },
+      );
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to delete selected student records.');
+      }
+      setDeleteStudentsFeedback(response.data.message || 'Student records deleted successfully.');
+      setSelectedPreferenceAdmissions((current) => current.filter((value) => !studentsToDelete.includes(value)));
+      setStudentRecordsRefreshToken((current) => current + 1);
+    } catch (error) {
+      setDeleteStudentsError(
+        error.response?.data?.message || error.message || 'Unable to delete selected student records.',
+      );
+    } finally {
+      setDeletingStudents(false);
+    }
+  };
 
   const openStudentAttributeEditor = (student) => {
     setEditingStudent(student);
     setStudentEditForm({
       gpa: String(student.gpa ?? student.cgpa ?? ''),
       coc_score: String(student.coc ?? student.coc_result ?? 0),
+      field_of_study: formatStudentStream(student.field_of_study ?? student.stream ?? ''),
     });
     setStudentAttributesError('');
     setStudentAttributesSuccess('');
@@ -1703,7 +2208,9 @@ const RegistrarDashboard = () => {
   const handleSaveStudentAttributes = async (event) => {
     event.preventDefault();
     const studentId = Number(editingStudent?.id ?? editingStudent?.student_id);
-    if (!Number.isInteger(studentId) || studentId <= 0) {
+    const admissionNumber = String(editingStudent?.admission_number ?? editingStudent?.id_number ?? '').trim();
+    const hasStudentId = Number.isInteger(studentId) && studentId > 0;
+    if (!hasStudentId && !admissionNumber) {
       setStudentAttributesError('Unable to update this student because the student ID is invalid.');
       return;
     }
@@ -1713,24 +2220,28 @@ const RegistrarDashboard = () => {
     setStudentAttributesSuccess('');
     try {
       const response = await api.post('api/registrar/update_student.php', {
-        student_id: studentId,
+        student_id: hasStudentId ? studentId : null,
+        admission_number: admissionNumber,
         cgpa: studentEditForm.gpa,
         coc_score: studentEditForm.coc_score,
+        field_of_study: studentEditForm.field_of_study,
       });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to update student record.');
       }
       const updatedStudent = response.data.student;
       setStudentRecords((records) => records.map((record) => (
-        Number(record.id) === studentId
+        (hasStudentId && Number(record.id) === studentId)
+          || (admissionNumber !== '' && String(record.admission_number ?? record.id_number ?? '') === admissionNumber)
           ? {
               ...record,
               ...updatedStudent,
+              id: updatedStudent.id ?? record.id,
               gpa: Number(updatedStudent.gpa).toFixed(2),
               cgpa: Number(updatedStudent.gpa).toFixed(2),
-              g12: updatedStudent.g12_result,
+              field_of_study: updatedStudent.field_of_study,
+              stream: formatStudentStream(updatedStudent.field_of_study),
               coc: updatedStudent.coc_score,
-              stream: formatStudentStream(updatedStudent.stream),
               hasDisability: parseYesNo(updatedStudent.disability),
               name: `${updatedStudent.first_name} ${updatedStudent.last_name}`.trim(),
               cumulativeScore: Number(updatedStudent.cumulative_avg ?? record.cumulativeScore),
@@ -1751,11 +2262,15 @@ const RegistrarDashboard = () => {
 
   const filteredCapacityDepartments = (departments || []).filter((department) => {
     const name = String(department.name || '').toLowerCase().trim();
-    const college = String(department.college || '').toLowerCase().trim();
+    const college = String(department.standardized_college_name || department.college || '').toLowerCase().trim();
     const streamName = getDepartmentStream(department);
-    const currentStream = (streamFilter || 'all').toLowerCase().trim();
+    const currentStream = normalizePlacementStream(streamFilter);
+    const departmentStream = normalizePlacementStream(streamName);
 
-    if (currentStream !== 'all' && streamName.toLowerCase().trim() !== currentStream) {
+    if (
+      !['all', 'allstreams'].includes(currentStream)
+      && departmentStream !== currentStream
+    ) {
       return false;
     }
 
@@ -1767,7 +2282,170 @@ const RegistrarDashboard = () => {
     (capacityPage - 1) * PAGE_SIZE,
     capacityPage * PAGE_SIZE
   );
+  const visibleCapacityDepartmentIds = paginatedCapacityDepartments.map((department) => String(department.id));
+  const allVisibleCapacityDepartmentsSelected = visibleCapacityDepartmentIds.length > 0
+    && visibleCapacityDepartmentIds.every((id) => selectedCapacityDepartmentIds.includes(id));
+  const selectedCapacityDepartmentCount = selectedCapacityDepartmentIds.filter((id) => (
+    departments.some((department) => String(department.id) === id)
+  )).length;
+  const toggleVisibleCapacitySelection = () => {
+    setSelectedCapacityDepartmentIds((current) => {
+      if (allVisibleCapacityDepartmentsSelected) {
+        return current.filter((id) => !visibleCapacityDepartmentIds.includes(id));
+      }
+      return Array.from(new Set([...current, ...visibleCapacityDepartmentIds]));
+    });
+  };
   const latestPlacementRun = pendingResults[0] || null;
+  const forceRerunRequired = hasPublishedPlacementResults || forceRerunAvailable;
+
+  const activatePlacementSemester = async (semester) => {
+    setPlacementMode(semester);
+    setSelectedStream('');
+    setSelectedStudentIds([]);
+    setCompleteSemesterRun(false);
+    setPlacementError('');
+    setSemesterActivationError('');
+
+    if (activeSemester === semester) return;
+
+    setActivatingSemester(semester);
+    try {
+      const response = await api.post(
+        'api/registrar/activate_second_semester.php',
+        { semester },
+        { withCredentials: true },
+      );
+      const result = response.data || {};
+      if (!result.success || Number(result.active_semester) !== semester) {
+        throw new Error(result.message || `Unable to activate Semester ${semester}.`);
+      }
+
+      setActiveSemester(semester);
+      setStudentRecordsRefreshToken((token) => token + 1);
+    } catch (error) {
+      setSemesterActivationError(
+        error?.response?.data?.message
+          || error?.message
+          || `Unable to activate Semester ${semester}.`,
+      );
+    } finally {
+      setActivatingSemester(null);
+    }
+  };
+
+  const rerunPlacement = async (forceRerun = false) => {
+    setRerunningPlacement(true);
+    setPlacementError('');
+    try {
+      const endpoint = activeSemester === 2
+        ? 'api/registrar/run_second_semester_placement.php'
+        : 'api/registrar/placement_engine.php';
+      const forceQuery = forceRerun
+        ? '?action=force_rerun_placement&force_rerun=true'
+        : '';
+      const response = await api.post(`${endpoint}${forceQuery}`, {
+        action: forceRerun ? 'force_rerun_placement' : 'rerun_unpublished',
+        semester: activeSemester,
+        force_rerun: forceRerun === true,
+        rerun_unpublished: true,
+        selectedStudentIds: [],
+        students: [],
+        selectedCollege: 'all',
+        selectedStream: 'all',
+        completeSemesterRun: false,
+      });
+      const result = response.data || {};
+      if (!result.success) {
+        throw new Error(result.message || 'Unable to rerun placement.');
+      }
+
+      const summary = result.summary || {};
+      const outcome = {
+        assigned: Number(summary.assignedStudents ?? result.assigned ?? 0),
+        unassigned: Number(summary.unassignedStudents ?? result.unassigned ?? 0),
+        deferred: Number(summary.deferredStudents ?? 0),
+        alreadyPlaced: Number(summary.alreadyPlacedStudents ?? result.already_placed ?? 0),
+        total: Number(summary.totalStudents ?? result.total_processed ?? 0),
+      };
+      const placementRun = {
+        id: Date.now(),
+        summary: outcome,
+        placements: Array.isArray(result.placements) ? result.placements : [],
+        createdAt: new Date().toISOString(),
+      };
+      setRunResult(outcome);
+      setPendingResults((current) => [placementRun, ...current]);
+      setSelectedStudentIds([]);
+      setHasPublishedPlacementResults(false);
+      setHasUnpublishedPlacementResults(true);
+      setForceRerunAvailable(false);
+      setUnassignedStudentsRefreshToken((token) => token + 1);
+      setStudentRecordsRefreshToken((token) => token + 1);
+      localStorage.setItem('studentPlacementSummary', JSON.stringify({
+        studentId: registrar?.id || 'registrar-run',
+        batch: placementBatch,
+        date: placementRun.createdAt,
+        placementRuns: placementRun.placements,
+        status: 'run-complete',
+      }));
+      setShowRerunConfirmation(false);
+    } catch (error) {
+      const serverMessage = error?.response?.data?.message;
+      if (
+        error?.response?.status === 409
+        && typeof serverMessage === 'string'
+        && /already been published.*force rerun/i.test(serverMessage)
+      ) {
+        setForceRerunAvailable(true);
+        setHasPublishedPlacementResults(true);
+      }
+      setPlacementError(serverMessage || error.message || 'Unable to rerun placement.');
+    } finally {
+      setRerunningPlacement(false);
+    }
+  };
+
+  const handleClearPlacements = async () => {
+    const confirmed = window.confirm('This will clear all placement allocations, reset student placement status, and restore capacity data. Continue?');
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingPlacements(true);
+    setPlacementError('');
+    try {
+      const response = await api.post('api/registrar/clear_placements.php', { clear_placements: true }, { withCredentials: true });
+      const result = response.data || {};
+      if (!result.success) {
+        throw new Error(result.message || 'Unable to clear placements.');
+      }
+
+      setPendingResults([]);
+      setRunResult(null);
+      setSelectedStudentIds([]);
+      setHasPublishedPlacementResults(false);
+      setHasUnpublishedPlacementResults(false);
+      setForceRerunAvailable(false);
+      setUnassignedStudentsRefreshToken((token) => token + 1);
+      setStudentRecordsRefreshToken((token) => token + 1);
+      localStorage.removeItem('studentPlacementSummary');
+      setCapacityLoading(true);
+      try {
+        await fetchDepartments();
+      } catch (refreshError) {
+        setCapacityError(refreshError.response?.data?.message || refreshError.message || 'Unable to refresh department capacity data.');
+      } finally {
+        setCapacityLoading(false);
+      }
+      setPlacementError('');
+    } catch (error) {
+      const serverMessage = error?.response?.data?.message || error?.message || 'Unable to clear placements.';
+      setPlacementError(serverMessage);
+    } finally {
+      setClearingPlacements(false);
+    }
+  };
 
   const handleReportFileChange = (event) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -1828,25 +2506,7 @@ const RegistrarDashboard = () => {
     }
   };
 
-  const streamOptions = Array.from(
-    new Set(departments.map((department) => String(getDepartmentStream(department) || '').trim()).filter(Boolean))
-  ).sort((a, b) => a.localeCompare(b));
-
-  const matchesSelectedStream = (department) => {
-    if (selectedStream === 'all') return true;
-
-    return String(getDepartmentStream(department) || '').trim().toLowerCase()
-      === String(selectedStream).trim().toLowerCase();
-  };
-
-  const placementCollegeOptions = Array.from(
-    new Set(
-      departments
-        .filter((dept) => matchesSelectedStream(dept))
-        .map((dept) => String(dept.college || '').trim())
-        .filter(Boolean)
-    )
-  ).sort((a, b) => a.localeCompare(b));
+  const streamOptions = getPlacementStreamOptions(departments);
 
   useEffect(() => {
     if (!registrar || tab !== 'run-placement') return undefined;
@@ -1854,16 +2514,33 @@ const RegistrarDashboard = () => {
     let isCurrent = true;
     const params = {
       stream: selectedStream,
-      college: loadAllStudentsInStream ? 'all' : placementCollege,
+      college: 'all',
     };
+    setPlacementCandidatesData([]);
+    setSelectedStudentIds([]);
     setPlacementCandidatesLoading(true);
     setPlacementCandidatesError('');
     console.debug('[Run Placement] Fetching candidate students', params);
 
-    api.get('api/registrar/candidate_students_api.php', { params, withCredentials: true })
+    const candidatesEndpoint = placementMode === 2
+      ? 'api/registrar/get_second_semester_candidates.php'
+      : 'api/registrar/get_placement_candidates.php';
+    api.get(candidatesEndpoint, {
+      params: { ...params, semester: placementMode },
+      withCredentials: true,
+    })
       .then((response) => {
         if (!isCurrent) return;
-        const candidates = Array.isArray(response.data?.students) ? response.data.students : [];
+        if (response.data?.success === false || response.data?.status === 'error') {
+          throw new Error(response.data?.message || 'Unable to load candidate students.');
+        }
+        const candidates = Array.isArray(response.data?.candidates)
+          ? response.data.candidates
+          : Array.isArray(response.data?.students)
+            ? response.data.students
+            : Array.isArray(response.data?.data)
+              ? response.data.data
+              : [];
         console.debug('[Run Placement] Candidate students response', {
           success: response.data?.success,
           filters: response.data?.filters,
@@ -1878,7 +2555,7 @@ const RegistrarDashboard = () => {
             })),
           })),
         });
-        setPlacementCandidatesData(candidates.filter((student) => !hasPlacementResult(student)));
+        setPlacementCandidatesData(candidates.filter(isActivePlacementCandidate));
       })
       .catch((error) => {
         if (!isCurrent) return;
@@ -1897,7 +2574,7 @@ const RegistrarDashboard = () => {
     return () => {
       isCurrent = false;
     };
-  }, [registrar, tab, selectedStream, placementCollege, loadAllStudentsInStream]);
+  }, [registrar, tab, placementMode, selectedStream, studentRecordsRefreshToken]);
 
   useEffect(() => {
     if (!registrar || tab !== 'run-placement') return undefined;
@@ -1926,22 +2603,20 @@ const RegistrarDashboard = () => {
     };
   }, [registrar, tab, studentRecordsRefreshToken]);
 
-  const placementCandidates = placementCandidatesData.filter((student) => {
-    const choices = Array.isArray(student.choices) ? student.choices : [];
-    if (choices.length === 0) return false;
-    const streamMatches = (stream) => String(stream || '').trim().toLowerCase()
-      === String(selectedStream).trim().toLowerCase();
-    if (selectedStream !== 'all' && !streamMatches(student.stream)) {
-      return false;
-    }
-    if (!loadAllStudentsInStream && placementCollege !== 'all' && !choices.some((choice) => (
-      String(choice.college_name || choice.college || '').trim().toLowerCase()
-        === String(placementCollege).trim().toLowerCase()
-    ))) {
-      return false;
-    }
-    return true;
-  });
+  const placementCandidates = filterPlacementCandidates(
+    placementCandidatesData,
+    selectedStream,
+    'all',
+    false,
+    true,
+  );
+  const selectedPlacementCandidateCount = filterStudentIdsForPlacement(
+    placementCandidates,
+    selectedStudentIds,
+  ).length;
+  const isActivePlacementMode = placementMode === activeSemester;
+  const placementRulesChanged = Boolean(placementRulesSnapshot.current)
+    && Object.keys(placementRules).some((key) => placementRules[key] !== placementRulesSnapshot.current[key]);
 
   const savePlacementRules = async (event) => {
     event.preventDefault();
@@ -1955,16 +2630,16 @@ const RegistrarDashboard = () => {
       setRulesError('Grade 12, CGPA, and COC weights must total 100%.');
       return;
     }
-    if (!Number.isFinite(Number(placementRules.maxScoreCap))
-      || Number(placementRules.maxScoreCap) < 0
-      || Number(placementRules.maxScoreCap) > 100) {
-      setRulesError('The maximum score cap must be between 0 and 100%.');
-      return;
-    }
     if (!Number.isFinite(Number(placementRules.g12TotalBase))
       || Number(placementRules.g12TotalBase) <= 0
       || Number(placementRules.g12TotalBase) > 9999.99) {
       setRulesError('Grade 12 total base mark must be greater than 0 and no more than 9,999.99.');
+      return;
+    }
+    if (!Number.isFinite(Number(placementRules.maxScoreCap))
+      || Number(placementRules.maxScoreCap) < 0
+      || Number(placementRules.maxScoreCap) > 100) {
+      setRulesError('Maximum cumulative score must be between 0 and 100.');
       return;
     }
     if (Math.abs(quotaTotal - 100) > 0.00001) {
@@ -1979,12 +2654,16 @@ const RegistrarDashboard = () => {
         gpa_weight: placementRules.gpaWeight,
         grade_12_weight: placementRules.grade12Weight,
         g12_total_base: placementRules.g12TotalBase,
-        coc_weight: placementRules.cocWeight,
+        max_cumulative_score: placementRules.maxScoreCap,
         max_score_cap: placementRules.maxScoreCap,
+        coc_weight: placementRules.cocWeight,
         female_bonus_points: placementRules.femaleBonusPoints,
         disability_bonus_points: placementRules.disabilityBonusPoints,
-        developing_region_female_bonus_points: placementRules.developingRegionFemaleBonusPoints,
-        developing_region_disability_bonus_points: placementRules.developingRegionDisabilityBonusPoints,
+        minority_bonus_points: placementRules.minorityMaleBonusPoints,
+        minority_male_bonus_points: placementRules.minorityMaleBonusPoints,
+        minority_female_bonus_points: placementRules.minorityFemaleBonusPoints,
+        minority_disability_bonus_points: placementRules.minorityDisabilityBonusPoints,
+        female_disability_minority_bonus_points: placementRules.femaleDisabilityMinorityBonusPoints,
         general_quota_percent: placementRules.generalQuotaPercent,
         reserved_female_quota_percent: placementRules.reservedFemaleQuotaPercent,
         min_gpa: placementRules.minGpa,
@@ -2000,12 +2679,14 @@ const RegistrarDashboard = () => {
         gpaWeight: Number(savedSettings.gpa_weight ?? placementRules.gpaWeight),
         grade12Weight: Number(savedSettings.grade_12_weight ?? placementRules.grade12Weight),
         g12TotalBase: Number(savedSettings.g12_total_base ?? placementRules.g12TotalBase),
+        maxScoreCap: Number(savedSettings.max_cumulative_score ?? savedSettings.max_score_cap ?? placementRules.maxScoreCap),
         cocWeight: Number(savedSettings.coc_weight ?? placementRules.cocWeight),
-        maxScoreCap: Number(savedSettings.max_score_cap ?? placementRules.maxScoreCap),
         femaleBonusPoints: Number(savedSettings.female_bonus_points ?? placementRules.femaleBonusPoints),
         disabilityBonusPoints: Number(savedSettings.disability_bonus_points ?? placementRules.disabilityBonusPoints),
-        developingRegionFemaleBonusPoints: Number(savedSettings.developing_region_female_bonus_points ?? placementRules.developingRegionFemaleBonusPoints),
-        developingRegionDisabilityBonusPoints: Number(savedSettings.developing_region_disability_bonus_points ?? placementRules.developingRegionDisabilityBonusPoints),
+        minorityMaleBonusPoints: Number(savedSettings.minority_male_bonus_points ?? savedSettings.minority_bonus_points ?? placementRules.minorityMaleBonusPoints),
+        minorityFemaleBonusPoints: Number(savedSettings.minority_female_bonus_points ?? placementRules.minorityFemaleBonusPoints),
+        minorityDisabilityBonusPoints: Number(savedSettings.minority_disability_bonus_points ?? placementRules.minorityDisabilityBonusPoints),
+        femaleDisabilityMinorityBonusPoints: Number(savedSettings.female_disability_minority_bonus_points ?? placementRules.femaleDisabilityMinorityBonusPoints),
         generalQuotaPercent: Number(savedSettings.general_quota_percent ?? placementRules.generalQuotaPercent),
         reservedFemaleQuotaPercent: Number(savedSettings.reserved_female_quota_percent ?? placementRules.reservedFemaleQuotaPercent),
         minGpa: Number(savedSettings.min_gpa ?? placementRules.minGpa),
@@ -2040,10 +2721,6 @@ const RegistrarDashboard = () => {
     setIsEditingPlacementRules(true);
   };
   useEffect(() => {
-    setPlacementCollege('all');
-  }, [selectedStream]);
-
-  useEffect(() => {
     if (!studentRecords.length) {
       setSelectedStudentIds([]);
       return;
@@ -2064,7 +2741,7 @@ const RegistrarDashboard = () => {
 
   useEffect(() => {
     setChoiceMatrixPage(1);
-  }, [studentRecords.length, choiceMatrixSearch, choiceMatrixSelectedStream]);
+  }, [choiceMatrixRecords.length, choiceMatrixSearch, choiceMatrixSelectedStream]);
 
   useEffect(() => {
     setCapacityPage(1);
@@ -2085,24 +2762,26 @@ const RegistrarDashboard = () => {
   if (!registrar) return <div className="text-center mt-5">Loading...</div>;
 
   return (
-    <div className="admin-dashboard container-fluid px-0">
+    <div className="admin-dashboard container-fluid px-0 min-h-screen d-flex flex-column">
       <OfficialPrintLetterhead
         office="OFFICE OF THE UNIVERSITY REGISTRAR"
         title="OFFICIAL UNIVERSITY REGISTRAR DOCUMENT"
         metadata={`Academic Year: 2016 E.C. / 2026 G.C. | Generated on: ${new Date().toLocaleDateString()}`}
       />
-      <div className="row g-0">
-        <Sidebar role="registrar" activeItem={tab} onSelect={setTab} />
+      <div className="row g-0 flex-grow-1">
+        <Sidebar role="registrar" activeItem={activeSidebarItem} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
-          <DashboardHeader
-            variant="welcome"
-            username={registrar.username}
-            role="Registrar"
-            subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
-            dashboardPath="/registrar-dashboard/overview"
-            onSelectTab={setTab}
-          />
+          {tab !== 'placed-students' && (
+            <DashboardHeader
+              variant="welcome"
+              username={registrar.username}
+              role="Registrar"
+              subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
+              dashboardPath="/registrar-dashboard/overview"
+              onSelectTab={setTab}
+            />
+          )}
 
           {tab === 'overview' ? (
             <>
@@ -2125,7 +2804,7 @@ const RegistrarDashboard = () => {
                   >
                     <div className="card-body">
                       <span className="summary-label">{t('Departments')}</span>
-                      <h3 className="summary-value">{summary.departments}</h3>
+                      <h3 className="summary-value">{summary.totalDepartments}</h3>
                       <small className="text-muted">DTU academic departments</small>
                       <div className="mt-2"><small className="text-primary fw-bold">Click to view details →</small></div>
                     </div>
@@ -2148,8 +2827,8 @@ const RegistrarDashboard = () => {
                     onClick={() => handleCardClick('activeStudents')}
                   >
                     <div className="card-body">
-                      <span className="summary-label">{t('Active Students')}</span>
-                      <h3 className="summary-value">{summary.activeStudents}</h3>
+                      <span className="summary-label">{t('Verified Students')}</span>
+                      <h3 className="summary-value">{summary.verifiedStudents}</h3>
                       <small className="text-muted">Verified for this cycle</small>
                       <div className="mt-2"><small className="text-success fw-bold">Click to view details →</small></div>
                     </div>
@@ -2197,7 +2876,7 @@ const RegistrarDashboard = () => {
                   >
                     <div className="card-body">
                       <span className="summary-label">{t('Unplaced Students')}</span>
-                      <h3 className="summary-value">{summary.unplacedStudents}</h3>
+                      <h3 className="summary-value">{summary.awaitingPlacement}</h3>
                       <small className="text-muted">Awaiting placement run</small>
                       <div className="mt-2"><small className="fw-bold" style={{ color: '#fd7e14' }}>Click to view details →</small></div>
                     </div>
@@ -2452,7 +3131,11 @@ const RegistrarDashboard = () => {
                     >
                       📤 Bulk Upload
                     </button> */}
-                    <button className="btn btn-primary btn-sm register-new-student-btn" onClick={() => setTab('student-registration')}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm register-new-student-btn"
+                      onClick={() => setShowStudentRegistrationModal(true)}
+                    >
                       ➕ Register New Student
                     </button>
                   </div>
@@ -2485,8 +3168,59 @@ const RegistrarDashboard = () => {
                     {studentAttributesSuccess}
                   </div>
                 )}
+                {clearPreferencesFeedback && (
+                  <div className="alert alert-success py-2" role="status">
+                    {clearPreferencesFeedback}
+                  </div>
+                )}
+                {clearPreferencesError && (
+                  <div className="alert alert-danger py-2" role="alert">
+                    {clearPreferencesError}
+                  </div>
+                )}
+                {deleteStudentsFeedback && (
+                  <div className="alert alert-success py-2" role="status">
+                    {deleteStudentsFeedback}
+                  </div>
+                )}
+                {deleteStudentsError && (
+                  <div className="alert alert-danger py-2" role="alert">
+                    {deleteStudentsError}
+                  </div>
+                )}
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                  <span className="text-muted">
+                    {selectedPreferenceAdmissions.length} student{selectedPreferenceAdmissions.length === 1 ? '' : 's'} selected
+                  </span>
+                  <div className="d-flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      onClick={clearSelectedStudentPreferences}
+                      disabled={!selectedPreferenceAdmissions.length || clearingStudentPreferences || deletingStudents}
+                    >
+                      {clearingStudentPreferences
+                        ? 'Clearing Preferences...'
+                        : `Clear Preferences for Selected Students${selectedPreferenceAdmissions.length ? ` (${selectedPreferenceAdmissions.length})` : ''}`}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => deleteStudentRecords(selectedPreferenceAdmissions)}
+                      disabled={!selectedPreferenceAdmissions.length || deletingStudents || clearingStudentPreferences}
+                    >
+                      {deletingStudents
+                        ? 'Deleting Students...'
+                        : `Delete Selected Students${selectedPreferenceAdmissions.length ? ` (${selectedPreferenceAdmissions.length})` : ''}`}
+                    </button>
+                  </div>
+                </div>
                 {studentInfoLoading ? (
                   <div className="text-muted">Loading student records from the database...</div>
+                ) : studentInfoError ? (
+                  <div className="alert alert-danger mb-0" role="alert">
+                    {studentInfoError}
+                  </div>
                 ) : studentRecords.length === 0 ? (
                   <div className="alert alert-info mb-0">
                     No student profile records are available in the database yet.
@@ -2501,6 +3235,16 @@ const RegistrarDashboard = () => {
                       <table className="table table-hover align-middle table-bordered">
                         <thead className="table-light">
                           <tr>
+                            <th scope="col" className="text-center">
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                aria-label="Select all visible students"
+                                checked={allVisibleStudentsSelected}
+                                disabled={!visibleStudentAdmissions.length || clearingStudentPreferences || deletingStudents}
+                                onChange={(event) => toggleVisibleStudentSelection(event.target.checked)}
+                              />
+                            </th>
                             <th>Admission Number</th>
                             <th>First Name</th>
                             <th>Father Name</th>
@@ -2511,17 +3255,24 @@ const RegistrarDashboard = () => {
                             <th>Total Mark (G12)</th>
                             <th>CGPA</th>
                             <th>COC Score</th>
-                            <th>Cumulative Score</th>
                             <th>Disability</th>
                             <th>Minority</th>
+                            <th>Cumulative Score</th>
                             <th>Placement Status</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {paginatedStudents.map((student) => {
-                            const disabilityFlag = parseYesNo(student.disability);
-                            const minorityFlag = parseYesNo(student.minority);
+                          {paginatedStudents.map((student, index) => {
+                            const disabilityFlag = student.score_breakdown?.disability_flag
+                              ?? parseYesNo(student.disability);
+                            const minorityFlag = student.score_breakdown?.minority_flag
+                              ?? (parseYesNo(student.minority)
+                                || /\b(afar|somali|gambella|benishangul[\s-]*gumuz|benishangul|harari|developing|emerging)\b/i.test(String(student.region || '')));
+                            const femaleFlag = student.score_breakdown?.female_flag
+                              ?? String(student.sex || '').trim().toLowerCase() === 'female';
+                            const scoreBreakdown = student.score_breakdown;
+                            const scoreExpanded = expandedStudentScoreId === student.admission_number;
                             const fieldOfStudy = String(
                               student.field_of_study
                                 || student.fieldOfStudy
@@ -2531,7 +3282,26 @@ const RegistrarDashboard = () => {
                             ).trim();
 
                             return (
-                            <tr key={student.admission_number}>
+                            <React.Fragment key={`${student.id ?? student.admission_number ?? student.id_number ?? 'student'}-${index}`}>
+                            <tr>
+                              <td className="text-center">
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  aria-label={`Select ${student.admission_number || student.id_number}`}
+                                  checked={selectedPreferenceAdmissions.includes(String(student.admission_number || student.id_number || '').trim())}
+                                  disabled={!student.admission_number && !student.id_number || clearingStudentPreferences || deletingStudents}
+                                  onChange={(event) => {
+                                    const admissionNumber = String(student.admission_number || student.id_number || '').trim();
+                                    if (!admissionNumber) return;
+                                    setSelectedPreferenceAdmissions((current) => (
+                                      event.target.checked
+                                        ? [...new Set([...current, admissionNumber])]
+                                        : current.filter((item) => item !== admissionNumber)
+                                    ));
+                                  }}
+                                />
+                              </td>
                               <td className="fw-bold text-primary">{student.admission_number || '—'}</td>
                               <td>{student.given_name ?? '—'}</td>
                               <td>{student.father_name ?? '—'}</td>
@@ -2540,9 +3310,17 @@ const RegistrarDashboard = () => {
                               <td>{student.sex || '—'}</td>
                               <td>{fieldOfStudy || '—'}</td>
                               <td className="text-center">{student.total_mark ?? '—'}</td>
-                              <td className="text-center">{student.cgpa ?? '—'}</td>
-                              <td className="text-center">{student.coc_score ?? '—'}</td>
-                              <td className="text-center">{formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score)}</td>
+                              <td className="text-center">
+                                {Number.isFinite(Number(student.cgpa))
+                                  ? Number(student.cgpa).toFixed(2)
+                                  : '0.00'}
+                              </td>
+                              <td className="text-center">
+                                {student.coc_score !== null && student.coc_score !== undefined
+                                  && Number.isFinite(Number(student.coc_score))
+                                  ? Number(student.coc_score)
+                                  : '—'}
+                              </td>
                               <td className="text-center">
                                 <span className={`badge px-3 py-2 ${disabilityFlag ? 'bg-danger text-white' : 'bg-secondary text-white'}`}>
                                   {disabilityFlag ? 'Yes' : 'No'}
@@ -2554,10 +3332,25 @@ const RegistrarDashboard = () => {
                                 </span>
                               </td>
                               <td className="text-center">
+                                <div>{formatCumulativeScore(student.cumulativeScore ?? student.cumulative_score)}</div>
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm p-0"
+                                  aria-expanded={scoreExpanded}
+                                  aria-label={`${scoreExpanded ? 'Hide' : 'Show'} score breakdown for ${student.admission_number}`}
+                                  onClick={() => setExpandedStudentScoreId(
+                                    scoreExpanded ? null : student.admission_number,
+                                  )}
+                                >
+                                  {scoreExpanded ? 'Hide breakdown' : 'Score breakdown'}
+                                </button>
+                              </td>
+                              <td className="text-center">
                                 <span className={`badge px-3 py-2 ${
-                                  student.placement_status === 'Placed' || student.placement_status === 'Approved'
+                                  ['placed', 'placed in semester 1', 'allocated', 'approved']
+                                    .includes(String(student.placement_status || '').trim().toLowerCase())
                                     ? 'bg-success text-white' 
-                                    : student.placement_status === 'Pending'
+                                    : String(student.placement_status || '').trim().toLowerCase() === 'pending'
                                       ? 'bg-warning text-dark' 
                                       : 'bg-secondary text-white'
                                 }`}>
@@ -2569,11 +3362,71 @@ const RegistrarDashboard = () => {
                                   type="button"
                                   className="btn btn-sm btn-outline-secondary"
                                   onClick={() => openStudentAttributeEditor(student)}
+                                  disabled={deletingStudents || clearingStudentPreferences}
                                 >
                                   Update Scores
                                 </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-danger ms-2"
+                                  onClick={() => deleteStudentRecords([
+                                    student.admission_number || student.id_number,
+                                  ])}
+                                  disabled={deletingStudents || clearingStudentPreferences}
+                                >
+                                  Delete
+                                </button>
                               </td>
                             </tr>
+                            {scoreExpanded && (
+                              <tr>
+                                <td colSpan={16} className="bg-body-tertiary px-4 py-3">
+                                  <section
+                                    aria-label={`Cumulative score breakdown for ${student.admission_number}`}
+                                    className="border rounded bg-white p-3"
+                                  >
+                                    <h6 className="fw-bold mb-3">Cumulative Score Breakdown</h6>
+                                    {scoreBreakdown ? (
+                                      <div className="row g-3">
+                                        <div className="col-md-4">
+                                          <div className="fw-semibold">Base Score</div>
+                                          <div>CGPA contribution: {Number(scoreBreakdown.cgpa_contribution).toFixed(2)}</div>
+                                          <div>G12 contribution: {Number(scoreBreakdown.grade12_contribution).toFixed(2)}</div>
+                                          <div>COC contribution: {Number(scoreBreakdown.coc_contribution).toFixed(2)}</div>
+                                          <div className="fw-semibold mt-1">Base total: {Number(scoreBreakdown.base_score).toFixed(2)}</div>
+                                        </div>
+                                        <div className="col-md-5">
+                                          <div className="fw-semibold">Applied Affirmative Action Bonuses</div>
+                                          {scoreBreakdown.applied_scenario ? (
+                                            <>
+                                              <div>Female: {femaleFlag ? 'Yes' : 'No'}</div>
+                                              <div>Minority / developing region{student.region ? ` (${student.region})` : ''}: {minorityFlag ? 'Yes' : 'No'}</div>
+                                              <div>Disability: {disabilityFlag ? 'Yes' : 'No'}</div>
+                                              <div>Applied rule: {placementScenarioLabels[scoreBreakdown.applied_scenario] || scoreBreakdown.applied_scenario}</div>
+                                              <div>Scenario bonus: +{Number(scoreBreakdown.scenario_bonus).toFixed(2)}</div>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <div>Female: {femaleFlag ? 'Yes' : 'No'} ({femaleFlag ? '+' : ''}{Number(scoreBreakdown.female_bonus).toFixed(2)})</div>
+                                              <div>Minority / developing region{student.region ? ` (${student.region})` : ''}: {minorityFlag ? 'Yes' : 'No'} ({minorityFlag ? '+' : ''}{Number(scoreBreakdown.minority_bonus).toFixed(2)})</div>
+                                              <div>Disability: {disabilityFlag ? 'Yes' : 'No'} ({disabilityFlag ? '+' : ''}{Number(scoreBreakdown.disability_bonus).toFixed(2)})</div>
+                                            </>
+                                          )}
+                                          <div className="fw-semibold mt-1">Total bonus: +{Number(scoreBreakdown.affirmative_action_bonus).toFixed(2)}</div>
+                                        </div>
+                                        <div className="col-md-3">
+                                          <div className="fw-semibold">Final Cumulative Score</div>
+                                          <div>{Number(scoreBreakdown.base_score).toFixed(2)} + {Number(scoreBreakdown.affirmative_action_bonus).toFixed(2)} = <strong>{Number(scoreBreakdown.cumulative_score).toFixed(2)}</strong></div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-muted mb-0">Score breakdown is unavailable until CGPA, G12 mark, and COC score are recorded.</p>
+                                    )}
+                                  </section>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                             );
                           })}
                         </tbody>
@@ -2633,7 +3486,7 @@ const RegistrarDashboard = () => {
                   <form className="modal-content" onSubmit={handleSaveStudentAttributes}>
                     <div className="modal-header">
                       <h5 className="modal-title" id="student-attributes-modal-title">
-                        Update CGPA and COC scores
+                        Update Student Info (CGPA, COC &amp; Field of Study)
                       </h5>
                       <button
                         type="button"
@@ -2667,14 +3520,19 @@ const RegistrarDashboard = () => {
                           />
                         </div>
                         <div className="col-md-4">
-                          <label className="form-label" htmlFor="registrar-student-g12">Grade 12 result (Ministry import)</label>
-                          <input
-                            id="registrar-student-g12"
-                            className="form-control"
-                            type="text"
-                            value={String(editingStudent.g12 ?? editingStudent.grade_12_result ?? 'Not available')}
-                            readOnly
-                          />
+                          <label className="form-label" htmlFor="registrar-student-field-of-study">Field of Study</label>
+                          <select
+                            id="registrar-student-field-of-study"
+                            className="form-select"
+                            value={studentEditForm?.field_of_study || ''}
+                            onChange={(event) => setStudentEditForm((current) => ({ ...current, field_of_study: event.target.value }))}
+                            required
+                            disabled={savingStudentAttributes}
+                          >
+                            <option value="">Select field of study</option>
+                            <option value="Natural Science">Natural Science</option>
+                            <option value="Social Science">Social Science</option>
+                          </select>
                         </div>
                         <div className="col-md-4">
                           <label className="form-label" htmlFor="registrar-student-coc">COC score</label>
@@ -2764,64 +3622,22 @@ const RegistrarDashboard = () => {
                   </div>
                 </div>
 
-                <div className="table-responsive">
-                  <table className="table table-bordered table-hover align-middle">
-                    <thead className="table-light">
-                      <tr>
-                        <th>STUDENT ID</th>
-                        <th>STUDENT NAME</th>
-                        <th>STREAM</th>
-                        <th>Status</th>
-                        {Array.from({ length: maxChoicesCount }, (_, index) => (
-                          <th key={index}>CHOICE {index + 1}</th>
-                        ))}
-                        <th>Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {choiceMatrixRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={maxChoicesCount + 5} className="text-center text-muted py-4">
-                            {studentRecords.length === 0
-                              ? 'No student choice data available yet.'
-                              : 'No students match the selected search and stream filters.'}
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedChoiceMatrixRows.map((student) => (
-                          <tr key={`${student.id}-${student.email}`}>
-                            <td>
-                              <span className="badge px-3 py-2 fw-bold" style={{ backgroundColor: '#e2edff', color: '#0d6efd', borderRadius: '8px' }}>
-                                {student.id_number || student.id}
-                              </span>
-                            </td>
-                            <td className="fw-semibold">{student.name}</td>
-                            <td>{student.stream || 'N/A'}</td>
-                            <td>{student.status || '—'}</td>
-                            {student.prioritySlots.map((department, index) => (
-                              <td key={`${student.id}-priority-${index}`}>
-                                {department !== '—' ? (
-                                  <span className="badge bg-primary-subtle text-primary-emphasis">{department}</span>
-                                ) : (
-                                  <span className="text-muted">—</span>
-                                )}
-                              </td>
-                            ))}
-                            <td>
-                              <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setChoiceDetailsStudent(student)}>
-                                Details
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                {choiceMatrixRows.length > PAGE_SIZE && (
+                <ChoiceMatrix
+                  students={paginatedChoiceMatrixRows}
+                  loading={choiceMatrixLoading}
+                  error={choiceMatrixError}
+                  totalStudentCount={choiceMatrixRows.length}
+                  totalRecordCount={choiceMatrixRecords.length}
+                  maxChoicesCount={maxChoicesCount}
+                  allStudents={choiceMatrixRows}
+                  hasInvalidStreamChoice={hasInvalidStreamChoice}
+                  activeSemester={activeSemester}
+                  onChoicesDeleted={() => setStudentRecordsRefreshToken((current) => current + 1)}
+                />
+                {choiceMatrixRows.length > CHOICE_MATRIX_PAGE_SIZE && (
                   <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
                     <div className="text-muted small">
-                      Showing {Math.min((choiceMatrixPage - 1) * PAGE_SIZE + 1, choiceMatrixRows.length)}-{Math.min(choiceMatrixPage * PAGE_SIZE, choiceMatrixRows.length)} of {choiceMatrixRows.length}
+                      Showing {Math.min((choiceMatrixPage - 1) * CHOICE_MATRIX_PAGE_SIZE + 1, choiceMatrixRows.length)} to {Math.min(choiceMatrixPage * CHOICE_MATRIX_PAGE_SIZE, choiceMatrixRows.length)} of {choiceMatrixRows.length} entries
                     </div>
                     <div className="btn-group" role="group" aria-label="Student choice matrix pagination">
                       <button
@@ -2844,63 +3660,6 @@ const RegistrarDashboard = () => {
                         Next
                       </button>
                     </div>
-                  </div>
-                )}
-                {choiceDetailsStudent && (
-                  <div
-                    className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
-                    style={{ zIndex: 1050, background: 'rgba(12, 24, 38, 0.55)' }}
-                    onMouseDown={(event) => {
-                      if (event.target === event.currentTarget) setChoiceDetailsStudent(null);
-                    }}
-                  >
-                    <section
-                      className="bg-white shadow-lg rounded-3 w-100 p-4"
-                      style={{ maxWidth: '760px', maxHeight: '90vh', overflowY: 'auto' }}
-                      role="dialog"
-                      aria-modal="true"
-                      aria-labelledby="choice-details-title"
-                    >
-                      <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
-                        <div>
-                          <h5 id="choice-details-title" className="fw-bold mb-1">Ranked choices</h5>
-                          <div className="text-muted small">
-                            {choiceDetailsStudent.name} · {choiceDetailsStudent.email} · Stream: {choiceDetailsStudent.stream || 'N/A'}
-                          </div>
-                        </div>
-                        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setChoiceDetailsStudent(null)}>
-                          Close
-                        </button>
-                      </div>
-                      {(choiceDetailsStudent.choices || []).length === 0 ? (
-                        <p className="text-muted mb-0">No ranked choices are available for this student.</p>
-                      ) : (
-                        <div className="table-responsive">
-                          <table className="table table-bordered align-middle mb-0">
-                            <thead className="table-light">
-                              <tr>
-                                <th>Priority</th>
-                                <th>Department</th>
-                                <th>College</th>
-                                <th>Stream</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {[...(choiceDetailsStudent.choices || [])]
-                                .sort((leftChoice, rightChoice) => Number(leftChoice.priority || 0) - Number(rightChoice.priority || 0))
-                                .map((choice, index) => (
-                                  <tr key={`${choice.priority || index}-${choice.department}`}>
-                                    <td>{choice.priority || index + 1}</td>
-                                    <td className="fw-semibold">{choice.department || '—'}</td>
-                                    <td>{choice.college || '—'}</td>
-                                    <td>{choice.stream || '—'}</td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </section>
                   </div>
                 )}
               </div>
@@ -2927,18 +3686,34 @@ const RegistrarDashboard = () => {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={approveAllDepartmentCapacities}
-                    disabled={capacitySaving || departments.length === 0}
+                    onClick={approveSelectedDepartmentCapacities}
+                    disabled={capacityLoading || capacitySaving || selectedCapacityDepartmentCount === 0}
                   >
-                    {capacitySaving ? 'Saving capacities...' : 'Save & Approve Capacities'}
+                    {capacitySavingAction === 'approve'
+                      ? 'Approving selected capacities...'
+                      : `Approve Selected (${selectedCapacityDepartmentCount})`}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-warning"
+                    onClick={unlockDepartmentCapacities}
+                    disabled={capacityLoading || capacitySaving || lockedCapacityCount === 0}
+                  >
+                    {capacitySavingAction === 'unlock' ? 'Unlocking...' : 'Allow Head Edit'}
                   </button>
                   <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
                     🖨️ Print Capacity Report
                   </button>
                 </div>
 
+                {pendingCapacityUpdates.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800" role="status">
+                    {pendingCapacityUpdates.length} capacity {pendingCapacityUpdates.length === 1 ? 'change is' : 'changes are'} pending save.
+                  </div>
+                )}
                 {capacityMessage && <div className="alert alert-success py-2" role="status">{capacityMessage}</div>}
                 {capacityError && <div className="alert alert-danger py-2" role="alert">{capacityError}</div>}
+                {capacityLoading && <div className="alert alert-info py-2" role="status">Loading department capacity data...</div>}
 
                 <div className="row g-3 mb-4">
                   <div className="col-md-4">
@@ -2952,15 +3727,8 @@ const RegistrarDashboard = () => {
                       }}
                     >
                       <option value="all">All Streams</option>
-                      {Array.from(
-                        new Set(
-                          departments.map((dept) => getDepartmentStream(dept))
-                        )
-                      )
-                        .sort((a, b) => a.localeCompare(b))
-                        .map((streamOption) => (
-                          <option key={streamOption} value={streamOption}>{streamOption}</option>
-                        ))}
+                      <option value="Natural Science">Natural Science</option>
+                      <option value="Social Science">Social Science</option>
                     </select>
                   </div>
 
@@ -2978,41 +3746,80 @@ const RegistrarDashboard = () => {
                   </div>
                 </div>
 
-                <div className="table-responsive dtu-table-wrap">
-                  <table className="table table-hover align-middle dtu-table">
-                    <thead>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="align-middle min-w-full divide-y divide-slate-200 table-auto">
+                    <thead className="bg-slate-100 text-slate-700">
                       <tr>
-                        <th style={{ width: 60 }}>#</th>
-                        <th style={{ width: 180 }}>Stream</th>
-                        <th style={{ width: 320 }}>College</th>
-                        <th>Department Name</th>
-                        <th style={{ width: 140 }}>Capacity</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 56 }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            style={capacitySelectionCheckboxStyle}
+                            aria-label="Select all department rows on this page"
+                            title="Select all visible departments"
+                            checked={allVisibleCapacityDepartmentsSelected}
+                            onChange={toggleVisibleCapacitySelection}
+                            disabled={capacityLoading || capacitySaving || visibleCapacityDepartmentIds.length === 0}
+                          />
+                        </th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 60 }}>#</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 180 }}>Stream</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 320 }}>College</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 280 }}>Department Name</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 140 }}>Capacity</th>
+                        <th className="px-4 py-3 text-sm font-medium" style={{ width: 220 }}>Approval Status</th>
                       </tr>
                     </thead>
                     <tbody>
+                      {!capacityLoading && paginatedCapacityDepartments.length === 0 && (
+                        <tr>
+                          <td colSpan="7" className="px-4 py-3 text-sm font-medium text-center text-muted">
+                            No departments match the selected stream and search.
+                          </td>
+                        </tr>
+                      )}
                       {paginatedCapacityDepartments.map((d, index) => {
                           const streamName = getDepartmentStream(d);
-                          const collegeText = String(d.college || 'General')
-                            .replace(/^\s*college\s+of\s+/i, '')
-                            .replace(/^\s*College\s+of\s+/i, '')
-                            .replace(/^\s*school\s+of\s+/i, '')
-                            .replace(/^\s*School\s+of\s+/i, '')
-                            .trim() || 'General';
+                          const collegeText = d.standardized_college_name || d.college || 'General';
 
                           return (
                             <tr key={d.id || `${d.name}-${index}`}>
-                              <td>{(capacityPage - 1) * PAGE_SIZE + index + 1}</td>
-                              <td className="fw-semibold text-primary">{streamName}</td>
-                              <td>{collegeText}</td>
-                              <td className="fw-bold dtu-department-name">{d.name}</td>
-                              <td>
+                              <td className="px-4 py-3 text-sm font-medium">
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  style={capacitySelectionCheckboxStyle}
+                                  aria-label={`Select ${d.name} for capacity approval`}
+                                  checked={selectedCapacityDepartmentIds.includes(String(d.id))}
+                                  onChange={() => {
+                                    const departmentId = String(d.id);
+                                    setSelectedCapacityDepartmentIds((current) => (
+                                      current.includes(departmentId)
+                                        ? current.filter((id) => id !== departmentId)
+                                        : [...current, departmentId]
+                                    ));
+                                  }}
+                                  disabled={capacityLoading || capacitySaving}
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium">{(capacityPage - 1) * PAGE_SIZE + index + 1}</td>
+                              <td className="px-4 py-3 text-sm font-medium fw-semibold text-primary">{streamName}</td>
+                              <td className="px-4 py-3 text-sm font-medium whitespace-nowrap min-w-[200px] text-slate-700">{collegeText}</td>
+                              <td
+                                className="px-4 py-3 text-sm whitespace-nowrap min-w-[160px] font-medium text-slate-900 dtu-department-name"
+                                title={d.name}
+                              >
+                                {d.name}
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium">
                                 <div className="d-flex align-items-center gap-2">
                                 <input
                                   type="number"
                                   min="0"
                                   step="1"
                                   required
-                                  className="form-control form-control-sm dtu-form-control"
+                                  className="form-control form-control-sm dtu-form-control px-2 py-1 text-center fw-medium"
+                                  style={{ width: '6rem', minWidth: '6rem' }}
                                   aria-label={`Capacity for ${d.name}`}
                                   value={capacityDrafts[String(d.id)] ?? d.capacity}
                                   ref={editingRowId === String(d.id) ? capacityInputRef : null}
@@ -3039,6 +3846,13 @@ const RegistrarDashboard = () => {
                                 </button>
                                 <span className="d-none d-print-inline">{capacityDrafts[String(d.id)] ?? d.capacity}</span>
                                 </div>
+                              </td>
+                              <td className="px-4 py-3 text-sm font-medium whitespace-nowrap min-w-[180px]">
+                                {d.approval_status === 'reopened'
+                                  ? <span className="badge bg-info text-dark whitespace-nowrap">Unlocked for Editing</span>
+                                  : d.is_locked || d.approval_status === 'approved'
+                                  ? <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-emerald-100 text-emerald-800 border border-emerald-300">Approved &amp; Locked by Registrar</span>
+                                  : <span className="badge bg-warning text-dark whitespace-nowrap">Pending approval</span>}
                               </td>
                             </tr>
                           );
@@ -3074,6 +3888,19 @@ const RegistrarDashboard = () => {
                     </div>
                   </div>
                 )}
+                <div className="mt-4 flex justify-end border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <button
+                    type="button"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-all duration-200 hover:bg-emerald-700 hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                    onClick={saveEditedDepartmentCapacities}
+                    disabled={capacityLoading || capacitySaving || pendingCapacityUpdates.length === 0}
+                  >
+                    {capacitySavingAction === 'save' ? (
+                      <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                    ) : null}
+                    <span className="text-white">Save Capacity Changes</span>
+                  </button>
+                </div>
 
               </div>
             </div>
@@ -3086,6 +3913,9 @@ const RegistrarDashboard = () => {
                   </h4>
                   <p className="text-muted mb-0">
                     Control which colleges and departments are open (Active) for Year 1 placement, or closed (Inactive) for Year 2.
+                  </p>
+                  <p className="small text-primary-emphasis bg-primary-subtle rounded-3 px-3 py-2 mt-3 mb-0" role="note">
+                    Status toggles are drafts until you click “Save Status Changes”. Student preferences use saved Active departments offered in semester one.
                   </p>
                 </div>
 
@@ -3274,119 +4104,159 @@ const RegistrarDashboard = () => {
                 </form>
               </div>
             </div>
+          ) : tab === 'settings' ? (
+            <section className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="mb-6">
+                <h4 className="mb-1 text-2xl font-bold text-indigo-950 dark:text-slate-100">Placement Settings</h4>
+                <p className="mb-0 text-sm text-slate-600 dark:text-slate-300">
+                  Manage registrar controls for student placement and preference access.
+                </p>
+              </div>
+              <SecondSemToggle />
+              <ResetStudentChoices activeSemester={activeSemester} />
+            </section>
           ) : tab === 'placement-rules' ? (
-            <div className="card shadow-sm">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-center gap-3 mb-3 flex-wrap">
-                  <h4 className="card-title mb-0">Placement Rules &amp; Criteria</h4>
-                  <div className="d-flex gap-2">
+            <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900">
+              <div>
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                  <h4 className="mb-0 text-2xl font-bold text-indigo-950 dark:text-slate-100">Placement Rules</h4>
+                  <div className="flex gap-2">
                     {!isEditingPlacementRules && (
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm"
+                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                         aria-label="Edit placement rules"
                         title="Edit placement rules"
                         onClick={startPlacementRulesEdit}
                       >
                         <Pencil size={16} aria-hidden="true" />
-                        <span className="ms-1">Edit</span>
+                        <span className="ml-1">Edit Rules</span>
                       </button>
                     )}
-                    <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => window.print()}>
-                      🖨️ Print Rules
+                    <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => window.print()}>
+                      Print
                     </button>
                   </div>
                 </div>
-                <p className="text-muted">Adjust weights, the MoSHE Grade 12 total base mark, score cap, minimum CGPA, and affirmative-action bonuses. The weights must total 100%; quota allocation remains fixed at 80% open competition and 20% reserved for female students.</p>
                 <form onSubmit={savePlacementRules}>
-                  <div className="row g-3 mb-3">
-                    <div className="col-md-4">
-                      <label className="form-label">Grade 12 Entrance / Remedial Result Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.grade12Weight} onChange={(event) => setPlacementRules((current) => ({ ...current, grade12Weight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
-                      <span className="d-none d-print-inline">{placementRules.grade12Weight}%</span>
+                  <section className="mb-8">
+                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Academic Criteria</h5>
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {[
+                        ['placement-g12-weight', 'Grade 12 Weight (%)', placementRules.grade12Weight, 'grade12Weight'],
+                        ['placement-g12-total-base', 'Grade 12 Total Base Mark', placementRules.g12TotalBase, 'g12TotalBase'],
+                        ['placement-gpa-weight', 'CGPA Weight (%)', placementRules.gpaWeight, 'gpaWeight'],
+                        ['placement-coc-weight', 'COC Weight (%)', placementRules.cocWeight, 'cocWeight'],
+                        ['placement-min-gpa', 'Minimum GPA', placementRules.minGpa, 'minGpa'],
+                        ['placement-max-cumulative-score', 'Maximum Cumulative Score', placementRules.maxScoreCap, 'maxScoreCap'],
+                      ].map(([id, label, value, stateKey]) => (
+                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
+                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+                          <input
+                            id={id}
+                            type="number"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            value={value}
+                            onChange={stateKey ? (event) => setPlacementRules((current) => ({ ...current, [stateKey]: Number(event.target.value) })) : undefined}
+                            min={stateKey === 'g12TotalBase' ? 0.01 : 0}
+                            max={stateKey === 'g12TotalBase' ? 9999.99 : stateKey === 'minGpa' ? 4 : 100}
+                            step="0.01"
+                            readOnly={!isEditingPlacementRules}
+                            required
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label" htmlFor="placement-g12-total-base">Grade 12 Total Base Mark (Out of)</label>
-                      <input id="placement-g12-total-base" type="number" className="form-control" value={placementRules.g12TotalBase} onChange={(event) => setPlacementRules((current) => ({ ...current, g12TotalBase: Number(event.target.value) }))} min={0.01} max={9999.99} step="0.01" readOnly={!isEditingPlacementRules} required />
-                      <span className="form-text">MoSHE Grade 12 marks are normalized against this total. Individual student results remain read-only.</span>
-                      <span className="d-none d-print-inline">{placementRules.g12TotalBase}</span>
+                    <div className={`mt-3 text-sm ${Math.abs(Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight) - 100) <= 0.00001 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} role="status">
+                      Academic weights total: {Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight)}%
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Semester GPA / CGPA Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.gpaWeight} onChange={(event) => setPlacementRules((current) => ({ ...current, gpaWeight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
-                      <span className="d-none d-print-inline">{placementRules.gpaWeight}%</span>
+                  </section>
+
+                  <section className="mb-8">
+                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Affirmative Action Bonus Points</h5>
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {[
+                        ['femaleBonusPoints', 'Female Bonus Points', 5],
+                        ['disabilityBonusPoints', 'Disability Bonus Points', 5],
+                        ['minorityMaleBonusPoints', 'Minority / Developing Region (Male) Bonus Points', 5],
+                        ['minorityFemaleBonusPoints', 'Minority / Developing Region (Female) Bonus Points', 10],
+                        ['minorityDisabilityBonusPoints', 'Minority / Developing Region (Disability) Bonus Points', 10],
+                        ['femaleDisabilityMinorityBonusPoints', 'Female + Disability + Minority Bonus Points', 15],
+                      ].map(([key, label, defaultValue]) => (
+                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={key}>
+                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`placement-${key}`}>{label}</label>
+                          <input
+                            id={`placement-${key}`}
+                            type="number"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            value={placementRules[key]}
+                            placeholder={String(defaultValue)}
+                            onChange={(event) => setPlacementRules((current) => ({ ...current, [key]: Number(event.target.value) }))}
+                            min={0}
+                            max={100}
+                            step="0.01"
+                            readOnly={!isEditingPlacementRules}
+                            required
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Department / COC Entrance Exam Weight (%)</label>
-                      <input type="number" className="form-control" value={placementRules.cocWeight} onChange={(event) => setPlacementRules((current) => ({ ...current, cocWeight: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
-                      <span className="d-none d-print-inline">{placementRules.cocWeight}%</span>
+                  </section>
+
+                  <section className="mb-8">
+                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Quota Allocation</h5>
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                      {[
+                        ['placement-open-quota', 'General / Open Competition (%)', 'generalQuotaPercent'],
+                        ['placement-female-quota', 'Reserved Female Quota (%)', 'reservedFemaleQuotaPercent'],
+                      ].map(([id, label, stateKey]) => (
+                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
+                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+                          <input
+                            id={id}
+                            type="number"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            value={placementRules[stateKey]}
+                            onChange={(event) => setPlacementRules((current) => ({ ...current, [stateKey]: Number(event.target.value) }))}
+                            min={0}
+                            max={100}
+                            step="0.01"
+                            readOnly={!isEditingPlacementRules}
+                            required
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Maximum Score Cap (%)</label>
-                      <input type="number" className="form-control" value={placementRules.maxScoreCap} onChange={(event) => setPlacementRules((current) => ({ ...current, maxScoreCap: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} aria-describedby="placement-score-cap-help" required />
-                      <span id="placement-score-cap-help" className="form-text">The score cap cannot exceed 100%.</span>
+                    <div className={`mt-3 text-sm ${Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent) === 100 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} role="status">
+                      Quota total: {Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent)}%
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Minimum GPA Threshold</label>
-                      <input type="number" className="form-control" value={placementRules.minGpa} onChange={(event) => setPlacementRules((current) => ({ ...current, minGpa: Number(event.target.value) }))} min={0} max={4} step="0.01" readOnly={!isEditingPlacementRules} required />
-                      <span className="d-none d-print-inline">{Number(placementRules.minGpa).toFixed(2)}</span>
-                    </div>
-                    <div className="col-12">
-                      <div className={Math.abs(Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight) - 100) <= 0.00001 ? 'text-success small' : 'text-danger small'} role="status">
-                        Base criteria total: {Number(placementRules.grade12Weight) + Number(placementRules.gpaWeight) + Number(placementRules.cocWeight)}% (must equal 100%)
-                      </div>
-                    </div>
-                  </div>
-                  <h5 className="h6 mt-4">Affirmative Action Bonus Points</h5>
-                  <div className="row g-3 mb-3">
-                    {[
-                      ['femaleBonusPoints', 'Female Bonus Points'],
-                      ['disabilityBonusPoints', 'Disability Bonus Points'],
-                      ['developingRegionFemaleBonusPoints', 'Developing Region / Minority (Female) Bonus Points'],
-                      ['developingRegionDisabilityBonusPoints', 'Developing Region / Minority (Disability) Bonus Points'],
-                    ].map(([key, label]) => (
-                      <div className="col-md-4" key={key}>
-                        <label className="form-label" htmlFor={`placement-${key}`}>{label}</label>
-                        <input id={`placement-${key}`} type="number" className="form-control" value={placementRules[key]} onChange={(event) => setPlacementRules((current) => ({ ...current, [key]: Number(event.target.value) }))} min={0} max={100} step="0.01" readOnly={!isEditingPlacementRules} required />
-                        <span className="d-none d-print-inline">{placementRules[key]} points</span>
-                      </div>
-                    ))}
-                  </div>
-                  <h5 className="h6 mt-4">Quota Allocation</h5>
-                  <div className="row g-3 mb-3">
-                    <div className="col-md-4">
-                      <label className="form-label">General / Open Competition Quota (%)</label>
-                      <output className="form-control d-block">{placementRules.generalQuotaPercent}</output>
-                    </div>
-                    <div className="col-md-4">
-                      <label className="form-label">Reserved Female Quota (%)</label>
-                      <output className="form-control d-block">{placementRules.reservedFemaleQuotaPercent}</output>
-                    </div>
-                    <div className="col-12">
-                      <div className={Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent) === 100 ? 'text-success small' : 'text-danger small'} role="status">
-                        Quota total: {Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent)}% (must equal 100%)
-                      </div>
-                    </div>
-                  </div>
-                  <div className="d-flex gap-2 align-items-center flex-wrap">
+                  </section>
+                  <div className="flex flex-wrap items-center gap-3">
                     {isEditingPlacementRules && (
                       <>
-                        <button className="btn btn-primary" type="submit" disabled={rulesSaving}>
-                          <Save size={16} className="me-1" aria-hidden="true" />
-                          {rulesSaving ? 'Saving...' : 'Save Changes'}
+                        <button
+                          className={`rounded-lg px-6 py-2.5 font-semibold text-white shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${rulesSaving || !placementRulesChanged ? 'cursor-not-allowed bg-indigo-300 opacity-80' : 'cursor-pointer bg-indigo-600 hover:bg-indigo-700'}`}
+                          type="submit"
+                          disabled={rulesSaving || !placementRulesChanged}
+                          aria-busy={rulesSaving}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            {rulesSaving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true" />}
+                            {rulesSaving ? 'Saving placement rules...' : 'Save Placement Rules'}
+                          </span>
                         </button>
-                        <button className="btn btn-outline-secondary" type="button" disabled={rulesSaving} onClick={cancelPlacementRulesEdit}>
+                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={cancelPlacementRulesEdit}>
                           Cancel
                         </button>
-                        <button className="btn btn-outline-secondary" type="button" disabled={rulesSaving} onClick={() => {
-                          const defaults = { gpaWeight: 30, grade12Weight: 20, g12TotalBase: 600, cocWeight: 50, maxScoreCap: 100, femaleBonusPoints: 5, disabilityBonusPoints: 5, developingRegionFemaleBonusPoints: 10, developingRegionDisabilityBonusPoints: 10, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75 };
+                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={() => {
+                          const defaults = { gpaWeight: 50, grade12Weight: 20, g12TotalBase: 600, cocWeight: 30, femaleBonusPoints: 5, disabilityBonusPoints: 5, minorityMaleBonusPoints: 5, minorityFemaleBonusPoints: 10, minorityDisabilityBonusPoints: 10, femaleDisabilityMinorityBonusPoints: 15, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75 };
                           setPlacementRules(defaults);
                           setRulesError('');
                         }}>Reset</button>
                       </>
                     )}
-                    {rulesSaved && <div className="alert alert-success mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="status">Saved</div>}
-                    {rulesError && <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">{rulesError}</div>}
+                    {rulesSaved && <div className="text-sm font-medium text-green-700 dark:text-green-400" role="status">Placement rules saved.</div>}
+                    {rulesError && <div className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300" role="alert">{rulesError}</div>}
                   </div>
                 </form>
               </div>
@@ -3431,155 +4301,176 @@ const RegistrarDashboard = () => {
               </div>
             </div>
           ) : tab === 'run-placement' ? (
-            <div className="card shadow-sm border-0" style={{ background: 'linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%)' }}>
-              <div className="card-body p-4">
-                <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                  <div>
-                    <h4 className="card-title mb-1" style={{ color: '#123153' }}>Run Placement Process</h4>
-                    <p className="text-muted mb-0">Choose the stream, narrow the college, and select the exact students to place.</p>
-                  </div>
-                  <span className="badge rounded-pill px-3 py-2" style={{ background: '#dfeeff', color: '#0d5cb8' }}>
-                    Controlled selection
-                  </span>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                <div
+                  className="mb-6 grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2"
+                  role="group"
+                  aria-label="Placement semester mode"
+                >
+                  <button
+                    type="button"
+                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                      placementMode === 1
+                        ? 'bg-indigo-700 text-white shadow-sm'
+                        : 'bg-transparent text-slate-700 hover:bg-white'
+                    }`}
+                    aria-pressed={placementMode === 1}
+                    disabled={activatingSemester !== null || running || rerunningPlacement}
+                    onClick={() => activatePlacementSemester(1)}
+                  >
+                    {activatingSemester === 1 ? 'Activating Semester 1…' : 'Semester 1 Placement (Stream Allocation)'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                      placementMode === 2
+                        ? 'bg-indigo-700 text-white shadow-sm'
+                        : 'bg-transparent text-slate-700 hover:bg-white'
+                    }`}
+                    aria-pressed={placementMode === 2}
+                    onClick={() => activatePlacementSemester(2)}
+                    disabled={activatingSemester !== null || running || rerunningPlacement}
+                  >
+                    {activatingSemester === 2 ? 'Activating Semester 2…' : 'Semester 2 Placement (Department Allocation)'}
+                  </button>
                 </div>
+                {semesterActivationError && (
+                  <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+                    {semesterActivationError}
+                  </div>
+                )}
+                <div className="mb-5 flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="mb-1 text-xl font-bold text-slate-900">Run Placement</h4>
+                    <p className="mb-0 text-sm text-slate-500">
+                      {placementMode === 2 ? 'Semester 2 department allocation candidates' : 'Semester 1 stream allocation candidates'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex rounded-full px-3 py-1.5 text-xs font-semibold ${
+                      isActivePlacementMode
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                        : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                    }`}>
+                      System active: Semester {activeSemester}
+                    </span>
+                    {(hasUnpublishedPlacementResults || hasPublishedPlacementResults || (runResult && !runResult.error)) && (
+                      <button
+                        type="button"
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60 ${
+                          hasPublishedPlacementResults
+                            ? 'border-rose-300 text-rose-700 hover:bg-rose-50'
+                            : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50'
+                        }`}
+                        onClick={() => {
+                          setPlacementError('');
+                          setShowRerunConfirmation(true);
+                        }}
+                        disabled={running || rerunningPlacement || clearingPlacements}
+                      >
+                        {forceRerunRequired ? 'Force Re-Run Published Results' : 'Re-Run Placement'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60"
+                      onClick={handleClearPlacements}
+                      disabled={running || rerunningPlacement || clearingPlacements}
+                    >
+                      {clearingPlacements ? 'Clearing…' : 'Clear Placements'}
+                    </button>
+                  </div>
+                </div>
+                {!isActivePlacementMode && (
+                  <div className="mb-5 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+                    <Info size={18} className="shrink-0" aria-hidden="true" />
+                    <span>
+                      {semesterActivationError
+                        ? `Semester ${placementMode} is available for preview only because activation failed. Semester ${activeSemester} remains active.`
+                        : `Previewing Semester ${placementMode}. Semester ${activeSemester} is active for placement.`}
+                    </span>
+                  </div>
+                )}
 
-                <div className="card border-0 shadow-sm mb-4" style={{ background: 'rgba(255,255,255,0.88)', borderRadius: '18px' }}>
-                  <div className="card-body p-4">
-                    <div className="row g-3 align-items-end">
-                      <div className="col-md-4">
+                <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="d-flex flex-wrap align-items-end gap-3">
+                      <div className="flex-grow-1" style={{ minWidth: '180px' }}>
                         <label className="form-label fw-semibold" style={{ color: '#123153' }}>Stream</label>
                         <select
-                          className="form-select form-select-lg"
+                          className="form-select"
                           value={selectedStream}
                           onChange={(e) => {
                             setSelectedStream(e.target.value);
-                            setPlacementCollege('all');
-                            setLoadAllStudentsInStream(false);
                             setSelectedStudentIds([]);
                           }}
-                          style={{ borderRadius: '12px' }}
+                          style={{ borderRadius: '10px' }}
                         >
-                          <option value="all">All streams</option>
+                          <option value="">All streams</option>
                           {streamOptions.map((stream) => (
                             <option key={stream} value={stream}>{formatStudentStream(stream)}</option>
                           ))}
                         </select>
                       </div>
 
-                      <div className="col-md-4">
-                        <label className="form-label fw-semibold" style={{ color: '#123153' }}>College</label>
-                        <select
-                          className="form-select form-select-lg"
-                          value={placementCollege}
-                          onChange={(e) => {
-                            setPlacementCollege(e.target.value);
-                            setLoadAllStudentsInStream(false);
-                            setSelectedStudentIds([]);
-                          }}
-                          style={{ borderRadius: '12px' }}
-                          disabled={selectedStream === 'all' && placementCollegeOptions.length === 0}
+                      <div className="d-flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm"
+                          onClick={() => setStudentRecordsRefreshToken((current) => current + 1)}
+                          disabled={placementCandidatesLoading}
                         >
-                          <option value="all">All colleges</option>
-                          {placementCollegeOptions.map((college) => (
-                            <option key={college} value={college}>{college}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="col-md-4 d-flex align-items-end">
-                        <div className="alert alert-info mb-0 w-100">
-                          College-wide placement: students are matched to their saved choices using merit and department capacity.
-                        </div>
+                          Refresh
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm"
+                          onClick={() => setSelectedStudentIds([])}
+                          disabled={selectedStudentIds.length === 0}
+                        >
+                          Clear
+                        </button>
                       </div>
                     </div>
 
-                    <div className="d-flex justify-content-end gap-2 flex-wrap mt-4">
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => setStudentRecordsRefreshToken((current) => current + 1)}
-                        disabled={placementCandidatesLoading}
-                      >
-                        Refresh candidates
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm"
-                        onClick={() => {
-                          const visibleIds = placementCandidates.map((student) => String(student.id));
-                          setSelectedStudentIds((prev) => {
-                            const merged = new Set([...prev, ...visibleIds]);
-                            return Array.from(merged);
-                          });
-                        }}
-                      >
-                        Select visible
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm"
-                        onClick={() => {
-                          const candidateIds = placementCandidatesData
-                            .filter((student) => Array.isArray(student.choices) && student.choices.length > 0)
-                            .map((student) => String(student.id));
-                          setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...candidateIds])));
-                        }}
-                      >
-                        Select all candidates
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => setSelectedStudentIds([])}
-                      >
-                        Clear selection
-                      </button>
-                    </div>
+                    {activeSemester === 1 && placementMode === 1 && (
+                      <div className="form-check mt-3">
+                        <input
+                          id="complete-semester-one-batch"
+                          className="form-check-input"
+                          type="checkbox"
+                          checked={completeSemesterRun}
+                          disabled={selectedStream !== ''
+                            || placementCandidatesData.length === 0
+                            || !placementCandidatesData.every((student) => selectedStudentIds.includes(String(student.id)))}
+                          onChange={(event) => setCompleteSemesterRun(event.target.checked)}
+                        />
+                        <label className="form-check-label" htmlFor="complete-semester-one-batch">
+                          Complete Semester 1 and open Semester 2 preferences
+                        </label>
+                      </div>
+                    )}
 
                     {!latestPlacementRun && (
                     <div className="mt-4">
-                      <div className="d-flex justify-content-between align-items-center mb-2">
-                        <span className="fw-semibold" style={{ color: '#123153' }}>Students who submitted department preferences</span>
-                        <span className="text-muted small">
-                          {selectedStudentIds.length > 0
-                            ? `${selectedStudentIds.length} student${selectedStudentIds.length === 1 ? '' : 's'} selected`
-                            : 'Select one or more students to process'}
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h5 className="mb-0 text-base font-semibold text-slate-800">Candidates</h5>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                          {placementCandidates.length} available
                         </span>
                       </div>
 
-                      <div className="border rounded bg-white" style={{ maxHeight: '280px', overflowY: 'auto', borderRadius: '16px' }}>
+                      <div className="max-h-[360px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
                         {placementCandidatesLoading ? (
-                          <div className="p-3 text-muted" role="status">Loading candidate students…</div>
+                          <div className="p-4 text-sm text-slate-500" role="status">Loading candidates…</div>
                         ) : placementCandidatesError ? (
-                          <div className="p-3 text-danger" role="alert">{placementCandidatesError}</div>
+                          <div className="p-4 text-sm text-rose-700" role="alert">{placementCandidatesError}</div>
                         ) : placementCandidates.length === 0 ? (
-                          <div className="p-3 text-muted">
-                            <div>
-                              {placementCandidatesData.some((student) => !student.choices?.length)
-                                ? 'No students with submitted department preferences match these filters yet.'
-                                : loadAllStudentsInStream
-                                  ? 'No students are available for the selected stream.'
-                                  : 'No students match the current stream and college filters.'}
-                            </div>
-                            <div className="small mt-1">
-                              Students appear here after saving at least one department choice.
-                            </div>
-                            {placementCollege !== 'all' && !loadAllStudentsInStream && (
-                              <button
-                                type="button"
-                                className="btn btn-outline-primary btn-sm mt-2"
-                                onClick={() => {
-                                  setLoadAllStudentsInStream(true);
-                                  setSelectedStudentIds([]);
-                                }}
-                              >
-                                Load All Students in Stream
-                              </button>
-                            )}
+                          <div className="p-6 text-center text-sm text-slate-500">
+                            No candidates found for this placement stage.
                           </div>
                         ) : (
                           <>
-                            <div className="d-flex align-items-center gap-2 p-3 border-bottom bg-light">
+                            <label className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-sm font-medium text-slate-600">
                               <input
                                 type="checkbox"
                                 aria-label="Select all visible candidates"
@@ -3594,28 +4485,30 @@ const RegistrarDashboard = () => {
                                     return previous.filter((id) => !visibleIds.includes(id));
                                   });
                                 }}
-                                style={{ width: 18, height: 18, accentColor: '#0d5cb8' }}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                               />
-                              <span className="small fw-semibold text-muted">Select all visible candidates</span>
-                            </div>
-                            {loadAllStudentsInStream && placementCollege !== 'all' && (
-                              <div className="alert alert-warning m-2 py-2" role="status">
-                                Showing all candidates in this stream; the selected college filter is bypassed for this list.
-                              </div>
-                            )}
+                              Select all visible candidates
+                            </label>
+                            <div className="flex flex-col gap-2 p-2">
                             {placementCandidates.map((student) => {
                             const checked = selectedStudentIds.includes(String(student.id));
+                            const expanded = expandedCandidateIds.includes(String(student.id));
 
                             return (
-                              <label
+                              <div
                                 key={`${student.id}-${student.email || student.name}`}
-                                className="d-flex align-items-center justify-content-between gap-3 p-3 border-bottom"
-                                style={{ cursor: 'pointer', background: checked ? '#f0f8ff' : '#fff' }}
+                                className={`rounded-xl border p-3 transition-colors ${
+                                  checked
+                                    ? 'border-indigo-300 bg-indigo-50/70 shadow-sm'
+                                    : 'border-slate-200 bg-white hover:border-slate-300'
+                                }`}
                               >
-                                <div className="d-flex align-items-center gap-3">
+                                <div className="d-flex align-items-center justify-content-between gap-3">
+                                  <div className="d-flex align-items-center gap-3 min-w-0">
                                   <input
                                     type="checkbox"
                                     checked={checked}
+                                    aria-label={`Select ${student.name || 'student'} (${student.admission_number || student.id_number || 'no admission number'})`}
                                     onChange={() => {
                                       setSelectedStudentIds((prev) => {
                                         const studentId = String(student.id);
@@ -3624,14 +4517,50 @@ const RegistrarDashboard = () => {
                                           : [...prev, studentId];
                                       });
                                     }}
-                                    style={{ width: 18, height: 18, accentColor: '#0d5cb8' }}
+                                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                                   />
-                                  <div>
-                                    <div className="fw-semibold" style={{ color: '#123153' }}>
-                                      {student.name || 'Student'} <span className="text-muted fw-normal">· {student.admission_number || student.id_number || 'No admission number'}</span>
+                                  <div className="min-w-0">
+                                    <div className="truncate font-semibold text-slate-900">
+                                      {student.name || 'Student'}
+                                      <span className="ml-2 font-normal text-slate-500">
+                                        {student.admission_number || student.id_number || 'No admission number'}
+                                      </span>
                                     </div>
-                                    <div className="small text-muted">
-                                      {student.stream || 'Stream unavailable'} · Cumulative score: {formatCumulativeScore(calculateCumulativeScore({
+                                    {placementMode === 2 && (
+                                      <span className="badge rounded-pill bg-primary-subtle text-primary-emphasis mt-1">
+                                        {student.allocated_college || 'College allocation unavailable'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 flex-shrink-0"
+                                    aria-expanded={expanded}
+                                    aria-controls={`candidate-details-${student.id}`}
+                                    onClick={() => setExpandedCandidateIds((current) => (
+                                      current.includes(String(student.id))
+                                        ? current.filter((id) => id !== String(student.id))
+                                        : [...current, String(student.id)]
+                                    ))}
+                                  >
+                                    {expanded ? 'Hide Details' : 'Show Details'}
+                                    {expanded
+                                      ? <ChevronUp size={16} aria-hidden="true" />
+                                      : <ChevronDown size={16} aria-hidden="true" />}
+                                  </button>
+                                </div>
+                                {expanded && (
+                                  <div id={`candidate-details-${student.id}`} className="border-top mt-3 pt-3">
+                                    <div className="flex flex-wrap gap-2">
+                                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                                        {student.stream || 'Stream unavailable'}
+                                      </span>
+                                      <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800">
+                                        CGPA: {student.cgpa ?? '—'}
+                                      </span>
+                                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-800">
+                                        Cumulative score: {formatCumulativeScore(calculateCumulativeScore({
                                         cgpa: student.cgpa,
                                         grade12: student.g12,
                                         coc: student.coc,
@@ -3639,52 +4568,54 @@ const RegistrarDashboard = () => {
                                         hasDisability: student.hasDisability,
                                         minority: student.minority,
                                         region: student.region,
-                                      }, placementRules))}
+                                        }, placementRules))}
+                                      </span>
                                     </div>
-                                    <div className="small mt-1">
-                                      <span className="text-muted">Student’s submitted department choices: </span>
+                                    <div className="d-flex flex-wrap gap-1 mt-3">
                                       {student.choices?.length
                                         ? student.choices
                                           .slice()
-                                          .filter((choice) => Number(choice.priority) >= 1 && Number(choice.priority) <= 3)
+                                          .filter((choice) => Number(choice.priority) >= 1)
                                           .sort((left, right) => Number(left.priority) - Number(right.priority))
                                           .map((choice) => (
-                                            <span
-                                              key={`${student.id}-${choice.priority}-${choice.dept_id || choice.dept_name}`}
-                                              className="badge rounded-pill me-1 mb-1"
-                                              style={{ background: '#edf3ff', color: '#123153' }}
-                                            >
-                                              Choice {choice.priority}: {choice.dept_name || choice.department}
-                                            </span>
+                                            <React.Fragment key={`${student.id}-${choice.priority}-${choice.dept_id || choice.dept_name}`}>
+                                              <span
+                                                className={`badge rounded-pill ${['bg-primary-subtle text-primary-emphasis', 'bg-info-subtle text-info-emphasis', 'bg-success-subtle text-success-emphasis'][((Number(choice.priority) - 1) % 3)]}`}
+                                              >
+                                                Choice {choice.priority}: {choice.dept_name || choice.department}
+                                              </span>
+                                              {hasInvalidStreamChoice(student.stream, choice.stream) && (
+                                                <span
+                                                  className="badge bg-danger-subtle text-danger rounded-pill me-1 mb-1"
+                                                  title="This department is outside the student's assigned stream"
+                                                >
+                                                  Invalid Stream Choice
+                                                </span>
+                                              )}
+                                            </React.Fragment>
                                           ))
                                         : <span className="text-warning">No saved preferences</span>}
                                     </div>
+                                    {placementMode === 2 && student.placement_status && (
+                                      <span className="badge bg-secondary-subtle text-secondary-emphasis mt-1">
+                                        {student.placement_status}
+                                      </span>
+                                    )}
                                   </div>
-                                </div>
-                                <span
-                                  className="badge rounded-pill px-2 py-2"
-                                  style={{
-                                    background: student.account_linked ? '#edf3ff' : '#fff3cd',
-                                    color: '#123153',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                  title={student.account_linked ? 'Linked to a student account' : 'No student account is linked; this record cannot be placed yet'}
-                                >
-                                  {student.account_linked ? student.status : 'Account not linked'}
-                                </span>
-                              </label>
+                                )}
+                              </div>
                             );
                             })}
+                            </div>
                           </>
                         )}
                       </div>
                     </div>
                     )}
                   </div>
-                </div>
 
-                <section className="card border-0 shadow-sm mb-4">
-                  <div className="card-body">
+                <section className="mb-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="p-4 sm:p-5">
                     <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                       <div>
                         <h5 className="fw-bold mb-1">Pre-Placement Cumulative Score Preview</h5>
@@ -3692,14 +4623,36 @@ const RegistrarDashboard = () => {
                           Scores use available student profile, MoSHE, and SIMS data before placement.
                         </p>
                       </div>
-                      <span className="badge bg-light text-dark">20% Grade 12 · 30% CGPA · 50% COC</span>
                     </div>
                     {placementPreviewLoading ? (
                       <div className="text-muted" role="status">Loading joined student scores…</div>
                     ) : placementPreviewError ? (
                       <div className="text-danger" role="alert">{placementPreviewError}</div>
                     ) : placementPreviewData.length === 0 ? (
-                      <div className="text-muted">No student records are available for score preview.</div>
+                      <div
+                        className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-5 text-center"
+                        role="status"
+                      >
+                        <svg
+                          aria-hidden="true"
+                          width="36"
+                          height="36"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="mb-2 text-slate-400"
+                        >
+                          <path d="M3 3v18h18" />
+                          <path d="M18 17V9" />
+                          <path d="M13 17V5" />
+                          <path d="M8 17v-3" />
+                        </svg>
+                        <span className="font-semibold text-slate-700">No candidate scores to preview</span>
+                        <span className="mt-1 text-sm text-slate-500">Scores appear when candidate data is available.</span>
+                      </div>
                     ) : (
                       <div className="table-responsive">
                         <table className="table table-sm table-hover align-middle mb-0">
@@ -3724,7 +4677,7 @@ const RegistrarDashboard = () => {
                                 <td>{student.cgpa ?? '—'}</td>
                                 <td>{student.cocScore ?? '—'}</td>
                                 <td>
-                                  +{Number(student.femaleBonus || 0) + Number(student.disabilityBonus || 0) + Number(student.developingRegionBonus || 0)}
+                                  +{Number(student.scenarioBonus || 0) + Number(student.femaleBonus || 0) + Number(student.disabilityBonus || 0) + Number(student.minorityBonus || 0)}
                                 </td>
                                 <td className="fw-bold">{student.cumulativeScore === null ? '—' : `${student.cumulativeScore}%`}</td>
                                 <td>
@@ -3741,23 +4694,39 @@ const RegistrarDashboard = () => {
                   </div>
                 </section>
 
-                <div className="d-flex gap-2 flex-wrap">
-                  <button
-                    className="btn btn-primary"
+                {selectedPlacementCandidateCount > 0 && (
+                <div className="sticky bottom-0 z-20 -mx-4 mt-5 flex flex-col gap-3 border-t border-slate-200 bg-white/95 px-4 py-4 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                  <p className="mb-0 text-sm font-medium text-slate-600" aria-live="polite">
+                    {selectedPlacementCandidateCount} candidate{selectedPlacementCandidateCount === 1 ? '' : 's'} selected
+                  </p>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                    type="button"
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                     onClick={async () => {
+                      if (!isActivePlacementMode) {
+                        setPlacementError(`Semester ${activeSemester} is currently active. The selected semester is available for preview only.`);
+                        return;
+                      }
                       const studentsToPlace = filterStudentIdsForPlacement(placementCandidates, selectedStudentIds);
+
+                      const fullRosterIds = placementCandidatesData
+                        .map((student) => String(student.id));
+                      const fullScopeSelected = activeSemester === 1
+                        && selectedStream === ''
+                        && fullRosterIds.length > 0
+                        && fullRosterIds.every((id) => selectedStudentIds.includes(id));
+                      if (completeSemesterRun && !fullScopeSelected) {
+                        setRunResult({ assigned: 0, unassigned: 0, error: 'Select every candidate across all streams and colleges before completing the first-semester batch.' });
+                        setPlacementError('A partial selection cannot advance the active semester.');
+                        return;
+                      }
 
                       if (!studentsToPlace.length) {
                         setRunResult({ assigned: 0, unassigned: 0, error: 'Please select at least one student before running placement.' });
                         setPlacementError('No student selected.');
                         return;
                       }
-                      const unlinkedStudents = studentsToPlace.filter((student) => !student.account_linked);
-                      if (unlinkedStudents.length > 0) {
-                        setPlacementError('Some selected records are not linked to student accounts. Link the accounts before running placement.');
-                        return;
-                      }
-
                       setRunning(true);
                       setRunResult(null);
                       setPlacementError('');
@@ -3832,16 +4801,25 @@ const RegistrarDashboard = () => {
                         }
 
                         const finalizedDepartments = await fetchDepartments();
+                        const selectedCollege = 'all';
                         const payload = {
+                          stream: selectedStream,
+                          college: selectedCollege,
+                          student_ids: studentsToPlace.map((student) => String(student.id)),
                           students,
                           departments: finalizedDepartments,
                           rules: placementRules,
                           selectedDepartment: 'all',
-                          selectedCollege: placementCollege,
+                          selectedCollege,
+                          selectedStream,
                           placementScope: 'college-wide',
+                          completeSemesterRun,
                           selectedStudentIds: studentsToPlace.map((student) => String(student.id)),
                         };
-                                const response = await api.post('api/registrar/placement_engine.php', payload, { withCredentials: true });
+                        const placementEndpoint = activeSemester === 2
+                          ? 'api/registrar/run_second_semester_placement.php'
+                          : 'api/registrar/placement_engine.php';
+                        const response = await api.post(placementEndpoint, payload, { withCredentials: true });
                         const result = response.data;
 
                         if (!result?.success) {
@@ -3849,7 +4827,9 @@ const RegistrarDashboard = () => {
                           if (message.includes('already has a placement') || message.includes('already placed')) {
                             const alreadyPlaced = students.length;
                             setRunResult({ assigned: 0, unassigned: 0, alreadyPlaced, total: students.length });
-                            setSelectedStudentIds((prev) => prev.filter((id) => !students.some((student) => String(student.id) === String(id))));
+                            setSelectedStudentIds((prev) => prev.filter((id) => !students.some((student) => (
+                              String(student.id ?? student.admission_number ?? student.id_number) === String(id)
+                            ))));
                             setPlacementError('The selected student already has a placement result and was removed from this run.');
                             return;
                           }
@@ -3860,17 +4840,38 @@ const RegistrarDashboard = () => {
                         const assigned = Number(summary.assignedStudents || 0);
                         const unassigned = Number(summary.unassignedStudents || 0);
                         const alreadyPlaced = Number(summary.alreadyPlacedStudents || result.already_placed || 0);
-                        const outcome = { assigned, unassigned, alreadyPlaced, total: students.length };
+                        const nextSemester = Number(summary.nextSemester || summary.semester || activeSemester);
+                        const stageAdvanced = nextSemester !== activeSemester;
+                        const currentBatch = getPlacementBatchForSemester(
+                          stageAdvanced ? placementBatch : placementBatch || getPlacementBatchForSemester('', nextSemester),
+                          nextSemester,
+                        );
+                        setActiveSemester(nextSemester);
+                        if (stageAdvanced) {
+                          setPlacementMode(nextSemester);
+                          setPlacementBatch(currentBatch);
+                          localStorage.setItem('dtuPlacementBatch', currentBatch);
+                          setCompleteSemesterRun(false);
+                          setSelectedStudentIds([]);
+                          setStudentRecordsRefreshToken((token) => token + 1);
+                        }
+                        const deferred = Number(summary.deferredStudents || 0);
+                        const outcome = { assigned, unassigned, deferred, alreadyPlaced, total: students.length };
 
                         setRunResult(outcome);
                         setUnassignedStudentsRefreshToken((token) => token + 1);
-                        setPlacementBatch((prev) => prev || 'DTU-2026/1');
-                        localStorage.setItem('dtuPlacementBatch', placementBatch || 'DTU-2026/1');
-                        setPendingResults((prev) => [{ id: Date.now(), summary: outcome, placements: result.placements || [], createdAt: new Date().toISOString() }, ...prev]);
+                        setPlacementBatch(currentBatch);
+                        setPlacementBatch((prev) => prev || currentBatch);
+                        localStorage.setItem('dtuPlacementBatch', currentBatch);
+                        setPendingResults((prev) => stageAdvanced
+                          ? []
+                          : [{ id: Date.now(), summary: outcome, placements: result.placements || [], createdAt: new Date().toISOString() }, ...prev]);
+                        setHasUnpublishedPlacementResults(!stageAdvanced);
+                        if (stageAdvanced) setHasPublishedPlacementResults(false);
                         if (Array.isArray(result.placements)) {
                           localStorage.setItem('studentPlacementSummary', JSON.stringify({
                             studentId: registrar?.id || 'registrar-run',
-                            batch: placementBatch || 'DTU-2026/1',
+                            batch: currentBatch,
                             date: new Date().toISOString(),
                             placementRuns: result.placements,
                             status: 'run-complete',
@@ -3878,12 +4879,17 @@ const RegistrarDashboard = () => {
                         }
                       } catch (error) {
                         console.error(error);
-                        const backendMessage = error?.response?.data?.message;
+                        const backendMessage = error?.response?.data?.message
+                          || error?.response?.data?.error
+                          || error?.message
+                          || 'Unable to run placement engine.';
                         const normalizedBackendMessage = String(backendMessage || '').toLowerCase();
                         if (normalizedBackendMessage.includes('already has a placement') || normalizedBackendMessage.includes('already placed')) {
                           const alreadyPlaced = studentsToPlace.length;
                           setRunResult({ assigned: 0, unassigned: 0, alreadyPlaced, total: studentsToPlace.length });
-                          setSelectedStudentIds((prev) => prev.filter((id) => !studentsToPlace.some((student) => String(student.id) === String(id))));
+                          setSelectedStudentIds((prev) => prev.filter((id) => !studentsToPlace.some((student) => (
+                            String(student.id ?? student.admission_number ?? student.id_number) === String(id)
+                          ))));
                           setPlacementError('The selected student already has a placement result and was removed from this run.');
                           return;
                         }
@@ -3896,25 +4902,98 @@ const RegistrarDashboard = () => {
                         setRunning(false);
                       }
                     }}
-                    disabled={running || studentRecords.length === 0}
-                  >
-                    {running
-                      ? 'Running...'
-                      : selectedStudentIds.length === 1
-                        ? 'Run Selected Student'
-                        : 'Run Placement'}
-                  </button>
-                  <button className="btn btn-outline-secondary" onClick={() => { setPendingResults([]); setRunResult(null); setPlacementError(''); }}>Clear</button>
+                    disabled={running || placementCandidatesLoading
+                      || selectedPlacementCandidateCount === 0
+                      || !isActivePlacementMode}
+                    >
+                      {running
+                        ? 'Running...'
+                        : `Run Placement for ${selectedPlacementCandidateCount} Selected Candidate${selectedPlacementCandidateCount === 1 ? '' : 's'}`}
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 sm:w-auto"
+                      onClick={() => { setPendingResults([]); setRunResult(null); setPlacementError(''); }}
+                    >
+                      Clear results
+                    </button>
+                  </div>
                 </div>
+                )}
+                {showRerunConfirmation && (
+                  <div
+                    className="modal d-block"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="rerun-placement-title"
+                    style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}
+                  >
+                    <div className="modal-dialog modal-dialog-centered">
+                      <div className="modal-content">
+                        <div className="modal-header">
+                          <h5 className="modal-title" id="rerun-placement-title">Re-Run Placement</h5>
+                          <button
+                            type="button"
+                            className="btn-close"
+                            aria-label="Close"
+                            onClick={() => setShowRerunConfirmation(false)}
+                            disabled={rerunningPlacement}
+                          />
+                        </div>
+                        <div className="modal-body">
+                          <p className="mb-0">
+                            {forceRerunRequired
+                              ? 'This will unpublish and replace the current published placement results for the active semester. Continue only if the published results must be corrected.'
+                              : 'Are you sure you want to re-run the placement? Current unpublished results will be recalculated.'}
+                          </p>
+                          <p className="text-muted small mt-2 mb-0">
+                            Student profiles, scores, submitted choices, and configured department capacities will be preserved.
+                          </p>
+                          {forceRerunRequired && (
+                            <div className="alert alert-danger mt-3 mb-0" role="alert">
+                              This action revokes publication for the active semester and replaces its placement results. Student profiles, scores, submitted choices, and configured capacities are preserved.
+                            </div>
+                          )}
+                          {placementError && <div className="alert alert-danger mt-3 mb-0" role="alert">{placementError}</div>}
+                        </div>
+                        <div className="modal-footer">
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary"
+                            onClick={() => setShowRerunConfirmation(false)}
+                            disabled={rerunningPlacement}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn ${forceRerunRequired ? 'btn-danger' : 'btn-primary'}`}
+                            onClick={() => rerunPlacement(forceRerunRequired)}
+                            disabled={rerunningPlacement}
+                          >
+                            {rerunningPlacement
+                              ? 'Re-Running...'
+                              : forceRerunRequired
+                                ? 'Confirm Force Re-Run'
+                                : 'Confirm Re-Run'}
+                          </button>
+                      </div>
+                    </div>
+                  </div>
+                  </div>
+                )}
                 {runResult && (
                   <div className="mt-3">
                     {placementError && <div className="alert alert-warning py-2">{placementError}</div>}
                     <div>Assigned: <strong>{runResult.assigned}</strong></div>
+                    {runResult.deferred > 0 && (
+                      <div>Pending 2nd Semester: <strong>{runResult.deferred}</strong></div>
+                    )}
                     <div>Unassigned: <strong>{runResult.unassigned}</strong></div>
                     {runResult.alreadyPlaced > 0 && (
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
                     )}
-                    {runResult.error && <div className="text-danger">{runResult.error}</div>}
+                    {runResult.error && <div className="alert alert-danger py-2" role="alert">{runResult.error}</div>}
                     {!runResult.error && (
                       <button
                         type="button"
@@ -3944,6 +5023,12 @@ const RegistrarDashboard = () => {
                             <button type="button" className="btn btn-outline-danger" onClick={() => exportPlacementResults(latestPlacementRun.placements, 'pdf', 'assigned')}>
                               Assigned PDF
                             </button>
+                            <button type="button" className="btn btn-outline-primary" onClick={() => exportPlacementResults(latestPlacementRun.placements, 'csv', 'deferred')}>
+                              Pending 2nd Semester CSV
+                            </button>
+                            <button type="button" className="btn btn-outline-primary" onClick={() => exportPlacementResults(latestPlacementRun.placements, 'pdf', 'deferred')}>
+                              Pending 2nd Semester PDF
+                            </button>
                             <button type="button" className="btn btn-outline-success" onClick={() => exportPlacementResults(latestPlacementRun.placements, 'csv', 'unassigned')}>
                               Unassigned CSV
                             </button>
@@ -3971,21 +5056,23 @@ const RegistrarDashboard = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {latestPlacementRun.placements.map((placement) => {
+                              {latestPlacementRun.placements.map((placement, index) => {
                                 const assigned = placement.status === 'placed';
+                                const deferred = placement.status === 'deferred'
+                                  || String(placement.status || '').trim().toLowerCase() === 'pending 2nd semester';
 
                                 return (
-                                  <tr key={`${placement.studentId}-${placement.department || 'unassigned'}`}>
-                                    <td className="fw-semibold text-primary">{placement.id_number || placement.studentId}</td>
+                                  <tr key={`${placement.studentId || placement.id_number || placement.admission_number || 'student'}-${placement.department || 'unassigned'}-${index}`}>
+                                    <td className="fw-semibold text-primary text-nowrap">{placement.id_number || placement.studentId}</td>
                                     <td>{placement.studentName || '—'}</td>
-                                    <td>{placement.score !== null && placement.score !== undefined ? Number(placement.score).toFixed(2) : '—'}</td>
+                                    <td className="text-nowrap">{placement.score !== null && placement.score !== undefined ? Number(placement.score).toFixed(2) : '—'}</td>
                                     <td>{placement.department || '—'}</td>
                                     <td>{placement.college || '—'}</td>
                                     <td>{placement.stream || '—'}</td>
-                                    <td className="text-center">{placement.choiceRank || '—'}</td>
+                                    <td className="text-center text-nowrap">{placement.choiceRank || '—'}</td>
                                     <td>
-                                      <span className={`badge ${assigned ? 'bg-success' : 'bg-secondary'}`}>
-                                        {assigned ? 'Assigned' : 'Unassigned'}
+                                      <span className={`badge text-nowrap ${assigned ? 'bg-success' : deferred ? 'bg-info text-dark' : 'bg-secondary'}`}>
+                                        {assigned ? 'Assigned' : deferred ? 'Pending 2nd Semester' : 'Unassigned'}
                                       </span>
                                     </td>
                                   </tr>
@@ -3998,8 +5085,7 @@ const RegistrarDashboard = () => {
                     )}
                   </div>
                 )}
-              </div>
-            </div>
+            </section>
           ) : tab === 'approve-results' ? (
             <div className="card shadow-sm">
               <div className="card-body">
@@ -4027,6 +5113,10 @@ const RegistrarDashboard = () => {
 
                         setPendingApprovalRows([]);
                         setPublishSuccess('✓ Placement results published successfully.');
+                        if (Number(payload.updated || 0) > 0) {
+                          setHasPublishedPlacementResults(true);
+                          setHasUnpublishedPlacementResults(false);
+                        }
                       } catch (error) {
                         setPlacementError(error?.response?.data?.message || error?.message || 'Unable to publish placement results.');
                       } finally {
@@ -4082,6 +5172,8 @@ const RegistrarDashboard = () => {
                 )}
               </div>
             </div>
+          ) : tab === 'placed-students' ? (
+            <PlacedStudents refreshToken={studentRecordsRefreshToken} />
           ) : tab === 'unassigned-students' ? (
             <UnassignedStudents refreshToken={unassignedStudentsRefreshToken} />
           ) : tab === 'announcements' ? (
@@ -4119,15 +5211,15 @@ const RegistrarDashboard = () => {
                           <label className="form-label" htmlFor="registrar-announcement-category">Category</label>
                           <select
                             id="registrar-announcement-category"
-                            className="form-select"
+                            className="h-10 border border-slate-200 rounded-lg px-3 text-sm"
                             value={announcementDraft.category}
                             onChange={(event) => setAnnouncementDraft({ ...announcementDraft, category: event.target.value })}
                           >
-                            <option>Notice</option>
-                            <option>Deadline</option>
-                            <option>Placement</option>
-                            <option>Event</option>
-                            <option>General</option>
+                            <option value="Notice">Notice (መደበኛ ማስታወቂያ)</option>
+                            <option value="Deadline">Deadline (የመጨረሻ ቀን)</option>
+                            <option value="Placement">Placement (የምደባ ማስታወቂያ)</option>
+                            <option value="Event">Event (መርሐ-ግብር)</option>
+                            <option value="General">General (አጠቃላይ)</option>
                           </select>
                         </div>
                         <div className="col-sm-6">
@@ -4365,20 +5457,14 @@ const RegistrarDashboard = () => {
                 </div>
               </div>
           ) : (
-            <div className="card shadow-sm">
-              <div className="card-body">
-                <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
-                  <div>
-                    <h4 className="card-title mb-1">Registrar Reports</h4>
-                    <p className="text-muted mb-0">Generate and review reports that highlight placement trends, department utilization, and student assignment history.</p>
-                  </div>
+            <div className="card rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="card-body p-4 p-md-5">
+                <div className="mb-4">
+                  <h1 className="mb-0 text-2xl font-bold text-slate-800">Registrar Reports</h1>
                 </div>
                 <section className="mb-4" aria-labelledby="admin-messages-heading">
                   <div className="d-flex justify-content-between align-items-center gap-3 mb-3">
-                    <div>
-                      <h5 id="admin-messages-heading" className="mb-1">Messages from Admin</h5>
-                      <p className="text-muted small mb-0">Messages sent by the Administrator appear here.</p>
-                    </div>
+                    <h2 id="admin-messages-heading" className="mb-0 text-lg font-semibold text-slate-800">Messages from Admin</h2>
                     <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setAdminReportsRefresh((value) => value + 1)}>Refresh</button>
                   </div>
                   {adminReportsLoading && <div className="alert alert-info py-2">Loading Admin messages...</div>}
@@ -4387,7 +5473,7 @@ const RegistrarDashboard = () => {
                     <div className="alert alert-light border py-2">No messages from Admin yet.</div>
                   )}
                   {!adminReportsLoading && !adminReportsError && adminReports.length > 0 && (
-                    <div className="list-group">
+                    <div className="space-y-3">
                       {adminReports.map((report) => {
                         const reportKey = `admin-${report.id}`;
                         const isExpanded = expandedReportId === reportKey;
@@ -4396,27 +5482,30 @@ const RegistrarDashboard = () => {
                         return (
                           <article
                             key={report.id}
-                            className={`list-group-item p-0 ${!Number(report.is_read) ? 'border-start border-4 border-primary' : ''}`}
+                            className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${!Number(report.is_read) ? 'border-l-4 border-l-indigo-500' : ''}`}
                           >
-                            <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
-                              <div className="flex-grow-1 overflow-hidden">
-                                <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                  <strong className="text-truncate">{report.title || 'Message from Admin'}</strong>
-                                  <span className="badge bg-primary text-white">
+                            <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                              <div className="min-w-0 flex-grow-1">
+                                <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
+                                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">From Admin</span>
+                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                                     {report.file_path ? 'Report' : 'Message'}
                                   </span>
-                                  {!Number(report.is_read) && <span className="badge bg-info text-dark">Unread</span>}
+                                  {!Number(report.is_read) && <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">Unread</span>}
                                 </div>
-                                <div className="small text-muted mb-1">
-                                  Created {report.created_at || 'date unavailable'} · Generated by Admin
+                                <div className="mb-2 text-sm font-semibold text-slate-800">{report.title || 'Message from Admin'}</div>
+                                <div className="mb-3 text-xs text-slate-500">
+                                  Created {report.created_at || 'date unavailable'} · By Admin
                                 </div>
-                                <div className="small text-muted text-truncate" title={summary}>
-                                  {summary || 'No description provided.'}
-                                </div>
+                                {!isExpanded && (
+                                  <p className="mb-0 line-clamp-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700" title={summary}>
+                                    {summary || 'No description provided.'}
+                                  </p>
+                                )}
                               </div>
                               <button
                                 type="button"
-                                className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 flex-shrink-0"
+                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
                                 aria-expanded={isExpanded}
                                 aria-controls={`admin-report-details-${report.id}`}
                                 onClick={() => {
@@ -4434,19 +5523,19 @@ const RegistrarDashboard = () => {
                             {isExpanded && (
                               <section
                                 id={`admin-report-details-${report.id}`}
-                                className="border-top p-3"
+                              className="mt-4 border-t border-slate-100 pt-4"
                                 aria-label={`Details for ${report.title || 'Admin message'}`}
                               >
-                                <h6 className="fw-semibold mb-2">Full details</h6>
-                                <p className="mb-3 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+                              <h3 className="mb-2 text-sm font-semibold text-slate-800">Full details</h3>
+                              <p className="mb-3 whitespace-pre-wrap break-words rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
                                   {report.message || 'No description provided.'}
                                 </p>
-                                <div className="small text-muted d-flex flex-wrap gap-2 mb-3">
-                                  <span>Direction: Received</span>
-                                  <span>Generated by: Admin</span>
-                                  <span>Created: {report.created_at || 'Date unavailable'}</span>
-                                  <span>Status: {Number(report.is_read) ? 'Read' : 'Unread'}</span>
-                                  <span>Notification ID: {report.id}</span>
+                              <div className="mb-3 d-flex flex-wrap gap-2 text-xs text-slate-500">
+                                <span className="rounded-md bg-slate-50 px-2 py-1">Direction: Received</span>
+                                <span className="rounded-md bg-slate-50 px-2 py-1">From: Admin</span>
+                                <span className="rounded-md bg-slate-50 px-2 py-1">Created: {report.created_at || 'Date unavailable'}</span>
+                                <span className="rounded-md bg-slate-50 px-2 py-1">Status: {Number(report.is_read) ? 'Read' : 'Unread'}</span>
+                                <span className="rounded-md bg-slate-50 px-2 py-1">Notification ID: {report.id}</span>
                                 </div>
                                 <div className="d-flex align-items-center gap-2 flex-wrap">
                                   {report.file_path && (
@@ -4458,12 +5547,26 @@ const RegistrarDashboard = () => {
                                         if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                                       }}
                                     >
-                                      Open attachment
+                                    Download attachment
                                     </button>
                                   )}
                                   <button
                                     type="button"
-                                    className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-2"
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={() => {
+                                    setReportRecipient('admin');
+                                    setSelectedRecipientId('all');
+                                    setSelectedDeptId('all');
+                                    setReportMessage(`Re: ${report.title || 'Message from Admin'}\n\n`);
+                                    reportMessageInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    reportMessageInputRef.current?.focus();
+                                  }}
+                                >
+                                  Reply
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-2"
                                     title="Delete message from Admin"
                                     onClick={() => deleteAdminReport(report)}
                                     disabled={deletingAdminReportId === report.id}
@@ -4482,10 +5585,7 @@ const RegistrarDashboard = () => {
                 </section>
                 <section className="mb-4 pt-4 border-top" aria-labelledby="sent-reports-heading">
                   <div className="d-flex justify-content-between align-items-center gap-3 mb-3">
-                    <div>
-                      <h5 id="sent-reports-heading" className="mb-1">Sent Report History</h5>
-                      <p className="text-muted small mb-0">Reports and files sent by this Registrar.</p>
-                    </div>
+                    <h2 id="sent-reports-heading" className="mb-0 text-lg font-semibold text-slate-800">Sent Report History</h2>
                   </div>
                   {sentReportsLoading && <div className="alert alert-info py-2">Loading sent history...</div>}
                   {!sentReportsLoading && sentReportsError && <div className="alert alert-danger py-2">{sentReportsError}</div>}
@@ -4493,33 +5593,36 @@ const RegistrarDashboard = () => {
                     <div className="alert alert-light border py-2">No sent reports yet.</div>
                   )}
                   {!sentReportsLoading && !sentReportsError && sentReports.length > 0 && (
-                    <div className="list-group">
+                    <div className="space-y-3">
                       {sentReports.map((report) => {
                         const reportKey = `sent-${report.id}`;
                         const isExpanded = expandedReportId === reportKey;
                         const summary = String(report.message || '').replace(/\s+/g, ' ').trim();
 
                         return (
-                          <article key={report.id} className="list-group-item p-0">
-                            <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
-                              <div className="flex-grow-1 overflow-hidden">
-                                <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                  <strong className="text-truncate">{report.title || 'Registrar Report'}</strong>
-                                  <span className="badge bg-primary text-white">
+                          <article key={report.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                              <div className="min-w-0 flex-grow-1">
+                                <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
+                                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">From Registrar</span>
+                                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                                     {report.file_path ? 'Report' : 'Message'}
                                   </span>
-                                  <span className="badge bg-secondary">Sent to {report.recipient_role || 'recipient'}</span>
+                                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">To {report.recipient_role || 'recipient'}</span>
                                 </div>
-                                <div className="small text-muted mb-1">
-                                  Created {report.created_at || 'date unavailable'} · Generated by Registrar
+                                <div className="mb-2 text-sm font-semibold text-slate-800">{report.title || 'Registrar Report'}</div>
+                                <div className="mb-3 text-xs text-slate-500">
+                                  Created {report.created_at || 'date unavailable'} · By Registrar
                                 </div>
-                                <div className="small text-muted text-truncate" title={summary}>
-                                  {summary || 'No description provided.'}
-                                </div>
+                                {!isExpanded && (
+                                  <p className="mb-0 line-clamp-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700" title={summary}>
+                                    {summary || 'No description provided.'}
+                                  </p>
+                                )}
                               </div>
                               <button
                                 type="button"
-                                className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 flex-shrink-0"
+                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
                                 aria-expanded={isExpanded}
                                 aria-controls={`sent-report-details-${report.id}`}
                                 onClick={() => setExpandedReportId(isExpanded ? null : reportKey)}
@@ -4534,19 +5637,19 @@ const RegistrarDashboard = () => {
                             {isExpanded && (
                               <section
                                 id={`sent-report-details-${report.id}`}
-                                className="border-top p-3"
+                                className="mt-4 border-t border-slate-100 pt-4"
                                 aria-label={`Details for ${report.title || 'Registrar report'}`}
                               >
-                                <h6 className="fw-semibold mb-2">Full details</h6>
-                                <p className="mb-3 text-break" style={{ whiteSpace: 'pre-wrap' }}>
+                                <h3 className="mb-2 text-sm font-semibold text-slate-800">Full details</h3>
+                                <p className="mb-3 whitespace-pre-wrap break-words rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
                                   {report.message || 'No description provided.'}
                                 </p>
-                                <div className="small text-muted d-flex flex-wrap gap-2 mb-3">
-                                  <span>Direction: Sent</span>
-                                  <span>Generated by: Registrar</span>
-                                  <span>Recipient: {report.recipient_role || 'Not specified'}</span>
-                                  <span>Created: {report.created_at || 'Date unavailable'}</span>
-                                  <span>Notification ID: {report.id}</span>
+                                <div className="mb-3 d-flex flex-wrap gap-2 text-xs text-slate-500">
+                                  <span className="rounded-md bg-slate-50 px-2 py-1">Direction: Sent</span>
+                                  <span className="rounded-md bg-slate-50 px-2 py-1">By: Registrar</span>
+                                  <span className="rounded-md bg-slate-50 px-2 py-1">Recipient: {report.recipient_role || 'Not specified'}</span>
+                                  <span className="rounded-md bg-slate-50 px-2 py-1">Created: {report.created_at || 'Date unavailable'}</span>
+                                  <span className="rounded-md bg-slate-50 px-2 py-1">Notification ID: {report.id}</span>
                                 </div>
                                 <div className="d-flex align-items-center gap-2 flex-wrap">
                                   {report.file_path && (
@@ -4558,7 +5661,7 @@ const RegistrarDashboard = () => {
                                         if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
                                       }}
                                     >
-                                      Open attachment
+                                      Download attachment
                                     </button>
                                   )}
                                   <button
@@ -4657,6 +5760,7 @@ const RegistrarDashboard = () => {
                     <div className={reportRecipient === 'admin' ? 'col-lg-5' : 'col-lg-3'}>
                       <label className="form-label small fw-semibold" htmlFor="report-file-message">Message</label>
                       <textarea
+                        ref={reportMessageInputRef}
                         id="report-file-message"
                         className="form-control"
                         rows="2"
@@ -4789,6 +5893,16 @@ const RegistrarDashboard = () => {
         }}
         departments={departments} 
       />
+      {showStudentRegistrationModal && (
+        <StudentRegistration
+          isModal
+          onBack={() => setShowStudentRegistrationModal(false)}
+          onSuccess={() => {
+            setShowStudentRegistrationModal(false);
+            setStudentRecordsRefreshToken((current) => current + 1);
+          }}
+        />
+      )}
     </div>
   );
 };

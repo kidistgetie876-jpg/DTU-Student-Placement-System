@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/department_capacity.php';
 
 $conn = getDbConnection();
 if (!($conn instanceof mysqli)) {
@@ -92,7 +93,7 @@ function isHeadAssigned(mysqli $conn, int $userId, int $departmentId): bool {
 }
 
 function getDepartmentInfo(mysqli $conn, int $departmentId): ?array {
-    $stmt = $conn->prepare('SELECT d.id, d.name, d.capacity, d.head_id, u.username AS head_name FROM departments d LEFT JOIN users u ON u.id = d.head_id WHERE d.id = ? LIMIT 1');
+    $stmt = $conn->prepare('SELECT d.id, d.name, d.capacity, d.approval_status, d.is_locked, d.head_id, u.username AS head_name FROM departments d LEFT JOIN users u ON u.id = d.head_id WHERE d.id = ? LIMIT 1');
     $stmt->bind_param('i', $departmentId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -105,6 +106,7 @@ function getDepartmentInfo(mysqli $conn, int $departmentId): ?array {
 }
 
 try {
+    ensureDepartmentCapacityApprovalSchema($conn);
     ensureHeadTable($conn);
 
     $method = $_SERVER['REQUEST_METHOD'];
@@ -201,6 +203,11 @@ try {
             sendJson(['success' => false, 'message' => 'This user is not assigned as the head of the department.'], 403);
         }
 
+        $departmentInfo = getDepartmentInfo($conn, $departmentId);
+        if ($quota !== null && $departmentInfo !== null && (int) $departmentInfo['is_locked'] === 1) {
+            sendJson(['success' => false, 'message' => 'Capacity is locked.'], 403);
+        }
+
         $existing = $conn->prepare('SELECT id FROM department_heads WHERE user_id = ? AND department_id = ? LIMIT 1');
         $existing->bind_param('ii', $userId, $departmentId);
         $existing->execute();
@@ -218,14 +225,18 @@ try {
             $headId = (int) $conn->insert_id;
         }
 
-        $departmentInfo = getDepartmentInfo($conn, $departmentId);
         if ($quota !== null && $departmentInfo !== null) {
-            $updateDept = $conn->prepare('UPDATE departments SET capacity = ? WHERE id = ? LIMIT 1');
+            $updateDept = $conn->prepare("UPDATE departments SET capacity = ?, capacity_approved = 0, approval_status = 'pending', is_locked = 0 WHERE id = ? AND is_locked = 0 LIMIT 1");
             $updateDept->bind_param('ii', $quota, $departmentId);
             if (!$updateDept->execute()) {
                 sendJson(['success' => false, 'message' => 'Failed to assign department quota.'], 500);
             }
+            if ($updateDept->affected_rows === 0 && (int) $departmentInfo['capacity'] !== $quota) {
+                sendJson(['success' => false, 'message' => 'Capacity is locked.'], 403);
+            }
             $departmentInfo['capacity'] = $quota;
+            $departmentInfo['approval_status'] = 'pending';
+            $departmentInfo['is_locked'] = 0;
         }
 
         sendJson([
@@ -273,6 +284,11 @@ try {
 
         if (!isHeadAssigned($conn, $userId, $departmentId)) {
             sendJson(['success' => false, 'message' => 'This user is not assigned as the head of the department.'], 403);
+        }
+
+        $departmentInfo = getDepartmentInfo($conn, $departmentId);
+        if ($quota !== null && $departmentInfo !== null && (int) $departmentInfo['is_locked'] === 1) {
+            sendJson(['success' => false, 'message' => 'Capacity is locked.'], 403);
         }
 
         $updates = [];
@@ -332,9 +348,14 @@ try {
         }
 
         if ($quota !== null) {
-            $updateDept = $conn->prepare('UPDATE departments SET capacity = ? WHERE id = ? LIMIT 1');
+            $updateDept = $conn->prepare("UPDATE departments SET capacity = ?, capacity_approved = 0, approval_status = 'pending', is_locked = 0 WHERE id = ? AND is_locked = 0 LIMIT 1");
             $updateDept->bind_param('ii', $quota, $departmentId);
-            $updateDept->execute();
+            if (!$updateDept->execute()) {
+                sendJson(['success' => false, 'message' => 'Failed to update department quota.'], 500);
+            }
+            if ($updateDept->affected_rows === 0 && (int) $departmentInfo['capacity'] !== $quota) {
+                sendJson(['success' => false, 'message' => 'Capacity is locked.'], 403);
+            }
         }
 
         sendJson(['success' => true, 'message' => $quota !== null ? 'Department quota updated successfully.' : 'Head assignment updated successfully.']);

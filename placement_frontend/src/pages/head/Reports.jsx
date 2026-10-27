@@ -32,7 +32,7 @@ const Reports = ({ leader, department, students = [] }) => {
     try {
       const response = await api.get('api/head/get_head_reports.php');
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to load reports.');
-      setReports(Array.isArray(response.data.reports) ? response.data.reports : []);
+      setReports(Array.isArray(response.data.reports) ? response.data.reports.filter(Boolean) : []);
     } catch (requestError) {
       setReports([]);
       setError(requestError.response?.data?.message || requestError.message || 'Unable to load reports.');
@@ -46,9 +46,10 @@ const Reports = ({ leader, department, students = [] }) => {
   }, [leader]);
 
   const filteredStudents = useMemo(() => {
+    const studentList = Array.isArray(students) ? students.filter(Boolean) : [];
     const search = studentSearch.trim().toLowerCase();
-    if (!search) return students;
-    return students.filter((student) => [student.id, student.student_id, student.username, student.name, student.full_name, student.email].some((value) => String(value || '').toLowerCase().includes(search)));
+    if (!search) return studentList;
+    return studentList.filter((student) => [student.id, student.student_id, student.username, student.name, student.full_name, student.email].some((value) => String(value || '').toLowerCase().includes(search)));
   }, [students, studentSearch]);
 
   const sendMessage = async (event) => {
@@ -174,9 +175,14 @@ const Reports = ({ leader, department, students = [] }) => {
                 <input id="head-student-search" className="form-control mb-2" value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} disabled={sending} placeholder="Student ID, username, or name" />
                 <select className="form-select" value={studentId} onChange={(event) => setStudentId(event.target.value)} disabled={sending}>
                   <option value="">Select a student</option>
-                  {filteredStudents.map((student) => {
-                    const id = student.student_id || student.id;
-                    return <option key={id} value={id}>{student.username || student.name || student.full_name || student.email || `Student ${id}`} (ID: {id})</option>;
+                  {filteredStudents.map((student, index) => {
+                    const id = student.student_id ?? student.id;
+                    const studentLabel = student.username || student.name || student.full_name || student.email || `Student ${index + 1}`;
+                    return (
+                      <option key={`${id ?? 'student'}-${index}`} value={id ?? ''}>
+                        {studentLabel}{id !== null && id !== undefined && id !== '' ? ` (ID: ${id})` : ''}
+                      </option>
+                    );
                   })}
                 </select>
               </div>
@@ -246,7 +252,7 @@ const Reports = ({ leader, department, students = [] }) => {
         {!loading && !error && reports.length === 0 && <div className="alert alert-light border mb-0">No reports have been sent or received.</div>}
         {!loading && !error && reports.length > 0 && (
           <div className="list-group">
-            {reports.map((report) => {
+            {reports.map((report, index) => {
               const isExpanded = expandedReportId === report.id;
               const category = report.file_path ? 'Report' : 'Message';
               const sender = report.direction === 'sent'
@@ -257,7 +263,7 @@ const Reports = ({ leader, department, students = [] }) => {
               return (
                 <article
                   className={`list-group-item p-0 ${report.direction !== 'sent' && !Number(report.is_read) ? 'border-start border-4 border-primary' : ''}`}
-                  key={report.id}
+                  key={`${report.id ?? 'report'}-${index}`}
                 >
                   <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
                     <div className="flex-grow-1 overflow-hidden">

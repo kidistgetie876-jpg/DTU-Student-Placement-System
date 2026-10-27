@@ -20,21 +20,93 @@ function respond(array $payload, int $status = 200): void
     exit;
 }
 
+function resolveAppealStudent(mysqli $db, string $sessionUserId, string $admissionNumber): ?array
+{
+    $numericUserId = ctype_digit($sessionUserId) ? (int) $sessionUserId : 0;
+    $userLookup = $db->prepare(
+        "SELECT id, id_number FROM users
+         WHERE LOWER(TRIM(role)) = 'student'
+           AND ((id = ? AND ? > 0) OR id_number = ?)
+         LIMIT 1"
+    );
+    if (!$userLookup) {
+        throw new RuntimeException('Unable to prepare student account lookup.');
+    }
+    $userLookup->bind_param('iis', $numericUserId, $numericUserId, $admissionNumber);
+    if (!$userLookup->execute()) {
+        $userLookup->close();
+        throw new RuntimeException('Unable to look up student account.');
+    }
+    $student = $userLookup->get_result()->fetch_assoc();
+    $userLookup->close();
+    if ($student) {
+        return [
+            'id' => (int) $student['id'],
+            'admission_number' => trim((string) ($student['id_number'] ?? '')),
+        ];
+    }
+
+    if ($admissionNumber === '') {
+        return null;
+    }
+    $profileLookup = $db->prepare(
+        'SELECT id, admission_number FROM student_data
+         WHERE TRIM(admission_number) = TRIM(?)
+         LIMIT 1'
+    );
+    if (!$profileLookup) {
+        throw new RuntimeException('Unable to prepare student profile lookup.');
+    }
+    $profileLookup->bind_param('s', $admissionNumber);
+    if (!$profileLookup->execute()) {
+        $profileLookup->close();
+        throw new RuntimeException('Unable to look up student profile.');
+    }
+    $profile = $profileLookup->get_result()->fetch_assoc();
+    $profileLookup->close();
+    if (!$profile) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $profile['id'],
+        'admission_number' => trim((string) $profile['admission_number']),
+    ];
+}
+
 try {
     if ($method === 'GET') {
-        $studentId = (int) ($_GET['student_id'] ?? 0);
-        if ($studentId > 0) {
-            $statement = $db->prepare('SELECT sa.id, sa.student_id, u.username, u.email, sa.subject, sa.message, sa.status, sa.response, sa.created_at FROM student_appeals sa INNER JOIN users u ON u.id = sa.student_id WHERE sa.student_id = ? ORDER BY sa.created_at DESC, sa.id DESC');
+        $sessionUserId = trim((string) ($_SESSION['user_id'] ?? ''));
+        $sessionRole = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+        if ($sessionUserId === '' || !in_array($sessionRole, ['student', 'registrar'], true)) {
+            respond(['success' => false, 'message' => 'Please sign in to view appeals.'], 403);
+        }
+
+        if ($sessionRole === 'student') {
+            $sessionAdmissionNumber = trim((string) ($_SESSION['admission_number'] ?? ''));
+            if ($sessionAdmissionNumber === '' && !ctype_digit($sessionUserId)) {
+                $sessionAdmissionNumber = $sessionUserId;
+            }
+            $student = resolveAppealStudent($db, $sessionUserId, $sessionAdmissionNumber);
+            if (!$student) {
+                respond(['success' => false, 'message' => 'Your student account could not be verified. Please sign in again.'], 404);
+            }
+            $sessionStudentId = $student['id'];
+            $statement = $db->prepare('SELECT sa.id, sa.student_id, COALESCE(u.username, sd.given_name, CAST(sa.student_id AS CHAR)) AS username, u.email, COALESCE(u.id_number, sd.admission_number) AS admission_number, sa.subject, sa.message, sa.status, sa.response, sa.created_at FROM student_appeals sa LEFT JOIN users u ON u.id = sa.student_id LEFT JOIN student_data sd ON sd.id = sa.student_id WHERE sa.student_id = ? ORDER BY sa.created_at DESC, sa.id DESC');
+            if (!$statement) {
+                throw new Exception('Unable to prepare appeal history query.');
+            }
+            $statement->bind_param('i', $sessionStudentId);
         } else {
-            $statement = $db->prepare('SELECT sa.id, sa.student_id, u.username, u.email, sa.subject, sa.message, sa.status, sa.response, sa.created_at FROM student_appeals sa INNER JOIN users u ON u.id = sa.student_id ORDER BY sa.created_at DESC, sa.id DESC');
+            $statement = $db->prepare('SELECT sa.id, sa.student_id, COALESCE(u.username, sd.given_name, CAST(sa.student_id AS CHAR)) AS username, u.email, COALESCE(u.id_number, sd.admission_number) AS admission_number, sa.subject, sa.message, sa.status, sa.response, sa.created_at FROM student_appeals sa LEFT JOIN users u ON u.id = sa.student_id LEFT JOIN student_data sd ON sd.id = sa.student_id ORDER BY sa.created_at DESC, sa.id DESC');
+            if (!$statement) {
+                throw new Exception('Unable to prepare appeal history query.');
+            }
         }
-        if (!$statement) {
-            throw new Exception('Unable to prepare appeal history query.');
+        if (!$statement->execute()) {
+            $statement->close();
+            throw new Exception('Unable to load appeal history.');
         }
-        if ($studentId > 0) {
-            $statement->bind_param('i', $studentId);
-        }
-        $statement->execute();
         $result = $statement->get_result();
         $appeals = [];
         while ($appeal = $result->fetch_assoc()) {
@@ -79,9 +151,18 @@ try {
             respond(['success' => false, 'message' => 'A valid appeal ID is required.'], 400);
         }
 
-        $userId = (int) ($_SESSION['user_id'] ?? 0);
-        $role = strtolower((string) ($_SESSION['role'] ?? ''));
-        if ($userId <= 0 || !in_array($role, ['student', 'registrar'], true)) {
+        $rawUserId = trim((string) ($_SESSION['user_id'] ?? ''));
+        $userId = ctype_digit($rawUserId) ? (int) $rawUserId : 0;
+        $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+        $admissionNumber = trim((string) ($_SESSION['admission_number'] ?? ''));
+        if ($role === 'student' && $admissionNumber === '' && $userId === 0) {
+            $admissionNumber = $rawUserId;
+        }
+        if ($role === 'student') {
+            $student = resolveAppealStudent($db, $rawUserId, $admissionNumber);
+            $userId = (int) ($student['id'] ?? 0);
+        }
+        if (($userId <= 0 && ($role !== 'student' || $admissionNumber === '')) || !in_array($role, ['student', 'registrar'], true)) {
             respond(['success' => false, 'message' => 'You must be logged in to delete an appeal.'], 403);
         }
 
@@ -117,35 +198,52 @@ try {
         respond(['success' => true, 'message' => 'Appeal deleted successfully.', 'deleted' => $deleted]);
     }
 
-    $studentId = (int) ($input['student_id'] ?? 0);
+    $sessionUserId = trim((string) ($_SESSION['user_id'] ?? ''));
+    $sessionRole = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+    $requestedStudentId = trim((string) ($input['student_id'] ?? ''));
+    $requestedAdmissionNumber = trim((string) ($input['admission_number'] ?? ''));
     $subject = trim((string) ($input['subject'] ?? ''));
     $message = trim((string) ($input['message'] ?? ''));
 
-    if ($studentId <= 0 || $subject === '' || $message === '') {
-        respond(['success' => false, 'message' => 'Student ID, subject, and message are required.'], 400);
+    if ($sessionUserId === '' || $sessionRole !== 'student') {
+        respond(['success' => false, 'message' => 'Please sign in as a student before submitting an appeal.'], 403);
+    }
+
+    if ($subject === '' || $message === '') {
+        respond(['success' => false, 'message' => 'Subject and message are required.'], 400);
     }
 
     if (mb_strlen($subject) > 255) {
         respond(['success' => false, 'message' => 'Subject must be 255 characters or fewer.'], 400);
     }
 
-    $studentCheck = $db->prepare("SELECT id FROM users WHERE id = ? AND role = 'student' LIMIT 1");
-    if (!$studentCheck) {
-        throw new Exception('Unable to validate student account.');
+    $sessionStudentId = ctype_digit($sessionUserId) ? (int) $sessionUserId : 0;
+    $sessionAdmissionNumber = trim((string) ($_SESSION['admission_number'] ?? ''));
+    if ($sessionAdmissionNumber === '' && $sessionStudentId === 0) {
+        $sessionAdmissionNumber = $sessionUserId;
     }
-    $studentCheck->bind_param('i', $studentId);
-    $studentCheck->execute();
-    if ($studentCheck->get_result()->num_rows === 0) {
-        $studentCheck->close();
-        respond(['success' => false, 'message' => 'Student account was not found.'], 404);
+    $student = resolveAppealStudent($db, $sessionUserId, $sessionAdmissionNumber);
+    if (!$student) {
+        respond(['success' => false, 'message' => 'Your student account could not be verified. Please sign in again.'], 404);
     }
-    $studentCheck->close();
+    $appealStudentId = $student['id'];
+    $accountAdmissionNumber = $student['admission_number'];
+
+    $requestedIdMismatch = $requestedStudentId !== ''
+        && (ctype_digit($requestedStudentId)
+            ? (int) $requestedStudentId !== $appealStudentId
+            : strcasecmp($requestedStudentId, $accountAdmissionNumber) !== 0);
+    if ($requestedIdMismatch
+        || ($requestedAdmissionNumber !== '' && strcasecmp($requestedAdmissionNumber, $accountAdmissionNumber) !== 0)
+        || ($sessionAdmissionNumber !== '' && strcasecmp($sessionAdmissionNumber, $accountAdmissionNumber) !== 0)) {
+        respond(['success' => false, 'message' => 'You can only submit an appeal for your own student account.'], 403);
+    }
 
     $statement = $db->prepare("INSERT INTO student_appeals (student_id, subject, message, status) VALUES (?, ?, ?, 'Received')");
     if (!$statement) {
         throw new Exception('Unable to prepare appeal submission.');
     }
-    $statement->bind_param('iss', $studentId, $subject, $message);
+    $statement->bind_param('iss', $appealStudentId, $subject, $message);
     if (!$statement->execute()) {
         $statement->close();
         throw new Exception('Unable to save appeal.');

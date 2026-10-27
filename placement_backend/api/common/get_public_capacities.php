@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_semester.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 function publicCapacitiesResponse(array $payload, int $status = 200): void
@@ -21,9 +22,8 @@ if (!$db instanceof mysqli) {
 
 try {
     $result = $db->query(
-        "SELECT id, name, college_name, stream, capacity
+        "SELECT id, stream, college_name, name, capacity, status
          FROM departments
-         WHERE status = 'active'
          ORDER BY stream ASC, college_name ASC, name ASC"
     );
     if (!$result) {
@@ -38,6 +38,8 @@ try {
             'college_name' => (string) ($department['college_name'] ?? ''),
             'stream' => (string) ($department['stream'] ?? ''),
             'capacity' => (int) $department['capacity'],
+            'status' => (string) ($department['status'] ?? ''),
+            'standardized_college_name' => placementDepartmentCapacityCollegeName($department),
         ];
     }
 

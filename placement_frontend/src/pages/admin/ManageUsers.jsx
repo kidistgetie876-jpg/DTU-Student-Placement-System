@@ -54,11 +54,11 @@ const getRoleIdLabel = (role = '') => {
     case 'admin':
       return 'Admin ID (Staff Format)';
     default:
-      return 'Student ID (DTU Format)';
+      return 'Registrar ID (Staff Format)';
   }
 };
 
-const getNextRoleId = (usersList = [], role = 'student') => {
+const getNextRoleId = (usersList = [], role = 'registrar') => {
   const { prefix, initialSequence, digits } = getRoleIdConfig(role);
   const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`^${escapedPrefix}(\\d+)$`, 'i');
@@ -121,8 +121,8 @@ const ManageUsers = () => {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState('student');
-  const [newRoleId, setNewRoleId] = useState('DTU16R1001');
+  const [newRole, setNewRole] = useState('registrar');
+  const [newRoleId, setNewRoleId] = useState('DTU-REG-001');
   const [newPhoneNumber, setNewPhoneNumber] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const pageSize = 5;
@@ -134,8 +134,8 @@ const ManageUsers = () => {
     setNewUsername('');
     setNewPassword('');
     setNewEmail('');
-    setNewRole('student');
-    setNewRoleId(getNextRoleId(users, 'student'));
+    setNewRole('registrar');
+    setNewRoleId(getNextRoleId(users, 'registrar'));
     setNewPhoneNumber('');
   };
 
@@ -234,13 +234,13 @@ const ManageUsers = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      setError('Please enter a valid email address.');
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email)) {
+      setError('A valid @gmail.com address is required.');
       return;
     }
 
@@ -269,12 +269,21 @@ const ManageUsers = () => {
         resetNewUserForm();
         setPage(1);
       } else {
-        setError(response.data?.message || 'Unable to add new user.');
+        const message = response.data?.message || '';
+        setError(/phone number already exists/i.test(message)
+          ? 'This phone number is already registered.'
+          : /email address is already registered|email already exists/i.test(message)
+            ? 'This email address is already registered.'
+            : message || 'Unable to add new user.');
       }
     } catch (err) {
       console.error('Failed to add user:', err);
       const backendMessage = err.response?.data?.message;
-      setError(backendMessage || 'Unable to add new user. Please try again.');
+      setError(/phone number already exists/i.test(backendMessage || '')
+        ? 'This phone number is already registered.'
+        : /email address is already registered|email already exists/i.test(backendMessage || '')
+          ? 'This email address is already registered.'
+        : backendMessage || 'Unable to add new user. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -305,7 +314,6 @@ const ManageUsers = () => {
       <div className="d-flex flex-wrap gap-2 mb-3">
         {[
           { key: 'all', label: 'All Users' },
-          { key: 'student', label: 'Students' },
           { key: 'head', label: 'Department Heads' },
           { key: 'registrar', label: 'Registrars' },
           { key: 'admin', label: 'Admins' },
@@ -329,7 +337,7 @@ const ManageUsers = () => {
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div>
                 <h5 className="mb-1">Add New User</h5>
-                <p className="small text-muted mb-0">Create a user with username, password, optional email, and role.</p>
+                <p className="small text-muted mb-0">Create a user with username, password, email, and role.</p>
               </div>
               <span className="badge bg-secondary text-uppercase small py-2 px-3">
                 {saving ? 'Saving...' : 'New user'}
@@ -388,21 +396,31 @@ const ManageUsers = () => {
                     label="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    onInvalid={(e) => {
+                      e.preventDefault();
+                      setError('Password must be at least 8 characters long.');
+                    }}
                     disabled={saving}
                     required
+                    minLength={8}
                   />
-                  <div className="form-text">At least 6 characters.</div>
+                  <div className="form-text">At least 8 characters.</div>
                 </div>
                 <div className="col-md-2">
-                  <label className="form-label" htmlFor="new-email">Email (Optional)</label>
+                  <label className="form-label" htmlFor="new-email">Email Address *</label>
                   <input
                     id="new-email"
                     type="email"
                     className="form-control"
-                    placeholder="user@example.com"
+                    placeholder="user@gmail.com"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
+                    onInvalid={(e) => {
+                      e.preventDefault();
+                      setError('A valid @gmail.com address is required.');
+                    }}
                     disabled={saving}
+                    required
                   />
                 </div>
                 <div className="col-md-2">
@@ -428,7 +446,6 @@ const ManageUsers = () => {
                     disabled={saving}
                     required
                   >
-                    <option value="student">Student</option>
                     <option value="head">Head</option>
                     <option value="admin">Admin</option>
                     <option value="registrar">Registrar</option>

@@ -71,6 +71,7 @@ try {
         'specific_recipient' => 'VARCHAR(255) NULL AFTER target_type',
         'student_id' => 'VARCHAR(100) NULL AFTER specific_recipient',
         'status' => "VARCHAR(20) NOT NULL DEFAULT 'unread' AFTER student_id",
+        'admin_reply' => 'TEXT NULL AFTER status',
     ];
     foreach ($routingColumns as $columnName => $definition) {
         $columnResult = $pdo->query("SHOW COLUMNS FROM contact_messages LIKE '{$columnName}'");
@@ -83,7 +84,7 @@ try {
     }
 
     $statement = $pdo->prepare(
-        "SELECT id, name AS full_name, email, subject, message,
+        "SELECT id, name AS full_name, email, subject, message, admin_reply,
                 CASE
                     WHEN LOWER(status) = 'replied' THEN 'replied'
                     WHEN LOWER(status) = 'read' THEN 'read'

@@ -141,7 +141,7 @@ try {
     $coc = (float) ($profile['coc_result'] ?? 0);
     $gender = trim((string) ($profile['gender'] ?? ''));
 
-    $scoreSettings = $db->query('SELECT g12_total_base FROM placement_settings WHERE id = 1 LIMIT 1');
+    $scoreSettings = $db->query('SELECT gpa_weight, grade_12_weight, coc_weight, g12_total_base, female_bonus_points, disability_bonus_points, minority_bonus_points, minority_male_bonus_points, minority_female_bonus_points, minority_disability_bonus_points, female_disability_minority_bonus_points FROM placement_settings WHERE id = 1 LIMIT 1');
     if (!$scoreSettings) {
         throw new RuntimeException('Unable to load Grade 12 scoring base: ' . $db->error);
     }
@@ -154,7 +154,19 @@ try {
         $gender,
         $disability,
         $minority,
-        ['g12_total_base' => (float) ($scoreRules['g12_total_base'] ?? 600)]
+        [
+            'gpa_weight' => (float) ($scoreRules['gpa_weight'] ?? 50),
+            'grade_12_weight' => (float) ($scoreRules['grade_12_weight'] ?? 20),
+            'coc_weight' => (float) ($scoreRules['coc_weight'] ?? 30),
+            'g12_total_base' => (float) ($scoreRules['g12_total_base'] ?? 600),
+            'femaleBonusPoints' => (float) ($scoreRules['female_bonus_points'] ?? 5),
+            'disabilityBonusPoints' => (float) ($scoreRules['disability_bonus_points'] ?? 5),
+            'minorityBonusPoints' => (float) ($scoreRules['minority_bonus_points'] ?? 5),
+            'minorityMaleBonusPoints' => (float) ($scoreRules['minority_male_bonus_points'] ?? 5),
+            'minorityFemaleBonusPoints' => (float) ($scoreRules['minority_female_bonus_points'] ?? 10),
+            'minorityDisabilityBonusPoints' => (float) ($scoreRules['minority_disability_bonus_points'] ?? 10),
+            'femaleDisabilityMinorityBonusPoints' => (float) ($scoreRules['female_disability_minority_bonus_points'] ?? 15),
+        ]
     );
 
     $update = $db->prepare(

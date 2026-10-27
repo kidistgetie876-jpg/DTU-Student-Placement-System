@@ -152,11 +152,14 @@ try {
         );
 
         if ($firstName === '' || $lastName === '' || $username === '' || $email === '' || $role === '') {
-            $recordSkipped(['row' => $rowNumber, 'reason' => 'First name, last name, username, valid email, and a supported role are required.']);
+            $recordSkipped(['row' => $rowNumber, 'reason' => 'First name, last name, username, Gmail address, and a supported role are required.']);
             continue;
         }
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $recordSkipped(['row' => $rowNumber, 'email' => $email, 'reason' => 'Email address is invalid.']);
+        if (
+            !filter_var($email, FILTER_VALIDATE_EMAIL)
+            || preg_match('/^[a-zA-Z0-9._%+-]+@gmail\.com$/', $email) !== 1
+        ) {
+            $recordSkipped(['row' => $rowNumber, 'email' => $email, 'reason' => 'A valid @gmail.com address is required.']);
             continue;
         }
         if (preg_match('/[A-Za-z]/', $username) !== 1) {
@@ -167,6 +170,7 @@ try {
             $recordSkipped(['row' => $rowNumber, 'phone' => $phone, 'reason' => 'Phone must use 09XXXXXXXX or +251XXXXXXXXX format.']);
             continue;
         }
+        $phone = $phone !== '' ? $phone : null;
 
         $idNumber = $requestedId !== '' ? $requestedId : getNextRoleIdNumber($db, $role);
         $findExisting->bind_param('ss', $idNumber, $email);
@@ -185,6 +189,13 @@ try {
         }
 
         $providedPassword = getImportedUserValue($user, ['password', 'temporary_password', 'temppassword']);
+        if ($providedPassword !== '' && strlen($providedPassword) < 8) {
+            $recordSkipped([
+                'row' => $rowNumber,
+                'reason' => 'Password must be at least 8 characters long.',
+            ]);
+            continue;
+        }
         $temporaryPassword = $providedPassword !== '' ? $providedPassword : bin2hex(random_bytes(12));
         $hashedPassword = password_hash($temporaryPassword, PASSWORD_DEFAULT);
         if ($hashedPassword === false) {

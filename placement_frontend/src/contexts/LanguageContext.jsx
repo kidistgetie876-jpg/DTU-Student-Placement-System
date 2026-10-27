@@ -112,7 +112,7 @@ const amharicTranslations = {
   Cancel: 'ሰርዝ',
   'User/HOD Data Bulk Import': 'የተጠቃሚ / የዲፓርትመንት ኃላፊ መረጃ በጅምላ ማስገቢያ',
   'Student Data Bulk Import': 'የተማሪ መረጃ በጅምላ ማስገቢያ',
-  'Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid email address.': 'የተማሪ ፋይሎች በተማሪ መለያ ወይም በተጠቃሚ ስም ይለያሉ። የተጠቃሚ / የዲፓርትመንት ኃላፊ ፋይሎች በመለያ ወይም በሚና ርዕስ ይለያሉ። አዲስ መለያ ትክክለኛ ኢሜይል ያስፈልገዋል።',
+  'Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid @gmail.com address.': 'የተማሪ ፋይሎች በተማሪ መለያ ወይም በተጠቃሚ ስም ይለያሉ። የተጠቃሚ / የዲፓርትመንት ኃላፊ ፋይሎች በመለያ ወይም በሚና ርዕስ ይለያሉ። አዲስ መለያ @gmail.com አድራሻ ያስፈልገዋል።',
   'Preview File': 'ፋይሉን ቅድመ እይታ',
   'Save to System': 'ወደ ስርዓቱ አስቀምጥ',
   'Preview (Sample)': 'ቅድመ እይታ (ናሙና)',

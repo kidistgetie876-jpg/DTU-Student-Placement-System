@@ -185,11 +185,8 @@ const AdminReports = () => {
           <div className="list-group">
             {reports.map((report) => (
               <article key={report.id} className={`list-group-item ${report.direction === 'received' && !Number(report.is_read) ? 'fw-semibold' : ''}`} onClick={() => markRead(report)}>
-                <div className="d-flex justify-content-between align-items-start gap-3">
-                  <div>
-                    <span className={`badge ${report.direction === 'received' ? 'bg-success' : 'bg-secondary'} me-2`}>{report.direction === 'received' ? 'From Registrar' : 'Sent to Registrar'}</span>
-                    {report.title && <strong>{report.title}</strong>}
-                  </div>
+                <div className="d-flex justify-content-between align-items-center gap-3">
+                  <span className={`badge ${report.direction === 'received' ? 'bg-success' : 'bg-secondary'}`}>{report.direction === 'received' ? 'From Registrar' : 'Sent to Registrar'}</span>
                   <small className="text-muted text-nowrap">{report.created_at}</small>
                 </div>
                 <p className="mb-2 mt-2">{report.message}</p>

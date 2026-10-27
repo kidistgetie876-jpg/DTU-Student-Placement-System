@@ -107,7 +107,7 @@ describe('parseStudentImportGrid', () => {
     it('parses User/HOD headers without treating the rows as student records', () => {
       const result = parseUserImportGrid([
         ['User ID', 'First Name', 'Last Name', 'Username', 'Email', 'Phone', 'Role'],
-        ['DTU-HOD-001', 'Aster', 'Mekonnen', 'aster.hod', 'aster@example.edu', '0911000000', 'Head of Department'],
+        ['DTU-HOD-001', 'Aster', 'Mekonnen', 'aster.hod', 'aster@gmail.com', '0911000000', 'Head of Department'],
       ]);
 
       expect(result).toEqual({
@@ -117,7 +117,7 @@ describe('parseStudentImportGrid', () => {
           first_name: 'Aster',
           last_name: 'Mekonnen',
           username: 'aster.hod',
-          email: 'aster@example.edu',
+          email: 'aster@gmail.com',
           phone: '0911000000',
           role: 'Head of Department',
           password: '',

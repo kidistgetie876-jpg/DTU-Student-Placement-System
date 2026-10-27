@@ -324,7 +324,7 @@ const DataImport = ({ onImportSuccess }) => {
         )}
         
         <p className="text-muted small mb-2">
-          {t('Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid email address.')}
+          {t('Student files are matched by Student ID or username. User/HOD files are detected by User ID or Role headers and imported separately. New accounts require a valid @gmail.com address.')}
         </p>
         <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx" className="form-control mb-3" onChange={handleFileChange} />
         

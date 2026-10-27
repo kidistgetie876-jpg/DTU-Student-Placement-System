@@ -1,12 +1,13 @@
 import axios from "axios";
+import { handleUnauthorizedResponse } from "./authSession.js";
 
-// ፖርት 8888 ን በማጥፋት MAMP ወደሚሰራበት መደበኛ ሎካልሆስት እናስተካክለዋለን
-const localBaseUrl =
-  process.env.REACT_APP_LOCAL_API_BASE_URL ||
-  `http://localhost/student-placement/placement_backend/`;
+const frontendHost = window.location.hostname;
+const apiHost = frontendHost === "::1" ? "[::1]" : frontendHost;
+const localBaseUrl = `http://${apiHost}:8888/student-placement/placement_backend/`;
 
 const api = axios.create({
-  baseURL: localBaseUrl, // ሁልጊዜ ሎካልሆስት (MAMP) እንዲጠቀም እናስገድደዋለን
+  baseURL: localBaseUrl,
+  timeout: 15000,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -23,6 +24,23 @@ api.interceptors.request.use(
     return config;
   },
   (error) => Promise.reject(error),
+);
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isCancel(error)) return Promise.reject(error);
+
+    handleUnauthorizedResponse(error);
+
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      error.message = 'The server took too long to respond. Please try again.';
+    } else if (!error.response) {
+      error.message = 'Unable to reach the local server. Check that MAMP is running.';
+    }
+
+    return Promise.reject(error);
+  },
 );
 
 export default api;

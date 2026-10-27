@@ -134,6 +134,12 @@ function isValidUsername($username) {
     return preg_match('/[A-Za-z]/', $username) === 1;
 }
 
+function isValidGmailAddress(?string $email): bool {
+    return $email !== null
+        && filter_var($email, FILTER_VALIDATE_EMAIL) !== false
+        && preg_match('/^[a-zA-Z0-9._%+-]+@gmail\.com$/', $email) === 1;
+}
+
 // Main routing
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -224,7 +230,6 @@ try {
         $first_name = isset($data['first_name']) ? trim((string)$data['first_name']) : '';
         $last_name = isset($data['last_name']) ? trim((string)$data['last_name']) : '';
         $email = normalizeOptionalValue($data['email'] ?? null);
-        $email = $email !== null ? strtolower($email) : null;
         $password = isset($data['password']) ? (string)$data['password'] : '';
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : 'student';
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
@@ -234,23 +239,7 @@ try {
         $stream = in_array($requestedStream, ['Natural', 'Social'], true) ? $requestedStream : 'Natural';
 
         if ($email === null) {
-            $email = strtolower($username . '@placeholder.local');
-            $suffix = 1;
-            while (true) {
-                $existingEmailCheck = $conn->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
-                if (!$existingEmailCheck) throw new Exception($conn->error);
-                $existingEmailCheck->bind_param('s', $email);
-                $existingEmailCheck->execute();
-                $emailExists = $existingEmailCheck->get_result()->num_rows > 0;
-                $existingEmailCheck->close();
-
-                if (!$emailExists) {
-                    break;
-                }
-
-                $email = strtolower($username . '+' . $suffix . '@placeholder.local');
-                $suffix++;
-            }
+            jsonResponse(['success' => false, 'message' => 'A valid @gmail.com address is required.'], 400);
         }
 
         // Validate required fields
@@ -262,19 +251,36 @@ try {
             jsonResponse(['success' => false, 'message' => 'Username must contain at least one letter; numbers only are not allowed.'], 400);
         }
 
-        // Validate email format
-        if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            jsonResponse(['success' => false, 'message' => 'Invalid email format.'], 400);
+        if (!isValidGmailAddress($email)) {
+            jsonResponse(['success' => false, 'message' => 'A valid @gmail.com address is required.'], 400);
         }
+        $email = strtolower($email);
 
         // Validate password length
-        if (strlen($password) < 6) {
-            jsonResponse(['success' => false, 'message' => 'Password must be at least 6 characters.'], 400);
+        if ($password === '' || strlen($password) < 8) {
+            jsonResponse(['success' => false, 'message' => 'Password must be at least 8 characters long.'], 400);
         }
 
         // Validate phone number if provided
         if ($phone_number && !isValidEthiopianPhone($phone_number)) {
             jsonResponse(['success' => false, 'message' => 'Invalid phone number format. Use 09XXXXXXXX or +251XXXXXXXXX'], 400);
+        }
+
+        if ($phone_number !== null) {
+            $phoneCheck = $conn->prepare('SELECT id FROM users WHERE phone_number = ? LIMIT 1');
+            if (!$phoneCheck) throw new Exception($conn->error);
+            $phoneCheck->bind_param('s', $phone_number);
+            if (!$phoneCheck->execute()) {
+                throw new Exception($phoneCheck->error);
+            }
+            $phoneExists = $phoneCheck->get_result()->num_rows > 0;
+            $phoneCheck->close();
+            if ($phoneExists) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Phone number already exists in the system.',
+                ], 400);
+            }
         }
 
         // Check for duplicate username
@@ -288,16 +294,14 @@ try {
         $check->close();
 
         // Check for duplicate email
-        if ($email !== null) {
-            $check = $conn->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
-            if (!$check) throw new Exception($conn->error);
-            $check->bind_param('s', $email);
-            $check->execute();
-            if ($check->get_result()->num_rows > 0) {
-                jsonResponse(['success' => false, 'message' => 'Email already exists.'], 409);
-            }
-            $check->close();
+        $check = $conn->prepare('SELECT id FROM users WHERE email = ? LIMIT 1');
+        if (!$check) throw new Exception($conn->error);
+        $check->bind_param('s', $email);
+        $check->execute();
+        if ($check->get_result()->num_rows > 0) {
+            jsonResponse(['success' => false, 'message' => 'This email address is already registered.'], 400);
         }
+        $check->close();
 
         // Hash password
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
@@ -311,7 +315,7 @@ try {
             $stmt = $conn->prepare('INSERT INTO users (first_name, last_name, username, email, phone_number, password, role, id_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())');
             if (!$stmt) throw new Exception($conn->error);
             $stmt->bind_param('ssssssss', $first_name, $last_name, $username, $email, $phone_number, $hashed_password, $role, $roleIdNumber);
-            if (!$stmt->execute()) throw new Exception($stmt->error);
+            if (!$stmt->execute()) throw new Exception($stmt->error, $stmt->errno);
             $newId = (int)$conn->insert_id;
             $stmt->close();
 
@@ -330,6 +334,24 @@ try {
             $conn->commit();
         } catch (Throwable $error) {
             $conn->rollback();
+            if (
+                (int) $error->getCode() === 1062
+                && str_contains($error->getMessage(), 'uq_users_phone_number')
+            ) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Phone number already exists in the system.',
+                ], 400);
+            }
+            if (
+                (int) $error->getCode() === 1062
+                && str_contains($error->getMessage(), 'uq_users_email')
+            ) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'This email address is already registered.',
+                ], 400);
+            }
             throw $error;
         }
 
@@ -367,8 +389,8 @@ try {
         $username = isset($data['username']) ? trim((string)$data['username']) : null;
         $first_name = isset($data['first_name']) ? trim((string)$data['first_name']) : null;
         $last_name = isset($data['last_name']) ? trim((string)$data['last_name']) : null;
-        $email = normalizeOptionalValue($data['email'] ?? null);
-        if ($email !== null) $email = strtolower($email);
+        $emailProvided = array_key_exists('email', $data);
+        $email = $emailProvided ? normalizeOptionalValue($data['email']) : null;
         $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : null;
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
         $role_id_number = normalizeOptionalValue($data['id_number'] ?? null);
@@ -394,14 +416,14 @@ try {
             }
         }
 
-        if ($new_password && strlen($new_password) < 6) {
-            jsonResponse(['success' => false, 'message' => 'New password must be at least 6 characters.'], 400);
+        if ($new_password && strlen($new_password) < 8) {
+            jsonResponse(['success' => false, 'message' => 'New password must be at least 8 characters long.'], 400);
         }
 
-        // Validate email if provided
-        if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            jsonResponse(['success' => false, 'message' => 'Invalid email format.'], 400);
+        if ($emailProvided && !isValidGmailAddress($email)) {
+            jsonResponse(['success' => false, 'message' => 'A valid @gmail.com address is required.'], 400);
         }
+        if ($email !== null) $email = strtolower($email);
 
         // Validate phone number if provided
         if ($phone_number && !isValidEthiopianPhone($phone_number)) {
@@ -457,12 +479,29 @@ try {
             $check->bind_param('si', $email, $id);
             $check->execute();
             if ($check->get_result()->num_rows > 0) {
-                jsonResponse(['success' => false, 'message' => 'Email already taken.'], 409);
+                jsonResponse(['success' => false, 'message' => 'This email address is already registered.'], 400);
             }
             $check->close();
             $updates[] = 'email = ?';
             $types .= 's';
             $values[] = $email;
+        }
+
+        if ($phone_number !== null) {
+            $phoneCheck = $conn->prepare('SELECT id FROM users WHERE phone_number = ? AND id != ? LIMIT 1');
+            if (!$phoneCheck) throw new Exception($conn->error);
+            $phoneCheck->bind_param('si', $phone_number, $id);
+            if (!$phoneCheck->execute()) {
+                throw new Exception($phoneCheck->error);
+            }
+            $phoneExists = $phoneCheck->get_result()->num_rows > 0;
+            $phoneCheck->close();
+            if ($phoneExists) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Phone number already exists in the system.',
+                ], 400);
+            }
         }
 
         if ($role !== null) {
@@ -507,7 +546,7 @@ try {
         $conn->begin_transaction();
         try {
             if (!$stmt->execute()) {
-                throw new Exception($stmt->error);
+                throw new Exception($stmt->error, $stmt->errno);
             }
             $stmt->close();
 
@@ -533,6 +572,24 @@ try {
             $conn->commit();
         } catch (Throwable $error) {
             $conn->rollback();
+            if (
+                (int) $error->getCode() === 1062
+                && str_contains($error->getMessage(), 'uq_users_phone_number')
+            ) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'Phone number already exists in the system.',
+                ], 400);
+            }
+            if (
+                (int) $error->getCode() === 1062
+                && str_contains($error->getMessage(), 'uq_users_email')
+            ) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'This email address is already registered.',
+                ], 400);
+            }
             throw $error;
         }
 

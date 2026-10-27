@@ -97,13 +97,16 @@ function normalizeChoiceRow(array $row): array
     if ($studentId !== '' && is_numeric($studentId)) {
         $studentId = (int) $studentId;
     }
-    $deptId = isset($row['dept_id']) && is_numeric($row['dept_id']) ? (int) $row['dept_id'] : 0;
+    $deptId = isset($row['dept_id']) && is_numeric($row['dept_id']) && (int) $row['dept_id'] > 0
+        ? (int) $row['dept_id']
+        : null;
     $priority = isset($row['priority']) && is_numeric($row['priority']) ? (int) $row['priority'] : 0;
 
     return [
         'id' => isset($row['id']) && is_numeric($row['id']) ? (int) $row['id'] : null,
         'student_id' => $studentId,
         'dept_id' => $deptId,
+        'is_broad_group' => $deptId === null,
         'priority' => $priority,
         'dept_name' => trim((string) ($row['dept_name'] ?? $row['department_name'] ?? '')),
         'college_name' => trim((string) ($row['college_name'] ?? '')),
@@ -162,7 +165,13 @@ function validateChoicePayload(array $choice): array
         $clean['student_id'] = (int) $choice['student_id'];
     }
 
-    if (isset($choice['dept_id']) && is_numeric($choice['dept_id'])) {
+    if (isset($choice['semester']) && is_numeric($choice['semester'])) {
+        $clean['semester'] = (int) $choice['semester'];
+    }
+
+    if (array_key_exists('dept_id', $choice) && $choice['dept_id'] === null) {
+        $clean['dept_id'] = null;
+    } elseif (isset($choice['dept_id']) && is_numeric($choice['dept_id'])) {
         $clean['dept_id'] = (int) $choice['dept_id'];
     } elseif (isset($choice['department_id']) && is_numeric($choice['department_id'])) {
         $clean['dept_id'] = (int) $choice['department_id'];
@@ -188,10 +197,18 @@ function validateChoicePayload(array $choice): array
         $clean['stream'] = trim((string) $choice['stream']);
     }
 
+    if (isset($choice['type'])) {
+        $clean['type'] = strtolower(trim((string) $choice['type']));
+    }
+
+    if (isset($choice['broad_group'])) {
+        $clean['broad_group'] = $choice['broad_group'];
+    }
+
     return $clean;
 }
 
-function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices): array
+function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices, int $semester = 1): array
 {
     if ($studentId <= 0) {
         throw new InvalidArgumentException('A valid student_id is required.');
@@ -201,32 +218,61 @@ function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices): ar
         throw new InvalidArgumentException('At least one choice is required.');
     }
 
+    $semesterColumnCheck = $db->query("SHOW COLUMNS FROM student_choices LIKE 'semester'");
+    $hasSemesterColumn = $semesterColumnCheck && $semesterColumnCheck->num_rows > 0;
+    $semester = in_array($semester, [1, 2], true) ? $semester : 1;
+
     $db->begin_transaction();
 
     try {
-        $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ?');
-        $deleteStmt->bind_param('i', $studentId);
-        $deleteStmt->execute();
+        if ($hasSemesterColumn) {
+            $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ? AND semester = ?');
+            $deleteStmt->bind_param('ii', $studentId, $semester);
+            $deleteStmt->execute();
+            $deleteStmt->close();
+        } else {
+            $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ?');
+            $deleteStmt->bind_param('i', $studentId);
+            $deleteStmt->execute();
+            $deleteStmt->close();
+        }
 
-        $insertSql = 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority) VALUES (?, ?, ?, ?, ?, ?)';
+        $insertSql = $hasSemesterColumn
+            ? 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority, semester) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            : 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority) VALUES (?, ?, ?, ?, ?, ?)';
         $insertStmt = $db->prepare($insertSql);
 
         $inserted = [];
         foreach ($choices as $index => $choice) {
             $normalized = validateChoicePayload(is_array($choice) ? $choice : []);
-            $deptId = $normalized['dept_id'] ?? 0;
+            $semesterValue = isset($normalized['semester']) && in_array((int) $normalized['semester'], [1, 2], true)
+                ? (int) $normalized['semester']
+                : $semester;
+            $isBroadGroup = ($normalized['type'] ?? '') === 'broad_group'
+                || !empty($normalized['broad_group'])
+                || (($normalized['dept_id'] ?? null) === null
+                    && trim((string) ($normalized['dept_name'] ?? '')) !== '');
+            $deptId = $isBroadGroup ? null : ($normalized['dept_id'] ?? 0);
 
-            if ($deptId <= 0) {
+            $deptName = trim((string) ($normalized['dept_name'] ?? ''));
+            if ($isBroadGroup && $deptName === '') {
+                throw new InvalidArgumentException('A broad group choice must include its name.');
+            }
+            if (!$isBroadGroup && (!is_int($deptId) || $deptId <= 0)) {
                 throw new InvalidArgumentException('Each choice must include a valid dept_id.');
             }
 
             $priority = $normalized['priority'] ?? ($index + 1);
-            $deptInfo = getDepartmentInfo($db, $deptId);
+            $deptInfo = $isBroadGroup ? [] : getDepartmentInfo($db, $deptId);
             $deptName = trim((string) ($normalized['dept_name'] ?? $deptInfo['name'] ?? ''));
             $collegeName = trim((string) ($normalized['college_name'] ?? $deptInfo['college_name'] ?? ''));
             $stream = trim((string) ($normalized['stream'] ?? $deptInfo['stream'] ?? ''));
 
-            $insertStmt->bind_param('iisssi', $studentId, $deptId, $deptName, $collegeName, $stream, $priority);
+            if ($hasSemesterColumn) {
+                $insertStmt->bind_param('iisssii', $studentId, $deptId, $deptName, $collegeName, $stream, $priority, $semesterValue);
+            } else {
+                $insertStmt->bind_param('iisssi', $studentId, $deptId, $deptName, $collegeName, $stream, $priority);
+            }
             $insertStmt->execute();
 
             $inserted[] = [
@@ -236,6 +282,8 @@ function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices): ar
                 'dept_name' => $deptName,
                 'college_name' => $collegeName,
                 'stream' => $stream,
+                'semester' => $semesterValue,
+                'is_broad_group' => $isBroadGroup,
             ];
         }
 
@@ -285,12 +333,16 @@ try {
             sendJson(['success' => false, 'message' => 'A valid choices array is required.'], 400);
         }
 
-        $saved = saveStudentChoiceMatrix($db, $studentId, $choices);
+        $semester = isset($payload['semester']) && is_numeric($payload['semester'])
+            ? (int) $payload['semester']
+            : 1;
+        $saved = saveStudentChoiceMatrix($db, $studentId, $choices, $semester);
 
         sendJson([
             'success' => true,
             'message' => 'Choice matrix saved successfully.',
             'student_id' => $studentId,
+            'semester' => $semester,
             'saved' => $saved,
         ], 201);
     }
@@ -305,8 +357,20 @@ try {
         }
 
         $choice = validateChoicePayload($payload);
-        if (($choice['dept_id'] ?? 0) <= 0) {
+        $isBroadGroup = ($choice['type'] ?? '') === 'broad_group'
+            || !empty($choice['broad_group'])
+            || (($choice['dept_id'] ?? null) === null
+                && trim((string) ($choice['dept_name'] ?? '')) !== '');
+        if ($isBroadGroup) {
+            if (trim((string) ($choice['dept_name'] ?? '')) === '') {
+                sendJson(['success' => false, 'message' => 'A broad group choice must include its name.'], 400);
+            }
+            $choice['dept_id'] = null;
+            unset($choice['type'], $choice['broad_group']);
+        } elseif (($choice['dept_id'] ?? 0) <= 0) {
             sendJson(['success' => false, 'message' => 'A valid dept_id is required.'], 400);
+        } else {
+            unset($choice['type'], $choice['broad_group']);
         }
 
         if (!isset($choice['priority']) && !isset($payload['priority'])) {
@@ -324,7 +388,7 @@ try {
 
             $updateColumns[] = $column . ' = ?';
             $values[] = $value;
-            $types .= is_int($value) ? 'i' : 's';
+            $types .= ($column === 'dept_id' || is_int($value)) ? 'i' : 's';
         }
 
         if (count($updateColumns) === 0) {

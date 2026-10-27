@@ -27,6 +27,20 @@ function ministryRowValue(array $row, array $headers, array $aliases, $default =
     return $default;
 }
 
+function ministryImportFlag($value, string $field, int $rowNumber): string
+{
+    $normalized = strtolower(trim((string) $value));
+    if (in_array($normalized, ['yes', 'y', '1', 'true'], true)) {
+        return 'Yes';
+    }
+    if (in_array($normalized, ['no', 'n', '0', 'false'], true)) {
+        return 'No';
+    }
+    throw new InvalidArgumentException(
+        'Row ' . $rowNumber . ' has an invalid ' . $field . ' value. Use Yes/No or 1/0.'
+    );
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     header('Allow: POST, OPTIONS');
     ministryImportRespond(['success' => false, 'message' => 'Only POST requests are allowed.'], 405);
@@ -110,42 +124,50 @@ try {
             }
         }
 
-        // Column Mapping with multiple flexible aliases
+        // Header normalization accepts case and punctuation variations such as camelCase and snake_case.
         $admissionNumber = trim((string) ministryRowValue($row, $normalizedHeaders, ['AdmissionNumber', 'admission_number', 'student_id']));
         $region          = trim((string) ministryRowValue($row, $normalizedHeaders, ['Region', 'region']));
         $givenName       = trim((string) ministryRowValue($row, $normalizedHeaders, ['GivenName', 'given_name', 'first_name']));
         $fatherName      = trim((string) ministryRowValue($row, $normalizedHeaders, ['FatherName', 'father_name', 'last_name']));
         $grandFatherName = trim((string) ministryRowValue($row, $normalizedHeaders, ['GrandFatherName', 'GrandfatherName', 'grandfather_name']));
-        
-        // Flexible Sex parsing (Handles 'M', 'F', 'Male', 'Female')
+
         $rawSex = strtolower(trim((string) ministryRowValue($row, $normalizedHeaders, ['Sex', 'sex', 'gender'])));
         if (in_array($rawSex, ['m', 'male'], true)) {
             $sex = 'Male';
         } elseif (in_array($rawSex, ['f', 'female'], true)) {
             $sex = 'Female';
         } else {
-            $sex = 'Male'; // Default fallback
+            throw new InvalidArgumentException('Row ' . ($index + 1) . ' has an invalid Sex value.');
         }
 
-        $totalMark    = ministryRowValue($row, $normalizedHeaders, ['TotalMark', 'total_mark', 'grade_12_result'], 0);
-        $benefitGroup = trim((string) ministryRowValue($row, $normalizedHeaders, ['BenefitGroup', 'benefit_group'], 'None'));
-        
-        // እዚህ ጋር የተስተካከለው ተለዋዋጭ ስም (variable name)
-        $fieldOfStudy = trim((string) ministryRowValue($row, $normalizedHeaders, ['FieldOfstudy', 'FieldOfStudy', 'field_of_study', 'stream']));
+        $totalMarkValue = trim((string) ministryRowValue($row, $normalizedHeaders, ['TotalMark', 'total_mark', 'grade_12_result']));
+        $minority = ministryImportFlag(
+            ministryRowValue($row, $normalizedHeaders, ['Minority', 'minority']),
+            'Minority',
+            $index + 1
+        );
+        $disability = ministryImportFlag(
+            ministryRowValue($row, $normalizedHeaders, ['Disability', 'disability']),
+            'Disability',
+            $index + 1
+        );
+        $fieldOfStudy = trim((string) ministryRowValue($row, $normalizedHeaders, ['FieldOfStudy', 'FieldOfstudy', 'field_of_study', 'stream']));
 
-        // Smart derivation of Disability and Minority flags
-        $disability = preg_match('/disabilit|disabled/i', $benefitGroup) ? 'Yes' : 'No';
-        $minority   = preg_match('/minority|developing/i', $benefitGroup) ? 'Yes' : 'No';
-
-        if ($admissionNumber === '' || $givenName === '' || $fatherName === '') {
-            throw new InvalidArgumentException('Row ' . ($index + 1) . ' is missing Admission Number or Student Name.');
+        if (
+            $admissionNumber === '' || $region === '' || $givenName === '' ||
+            $fatherName === '' || $grandFatherName === '' || $totalMarkValue === '' ||
+            $fieldOfStudy === ''
+        ) {
+            throw new InvalidArgumentException('Row ' . ($index + 1) . ' is missing one or more required values.');
+        }
+        if (!is_numeric($totalMarkValue)) {
+            throw new InvalidArgumentException('Row ' . ($index + 1) . ' has an invalid TotalMark value.');
         }
 
-        $mark = (float) $totalMark;
+        $mark = (float) $totalMarkValue;
 
-        // በትክክል የተስተካከለ የ bind_param ቅደም ተከተል እና ተለዋዋጮች
         $officialStatement->bind_param(
-            'ssssssdsss', 
+            'ssssssdsss',
             $admissionNumber,
             $region,
             $givenName,
@@ -155,7 +177,7 @@ try {
             $mark,
             $disability,
             $minority,
-            $fieldOfStudy // ከላይ የተያዘው ትክክለኛ ተለዋዋጭ
+            $fieldOfStudy
         );
 
         if (!$officialStatement->execute()) {

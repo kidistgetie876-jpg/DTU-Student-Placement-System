@@ -75,8 +75,9 @@ function defaultSystemSettings(): array
         ],
         'maintenance' => [
             'enabled' => false,
-            'title' => 'System Under Maintenance',
-            'message' => 'The DTU Placement Portal is currently undergoing scheduled system updates. Services will resume shortly.',
+            'reason' => 'Scheduled System Maintenance & Updates',
+            'title' => 'Scheduled System Maintenance',
+            'message' => 'We are performing scheduled maintenance and system updates to improve the reliability and performance of the DTU Placement Portal. Please check back soon.',
             'expectedReturn' => 'Soon',
         ],
         'placement' => [
@@ -87,9 +88,9 @@ function defaultSystemSettings(): array
             'resultsDate' => '2026-08-27',
             'appealStart' => '2026-08-27',
             'appealEnd' => '2026-08-30',
-            'gpa_weight' => 30,
+            'gpa_weight' => 50,
             'grade_12_weight' => 20,
-            'coc_weight' => 50,
+            'coc_weight' => 30,
             'gender_weight' => 0,
             'disability_weight' => 0,
             'minority_weight' => 0,
@@ -147,7 +148,7 @@ function mergeSystemSettings(array $current, array $incoming): array
         if (array_key_exists('enabled', $maintenance)) {
             $current['maintenance']['enabled'] = filter_var($maintenance['enabled'], FILTER_VALIDATE_BOOLEAN);
         }
-        foreach (['title', 'message', 'expectedReturn'] as $key) {
+        foreach (['reason', 'title', 'message', 'expectedReturn'] as $key) {
             if (array_key_exists($key, $maintenance) && is_scalar($maintenance[$key])) {
                 $current['maintenance'][$key] = trim((string) $maintenance[$key]);
             }

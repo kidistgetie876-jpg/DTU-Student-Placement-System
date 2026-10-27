@@ -31,20 +31,24 @@ const AdminAccount = () => {
       setMsg({ text: 'የአሁኑን password ያስገቡ።', type: 'danger' });
       return;
     }
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(formData.email.trim())) {
+      setMsg({ text: 'A valid @gmail.com address is required.', type: 'danger' });
+      return;
+    }
 
     setLoading(true);
     try {
       const userId = admin.id || admin.user_id;
       const res = await api.put(`api/admin/users_api.php?id=${encodeURIComponent(userId)}`, {
         username: formData.username,
-        email: formData.email,
+        email: formData.email.trim(),
         current_password: formData.currentPassword,
         new_password: formData.newPassword
       });
 
       if (res.data.success) {
-        setMsg({ text: 'መረጃው በትክክል ተቀይሯል!', type: 'success' });
-        localStorage.setItem('user', JSON.stringify({ ...admin, username: formData.username, email: formData.email }));
+        setMsg({ text: 'Profile updated successfully!', type: 'success' });
+        localStorage.setItem('user', JSON.stringify({ ...admin, username: formData.username, email: formData.email.trim() }));
         setIsEditing(false);
         setFormData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
       } else {
@@ -67,7 +71,15 @@ const AdminAccount = () => {
           <p className="small mb-0 mt-2 opacity-75">{t('Update your account details and password.')}</p>
         </div>
         <div className="admin-account-body card-body">
-          {msg.text && <div className={`alert alert-${msg.type} small`}>{msg.text}</div>}
+          {msg.text && (
+            <div
+              className={`admin-account-notice admin-account-notice-${msg.type} alert small`}
+              role={msg.type === 'success' ? 'status' : 'alert'}
+              aria-live={msg.type === 'success' ? 'polite' : 'assertive'}
+            >
+              {msg.text}
+            </div>
+          )}
           
           <form onSubmit={handleSave}>
             <div className="mb-3">

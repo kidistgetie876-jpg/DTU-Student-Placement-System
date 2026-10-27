@@ -5,24 +5,25 @@
 }
 
 .admin-dashboard .sidebar {
-  background: #0f172a !important;
+  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%) !important;
   position: fixed;
-  left: 12px;
-  top: 124px;
-  width: calc(16.666667% - 24px);
-  height: calc(100vh - 136px);
+  left: 0;
+  top: 112px;
+  width: 16.666667%;
+  height: calc(100vh - 112px);
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 18px;
-  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.2);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   z-index: 1020;
 }
 
 .admin-dashboard .main-content {
   margin-left: 16.666667%;
   width: calc(100% - 16.666667%);
+  min-height: calc(100vh - 112px);
 }
 
 .admin-dashboard .sidebar-brand h4 {
@@ -135,6 +136,14 @@
   border-radius: 0.85rem;
   overflow: hidden;
   border: 1px solid rgba(17, 59, 113, 0.15);
+}
+
+.admin-dashboard .capacity-table-wrap {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .admin-dashboard .dtu-table thead {

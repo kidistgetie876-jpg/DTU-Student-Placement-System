@@ -6,7 +6,7 @@ import api from '../../services/api.js';
 jest.mock('../../services/api.js', () => ({
   __esModule: true,
   default: {
-    defaults: { baseURL: 'http://localhost/student-placement/placement_backend' },
+    defaults: { baseURL: 'http://127.0.0.1:8888/student-placement/placement_backend/' },
     get: jest.fn(),
     post: jest.fn(),
   },
@@ -81,9 +81,13 @@ describe('AdminReports', () => {
 
     render(<AdminReports />);
 
+    expect(await screen.findByText('From Registrar')).toBeInTheDocument();
+    expect(screen.getByText('2026-10-01 10:00:00')).toBeInTheDocument();
+    expect(screen.queryByText('Placement report')).not.toBeInTheDocument();
+    expect(screen.getByText('Please review.')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Download Attachment' }));
     expect(openSpy).toHaveBeenCalledWith(
-      'http://localhost/student-placement/placement_backend/api/common/download_report.php?notification_id=12',
+      'http://127.0.0.1:8888/student-placement/placement_backend/api/common/download_report.php?notification_id=12',
       '_blank',
       'noopener,noreferrer'
     );

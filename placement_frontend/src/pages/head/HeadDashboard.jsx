@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -8,7 +8,6 @@ import api from '../../services/api';
 import './HeadDashboard.css';
 import Reports from './Reports.jsx';
 import Sidebar from '../../components/layout/Sidebar.jsx';
-import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const normalizeDepartment = (dept, index = 0) => {
@@ -17,11 +16,13 @@ const normalizeDepartment = (dept, index = 0) => {
 
   return {
     id: dept?.id ?? dept?.department_id ?? index + 1,
-    name: dept?.name || dept?.department || `Department ${index + 1}`,
+    name: dept?.name || dept?.dept_name || dept?.department || `Department ${index + 1}`,
     description: dept?.description || '',
     stream: dept?.stream || 'Natural',
     college_name: dept?.college_name || dept?.collegeName || dept?.college || 'General',
     capacity,
+    approval_status: String(dept?.approval_status || 'pending').trim().toLowerCase(),
+    is_locked: Number(dept?.is_locked ?? 0) === 1,
     assigned,
     available: Math.max(0, capacity - assigned),
     status: dept?.status || 'active',
@@ -30,81 +31,25 @@ const normalizeDepartment = (dept, index = 0) => {
   };
 };
 
-const defaultDepartments = [
-  {
-    id: 1,
-    name: 'Computer Science',
-    description: 'Department of computing and applied software systems',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 120,
-    assigned: 89,
-    available: 31,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 2,
-    name: 'Software Engineering',
-    description: 'Applied engineering of modern software systems',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 95,
-    assigned: 71,
-    available: 24,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 3,
-    name: 'Business Administration',
-    description: 'Management and strategic business operations',
-    stream: 'Social',
-    college_name: 'College of Business and Economics',
-    capacity: 85,
-    assigned: 64,
-    available: 21,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-  {
-    id: 4,
-    name: 'Nursing',
-    description: 'Health and clinical care professional program',
-    stream: 'Natural',
-    college_name: 'College of Medicine and Health Sciences',
-    capacity: 70,
-    assigned: 53,
-    available: 17,
-    status: 'active',
-    head_id: null,
-    created_at: null,
-  },
-];
+const HEAD_TABS = ['overview', 'approvals', 'capacity', 'students', 'reports'];
 
 const HeadDashboard = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [leader, setLeader] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTabState] = useState('overview');
+  const [tab, setTabState] = useState(() => {
+    const savedTab = localStorage.getItem('activeTab');
+    return HEAD_TABS.includes(savedTab) ? savedTab : 'overview';
+  });
+  const [dashboardError, setDashboardError] = useState('');
   const setTab = (nextTab) => {
+    if (!HEAD_TABS.includes(nextTab)) return;
     localStorage.setItem('activeTab', nextTab);
     setTabState(nextTab);
   };
-  const [department, setDepartment] = useState({
-    name: 'Computer Science',
-    stream: 'Natural',
-    college_name: 'College of Computing and Informatics',
-    capacity: 120,
-    assigned: 89,
-    available: 31,
-    status: 'active',
-  });
-  const [departments, setDepartments] = useState(defaultDepartments);
+  const [department, setDepartment] = useState({});
+  const [departments, setDepartments] = useState([]);
   const [placedStudents, setPlacedStudents] = useState([]);
   const [pendingApprovalStudents, setPendingApprovalStudents] = useState([]);
   const [approvalSavingId, setApprovalSavingId] = useState(null);
@@ -113,17 +58,19 @@ const HeadDashboard = () => {
   const [capacityDraft, setCapacityDraft] = useState({});
   const [capacitySaveMsg, setCapacitySaveMsg] = useState('');
   const [capacitySaveMsgType, setCapacitySaveMsgType] = useState('success');
+  const [capacityLoading, setCapacityLoading] = useState(false);
+  const [capacityError, setCapacityError] = useState('');
+  const [departmentLoading, setDepartmentLoading] = useState(false);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsError, setStudentsError] = useState('');
+  const capacityMessageTimeout = useRef(null);
   const [stats, setStats] = useState({
     totalStudents: 0,
     placedStudents: 0,
     approvalRequests: 0,
     capacityUsed: 0,
   });
-  const [recentPlacements, setRecentPlacements] = useState([
-    { student: 'Amanuel Gebru', program: 'Software Engineering', status: 'Matched' },
-    { student: 'Martha Kassa', program: 'Data Science', status: 'Confirmed' },
-    { student: 'Samuel Tadesse', program: 'Information Systems', status: 'Pending' },
-  ]);
+  const [recentPlacements, setRecentPlacements] = useState([]);
   // State for card detail modals
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'placedStudents', 'approvalRequests', 'capacityUsed'
   const [cardDetailData, setCardDetailData] = useState([]);
@@ -242,7 +189,7 @@ const HeadDashboard = () => {
     try {
       const parsed = JSON.parse(rawUser);
       const role = String(parsed.role || '').trim().toLowerCase();
-      if (['head', 'hod', 'admin', 'coordinator'].includes(role)) {
+      if (['head', 'department_head', 'department head', 'head of department', 'hod', 'admin', 'coordinator'].includes(role)) {
         setLeader(parsed);
       } else {
         navigate('/login');
@@ -256,32 +203,40 @@ const HeadDashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!leader || !['overview', 'students'].includes(tab)) return;
+    if (!leader) return;
 
+    const controller = new AbortController();
+    let isCurrent = true;
     const loadDepartments = async () => {
+      setDepartmentLoading(true);
+      setDashboardError('');
       try {
-        const response = await api.get('api/head/get_head_dashboard.php');
+        const response = await api.get('api/head/get_head_dashboard.php', {
+          signal: controller.signal,
+          withCredentials: true,
+        });
         const responseData = response?.data ?? {};
         if (!responseData.success || !responseData.department) {
           throw new Error(responseData.message || 'No assigned department found');
         }
 
-        const primary = normalizeDepartment(responseData.department);
+        const departmentName = responseData.department.name || responseData.department?.dept_name;
+        const primary = normalizeDepartment({
+          ...responseData.department,
+          name: departmentName,
+        });
         const nextDepartments = [primary];
-        const students = (Array.isArray(responseData.students) ? responseData.students : []).filter((student) => (
-          ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase())
-        ));
-        const pendingStudents = (Array.isArray(responseData.pendingStudents) ? responseData.pendingStudents : []).filter((student) => (
-          String(student.status || '').trim().toLowerCase() === 'pending'
-        ));
+        const students = Array.isArray(responseData.students) ? responseData.students : [];
+        const pendingStudents = Array.isArray(responseData.pendingStudents) ? responseData.pendingStudents : [];
         const pendingCount = pendingStudents.filter((student) => !student.approved_at).length;
 
+        if (!isCurrent) return;
         setDepartments(nextDepartments);
         setDepartment(primary);
         setPlacedStudents(students);
         setPendingApprovalStudents(pendingStudents);
         setStats({
-          totalStudents: Number(primary.assigned ?? (students.length + pendingStudents.length)),
+          totalStudents: students.length + pendingStudents.length,
           placedStudents: students.length,
           approvalRequests: pendingCount,
           capacityUsed: primary.capacity > 0 ? Math.round((Number(primary.assigned ?? 0) / primary.capacity) * 100) : 0,
@@ -292,15 +247,23 @@ const HeadDashboard = () => {
           status: student.status,
         })));
       } catch (error) {
+        if (!isCurrent || error.name === 'CanceledError' || error.code === 'ERR_CANCELED') return;
         console.error('Department load error:', error);
+        setDashboardError(error.response?.data?.message || error.message || 'Unable to load department data.');
         setDepartments([]);
         setPlacedStudents([]);
         setPendingApprovalStudents([]);
         setStats({ totalStudents: 0, placedStudents: 0, approvalRequests: 0, capacityUsed: 0 });
+      } finally {
+        if (isCurrent) setDepartmentLoading(false);
       }
     };
 
     loadDepartments();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [leader, tab]);
 
   useEffect(() => {
@@ -311,14 +274,87 @@ const HeadDashboard = () => {
     setCapacityDraft(draft);
   }, [departments]);
 
+  useEffect(() => {
+    if (!leader || tab !== 'students') return undefined;
+
+    const controller = new AbortController();
+    let isCurrent = true;
+    const loadPlacedStudents = async () => {
+      setStudentsLoading(true);
+      setStudentsError('');
+      try {
+        const response = await api.get('api/head/get_placed_students.php', {
+          signal: controller.signal,
+          withCredentials: true,
+        });
+        if (!response.data?.success || !Array.isArray(response.data.students)) {
+          throw new Error(response.data?.message || 'Unable to load placed students.');
+        }
+        if (isCurrent) setPlacedStudents(response.data.students);
+      } catch (error) {
+        if (!isCurrent || error.name === 'CanceledError' || error.code === 'ERR_CANCELED') return;
+        setStudentsError(error.response?.data?.message || error.message || 'Unable to load placed students.');
+      } finally {
+        if (isCurrent) setStudentsLoading(false);
+      }
+    };
+
+    loadPlacedStudents();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [leader, tab]);
+
+  useEffect(() => {
+    if (!leader || tab !== 'capacity') return undefined;
+
+    const controller = new AbortController();
+    let isCurrent = true;
+    const loadDepartmentCapacity = async () => {
+      setCapacityLoading(true);
+      setCapacityError('');
+      try {
+        const response = await api.get('api/head/get_department_capacity.php', {
+          signal: controller.signal,
+          withCredentials: true,
+        });
+        if (!response.data?.success || !response.data.department) {
+          throw new Error(response.data?.message || 'Unable to load department capacity.');
+        }
+        if (!isCurrent) return;
+        const assignedDepartment = normalizeDepartment(response.data.department);
+        setDepartment(assignedDepartment);
+        setDepartments([assignedDepartment]);
+      } catch (error) {
+        if (!isCurrent || error.name === 'CanceledError' || error.code === 'ERR_CANCELED') return;
+        setCapacityError(error.response?.data?.message || error.message || 'Unable to load department capacity.');
+      } finally {
+        if (isCurrent) setCapacityLoading(false);
+      }
+    };
+
+    loadDepartmentCapacity();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [leader, tab]);
+
+  useEffect(() => () => {
+    window.clearTimeout(capacityMessageTimeout.current);
+  }, []);
+
   const saveCapacityPlan = async () => {
     setCapacitySaveMsg('');
     try {
       const updatedDepartments = departments.map((dept) => {
         const nextCapacity = Number(capacityDraft[dept.id] ?? dept.capacity ?? 0);
+        const capacityChanged = nextCapacity !== Number(dept.capacity ?? 0);
         return {
           ...dept,
           capacity: nextCapacity,
+          approval_status: capacityChanged ? 'pending' : dept.approval_status,
           available: Math.max(0, nextCapacity - Number(dept.assigned || 0)),
           college_name: dept.college_name || dept.faculty || 'General',
           stream: dept.stream || 'Natural',
@@ -326,10 +362,8 @@ const HeadDashboard = () => {
         };
       });
 
-      setDepartments(updatedDepartments);
-
       const payload = {
-        departments: updatedDepartments.map((dept) => ({
+        departments: updatedDepartments.filter((dept) => !dept.is_locked).map((dept) => ({
           id: dept.id,
           name: dept.name,
           capacity: Number(dept.capacity || 0),
@@ -343,14 +377,20 @@ const HeadDashboard = () => {
       };
 
       try {
-        await api.post('api/common/departments_update.php', payload);
+        const response = await api.post('api/common/departments_update.php', payload, {
+          withCredentials: true,
+        });
+        if (!response.data?.success) {
+          throw new Error(response.data?.message || 'Unable to save capacity plan.');
+        }
+        setDepartments(updatedDepartments);
+        setDepartment(updatedDepartments[0] || department);
         setCapacitySaveMsg('Capacity plan saved successfully.');
         setCapacitySaveMsgType('success');
       } catch (error) {
         console.error('departments_update.php save failed:', error);
-        localStorage.setItem('headCapacityPlan', JSON.stringify(payload.departments));
-        setCapacitySaveMsg('Saved locally. Backend unavailable.');
-        setCapacitySaveMsgType('warning');
+        setCapacitySaveMsg(error.response?.data?.message || error.message || 'Unable to save capacity plan.');
+        setCapacitySaveMsgType('danger');
       }
     } catch (error) {
       console.error('saveCapacityPlan error:', error);
@@ -358,7 +398,11 @@ const HeadDashboard = () => {
       setCapacitySaveMsgType('danger');
     }
 
-    setTimeout(() => setCapacitySaveMsg(''), 3000);
+    window.clearTimeout(capacityMessageTimeout.current);
+    capacityMessageTimeout.current = window.setTimeout(() => {
+      setCapacitySaveMsg('');
+      capacityMessageTimeout.current = null;
+    }, 3000);
   };
 
   const approvePlacement = async (placement) => {
@@ -366,16 +410,35 @@ const HeadDashboard = () => {
     setApprovalError('');
     setApprovalErrorId(null);
     try {
-      const response = await api.post('api/head/head_approval.php', {
+      const response = await api.post('api/head/approve_placement.php', {
         placement_id: placement.placement_id,
+        student_id: placement.student_id,
+        admission_number: placement.id_number,
+        department_id: department.id,
+      }, {
+        withCredentials: true,
       });
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to approve placement.');
       }
 
-      setPendingApprovalStudents((current) => current.map((student) => student.placement_id === placement.placement_id
-        ? { ...student, approved_at: new Date().toISOString() }
-        : student));
+      const approvedPlacement = {
+        ...placement,
+        status: 'Approved',
+        approved_at: new Date().toISOString(),
+      };
+      setPendingApprovalStudents((current) => current.filter(
+        (student) => student.placement_id !== placement.placement_id
+      ));
+      setPlacedStudents((current) => [
+        approvedPlacement,
+        ...current.filter((student) => student.placement_id !== placement.placement_id),
+      ]);
+      setRecentPlacements((current) => [{
+        student: placement.username || placement.id_number || `Student ${placement.student_id}`,
+        program: placement.dept_name || department.name,
+        status: 'Approved',
+      }, ...current.filter((item) => item.student !== placement.username)].slice(0, 5));
       setStats((current) => ({ ...current, approvalRequests: Math.max(0, current.approvalRequests - 1) }));
     } catch (error) {
       setApprovalError(error.response?.data?.message || error.message || 'Unable to approve placement.');
@@ -409,7 +472,7 @@ const HeadDashboard = () => {
       } else if (cardType === 'placedStudents') {
         // Show only finalized placements
         data = placedStudents
-          .filter((student) => ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase()))
+          .filter((student) => ['approved', 'published', 'placed'].includes(String(student.status || '').trim().toLowerCase()))
           .slice(0, 20)
           .map((student, idx) => ({
             id: idx + 1,
@@ -455,24 +518,31 @@ const HeadDashboard = () => {
   };
 
   if (loading || !leader) {
-    return <div className="text-center mt-5">Loading dashboard…</div>;
+    return (
+      <div className="d-flex justify-content-center align-items-center gap-2 mt-5 text-muted" role="status">
+        <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+        <span>Loading dashboard…</span>
+      </div>
+    );
   }
 
   return (
-    <div className="head-dashboard container-fluid px-0">
-      <div className="row g-0">
+    <div className="head-dashboard container-fluid px-0 min-h-screen d-flex flex-column">
+      <div className="row g-0 flex-grow-1">
         <Sidebar role="head" activeItem={tab} onSelect={setTab} />
 
         <main className="col-xl-10 p-5 main-section">
-          <DashboardHeader
-            variant="welcome"
-            username={leader.username}
-            role="Head of Department"
-            subtitle="Track placement progress, approve department allocations, and monitor student outcomes."
-            dashboardPath="/head-dashboard"
-            onSelectTab={setTab}
-          />
-
+          {departmentLoading && (
+            <div className="d-flex align-items-center gap-2 text-muted small mb-3" role="status">
+              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span>Loading department data…</span>
+            </div>
+          )}
+          {dashboardError && (
+            <div className="alert alert-warning py-2" role="alert">
+              {dashboardError}
+            </div>
+          )}
           {tab === 'overview' && (
             <>
               <div className="row g-4 mb-4">
@@ -548,7 +618,7 @@ const HeadDashboard = () => {
                             e.stopPropagation();
                             setCardDetailModal('placedStudents');
                             setCardDetailData(placedStudents
-                              .filter((student) => ['approved', 'published'].includes(String(student.status || '').trim().toLowerCase()))
+                              .filter((student) => ['approved', 'published', 'placed'].includes(String(student.status || '').trim().toLowerCase()))
                               .map((student, idx) => ({
                                 id: idx + 1,
                                 username: student.username || 'N/A',
@@ -911,6 +981,13 @@ const HeadDashboard = () => {
               <div className="card-body">
                 <h5 className="card-title mb-3">Capacity Planning</h5>
                 <p className="text-muted">Review the current intake capacity and update department quotas for the next cycle.</p>
+                {capacityError && <div className="alert alert-warning py-2" role="alert">{capacityError}</div>}
+                {capacityLoading && (
+                  <div className="d-flex align-items-center gap-2 text-muted small mb-3" role="status">
+                    <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                    <span>Loading department capacity…</span>
+                  </div>
+                )}
 
                 <div className="table-responsive">
                   <table className="table align-middle">
@@ -933,7 +1010,11 @@ const HeadDashboard = () => {
                             <tr key={dept.id}>
                               <td>
                                 <div className="fw-semibold">{dept.name}</div>
-                                <small className="text-muted">{dept.status || 'active'}</small>
+                                {dept.approval_status === 'reopened'
+                                  ? <span className="badge bg-info text-dark mt-1">Unlocked for Editing</span>
+                                  : dept.is_locked
+                                    ? <span className="badge bg-success mt-1">Approved &amp; Locked by Registrar</span>
+                                    : <small className="text-muted">{dept.status || 'active'} · Pending Registrar approval</small>}
                               </td>
                               <td>{dept.college_name}</td>
                               <td>{dept.stream}</td>
@@ -942,12 +1023,14 @@ const HeadDashboard = () => {
                                 <input
                                   type="number"
                                   min="0"
-                                  className="form-control"
+                                  className="form-control px-2 py-1 text-center fw-medium"
+                                  style={{ width: '6rem', minWidth: '6rem' }}
                                   value={draftCapacity}
                                   onChange={(e) => {
                                     const nextValue = Number(e.target.value || 0);
                                     setCapacityDraft((prev) => ({ ...prev, [dept.id]: nextValue }));
                                   }}
+                                  disabled={dept.is_locked}
                                 />
                               </td>
                               <td>
@@ -966,12 +1049,14 @@ const HeadDashboard = () => {
                   <button
                     className="btn btn-primary"
                     onClick={saveCapacityPlan}
+                    disabled={departments.length === 0 || departments.every((dept) => dept.is_locked)}
                   >
                     Save Capacity Plan
                   </button>
 
                   <button
                     className="btn btn-outline-secondary"
+                    disabled={departments.length === 0 || departments.every((dept) => dept.is_locked)}
                     onClick={() => {
                       const resetDraft = {};
                       departments.forEach((dept) => {
@@ -996,6 +1081,13 @@ const HeadDashboard = () => {
           {tab === 'students' && (
             <div className="card analytics-card head-student-roster-print">
               <div className="card-body">
+                {studentsError && <div className="alert alert-warning py-2" role="alert">{studentsError}</div>}
+                {studentsLoading && (
+                  <div className="d-flex align-items-center gap-2 text-muted small mb-3" role="status">
+                    <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                    <span>Loading placed students…</span>
+                  </div>
+                )}
                 <OfficialPrintLetterhead
                   office={`${(department.college_name || 'General').toUpperCase()} — DEPARTMENT OF ${(department.name || 'DEPARTMENT').toUpperCase()}`}
                   title="OFFICIAL STUDENT DEPARTMENT PLACEMENT ROSTER"
@@ -1038,7 +1130,7 @@ const HeadDashboard = () => {
                           const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
                           const gender = String(student.gender || '').toLowerCase();
                           const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
-                          const approved = ['approved', 'published'].includes(String(student.status || '').toLowerCase());
+                          const approved = ['approved', 'published', 'placed'].includes(String(student.status || '').toLowerCase());
 
                           return (
                             <tr key={`${student.student_id}-${student.email}`}>
@@ -1059,8 +1151,8 @@ const HeadDashboard = () => {
                               </td>
                               <td><span className="badge bg-primary">{Number.isFinite(Number(student.gpa)) ? Number(student.gpa).toFixed(2) : '—'}</span></td>
                               <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
-                              <td>{student.choice_rank ? `Choice #${student.choice_rank}` : '—'}</td>
-                              <td><span className={`badge ${hasDisability ? 'bg-danger' : 'bg-secondary'}`}>{hasDisability ? 'Yes' : 'No'}</span></td>
+                              <td>{student.choice_rank ? <span className="badge badge-choice">Choice {student.choice_rank}</span> : '—'}</td>
+                              <td><span className={`badge ${hasDisability ? 'badge-disability' : 'bg-secondary'}`}>{hasDisability ? 'Yes' : 'No'}</span></td>
                               <td>{student.phone || '-'}</td>
                               <td><span className={`badge ${approved ? 'bg-success' : 'bg-warning text-dark'}`}>{student.status || 'Pending'}</span></td>
                             </tr>
@@ -1082,33 +1174,7 @@ const HeadDashboard = () => {
           )}
 
           {tab === 'reports' && (
-            <div className="row g-4">
-              <div className="col-md-6">
-                <div className="card analytics-card h-100">
-                  <div className="card-body">
-                    <h5 className="card-title">Placement Trend</h5>
-                    <p className="text-muted mb-0">Current placement performance for {department.name}.</p>
-                    <div className="chart-placeholder">{stats.placedStudents} of {department.capacity} seats assigned</div>
-                  </div>
-                </div>
-              </div>
-              <div className="col-md-6">
-                <div className="card analytics-card h-100">
-                  <div className="card-body">
-                    <h5 className="card-title">Action Summary</h5>
-                    <ul className="overview-list">
-                      <li><span>Department</span><strong>{department.name}</strong></li>
-                      <li><span>Placed students</span><strong>{stats.placedStudents}</strong></li>
-                      <li><span>Pending approvals</span><strong>{stats.approvalRequests}</strong></li>
-                      <li><span>Available seats</span><strong>{department.available}</strong></li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              <div className="col-12">
-                <Reports leader={leader} department={department} students={placedStudents} />
-              </div>
-            </div>
+            <Reports leader={leader} department={department} students={placedStudents} />
           )}
 
         </main>

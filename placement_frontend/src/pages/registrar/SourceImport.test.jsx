@@ -7,7 +7,7 @@ describe('source import spreadsheet formats', () => {
     const parsed = parseSourceImportGrid([
       ['Debre Tabor University MoSHE Placement File'],
       ministryImportColumns.map(({ header }) => header.toUpperCase()),
-      ['DTU/001', 'Afar', 'Sara', 'Kebede', 'Abebe', 'Female', '88', 'Developing Region', 'Medicine'],
+      ['DTU/001', 'Afar', 'Sara', 'Kebede', 'Abebe', 'Female', '88', 'Yes', 'No', 'Medicine'],
     ], ministryImportColumns);
 
     expect(parsed.headersFound).toBe(true);
@@ -19,15 +19,16 @@ describe('source import spreadsheet formats', () => {
       GrandFatherName: 'Abebe',
       Sex: 'Female',
       TotalMark: '88',
-      BenefitGroup: 'Developing Region',
-      FieldOfstudy: 'Medicine',
+      Minority: 'Yes',
+      Disability: 'No',
+      FieldOfStudy: 'Medicine',
     }]);
   });
 
-  it('accepts snake_case MoSHE headers from CSV exports', () => {
+  it('accepts case-insensitive snake_case MoSHE headers from CSV exports', () => {
     const parsed = parseSourceImportGrid([
-      ['admission_number', 'region', 'given_name', 'father_name', 'grandfather_name', 'sex', 'total_mark', 'benefit_group', 'field_of_study'],
-      ['DTU/002', 'Amhara', 'Abebe', 'Kebede', 'Tadesse', 'Male', '480', 'Disability', 'Engineering'],
+      ['ADMISSION_NUMBER', 'Region', 'given_name', 'FATHER_NAME', 'grandfather_name', 'SEX', 'total_mark', 'minority', 'DISABILITY', 'field_of_study'],
+      ['DTU/002', 'Amhara', 'Abebe', 'Kebede', 'Tadesse', 'Male', '480', 'No', 'Yes', 'Engineering'],
     ], ministryImportColumns);
 
     expect(parsed.headersFound).toBe(true);
@@ -39,9 +40,19 @@ describe('source import spreadsheet formats', () => {
       GrandFatherName: 'Tadesse',
       Sex: 'Male',
       TotalMark: '480',
-      BenefitGroup: 'Disability',
-      FieldOfstudy: 'Engineering',
+      Minority: 'No',
+      Disability: 'Yes',
+      FieldOfStudy: 'Engineering',
     });
+  });
+
+  it('does not accept the deprecated BenefitGroup column in place of Minority and Disability', () => {
+    const parsed = parseSourceImportGrid([
+      ['AdmissionNumber', 'Region', 'GivenName', 'FatherName', 'GrandFatherName', 'Sex', 'TotalMark', 'BenefitGroup', 'FieldOfStudy'],
+      ['DTU/003', 'Afar', 'Sara', 'Kebede', 'Abebe', 'Female', '88', 'Developing Region', 'Medicine'],
+    ], ministryImportColumns);
+
+    expect(parsed).toEqual({ headersFound: false, rows: [] });
   });
 
   it('parses the required SIMS score fields without optional registrar columns', () => {

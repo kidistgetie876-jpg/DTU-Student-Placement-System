@@ -89,69 +89,47 @@ describe('UnassignedStudents', () => {
     expect(screen.getByText('Full selected departments: Law')).toBeInTheDocument();
   });
 
-  test('submits meeting details and shows the success response', async () => {
-    api.get.mockResolvedValue({ data: { success: true, students: [{ studentId: 4 }] } });
-    api.post.mockResolvedValue({
-      data: { success: true, message: 'Notification successfully sent to All 1 Unassigned Students' },
-    });
-
-    render(<UnassignedStudents />);
-
-    await screen.findByRole('button', { name: /send meeting notifications \(1\)/i });
-    fireEvent.change(screen.getByLabelText('Meeting date'), { target: { value: new Date().toISOString().slice(0, 10) } });
-    fireEvent.change(screen.getByLabelText('Meeting time'), { target: { value: '09:30' } });
-    fireEvent.change(screen.getByLabelText('Location or meeting link'), { target: { value: 'Registrar office' } });
-    fireEvent.change(screen.getByLabelText('Additional message (optional)'), { target: { value: 'Please bring your transcript.' } });
-    fireEvent.click(screen.getByRole('button', { name: /send meeting notifications \(1\)/i }));
-
-    await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('api/registrar/unassigned_students_api.php', {
-        meeting_date: new Date().toISOString().slice(0, 10),
-        meeting_time: '09:30',
-        location: 'Registrar office',
-        message: 'Please bring your transcript.',
-        target_type: 'all',
-      });
-    });
-    expect(await screen.findByRole('status')).toHaveTextContent('Notification successfully sent to All 1 Unassigned Students');
-  });
-
-  test('sends the notification to only the selected unassigned student', async () => {
+  test('shows the resolved college and backend unassignment explanation in the reason alert', async () => {
     api.get.mockResolvedValue({
       data: {
         success: true,
-        students: [{
-          studentId: 4,
-          idNumber: 'DTU-004',
-          fullName: 'Aster Tesfaye',
-        }],
+        students: [
+          {
+            studentId: 7,
+            fullName: 'Hana Bekele',
+            college_name: 'College of Health Science',
+            college: 'Legacy College',
+            reasonCode: 'NO_CHOICES',
+            unassigned_reason: 'Did not submit department choices',
+          },
+          {
+            studentId: 8,
+            fullName: 'Dawit Abebe',
+            reasonCode: 'NO_CHOICES',
+            unassigned_reason: 'Did not submit department choices',
+          },
+        ],
       },
-    });
-    api.post.mockResolvedValue({
-      data: { success: true, message: 'Notification successfully sent to Aster Tesfaye' },
     });
 
     render(<UnassignedStudents />);
 
-    await screen.findByRole('button', { name: /send meeting notifications \(1\)/i });
-    fireEvent.change(screen.getByLabelText('Send target'), { target: { value: 'individual' } });
-    fireEvent.change(screen.getByLabelText('Student'), { target: { value: '4' } });
-    fireEvent.change(screen.getByLabelText('Meeting date'), { target: { value: new Date().toISOString().slice(0, 10) } });
-    fireEvent.change(screen.getByLabelText('Meeting time'), { target: { value: '09:30' } });
-    fireEvent.change(screen.getByLabelText('Location or meeting link'), { target: { value: 'Registrar office' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send Meeting Notification' }));
+    expect(await screen.findByText('College of Health Science')).toBeInTheDocument();
+    expect(screen.getByText('Did not submit department choices')).toHaveClass('unassigned-reason-alert');
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+  });
 
-    await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('api/registrar/unassigned_students_api.php', {
-        meeting_date: new Date().toISOString().slice(0, 10),
-        meeting_time: '09:30',
-        location: 'Registrar office',
-        message: '',
-        target_type: 'individual',
-        student_id: '4',
-      });
-    });
-    expect(await screen.findByRole('status')).toHaveTextContent('Notification successfully sent to Aster Tesfaye');
+  test('shows the compact heading and does not render meeting notification controls', async () => {
+    api.get.mockResolvedValue({ data: { success: true, students: [] } });
+
+    render(<UnassignedStudents />);
+
+    expect(await screen.findByText('There are no unassigned students to display.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Unassigned Students', level: 1 })).toHaveClass('text-2xl', 'text-slate-800');
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download Unassigned Report' })).toBeInTheDocument();
+    expect(screen.queryByText(/Student portal meeting notification/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Meeting date|Meeting time|Location or meeting link/i)).not.toBeInTheDocument();
   });
 
   test('manually assigns an unassigned student to a department with capacity', async () => {
@@ -197,6 +175,51 @@ describe('UnassignedStudents', () => {
     });
     expect(await screen.findByText('Aster Tesfaye was assigned to Computer Science and is pending department approval.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Manually Assign' })).not.toBeInTheDocument();
+  });
+
+  test('manually assigns an unlinked student by admission number', async () => {
+    api.get
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          students: [{
+            studentId: 'DTU16R2014',
+            admissionNumber: 'DTU16R2014',
+            idNumber: 'DTU16R2014',
+            fullName: 'Marta Tesfaye',
+            stream: 'Natural Science',
+            accountLinked: false,
+          }],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          departments: [{ id: 3, name: 'Computer Science', available: 1 }],
+        },
+      })
+      .mockResolvedValueOnce({ data: { success: true, students: [] } });
+    api.post.mockResolvedValue({
+      data: { success: true, message: 'Marta Tesfaye was assigned to Computer Science.' },
+    });
+
+    render(<UnassignedStudents />);
+
+    expect(await screen.findByText('Portal account not linked')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Manually Assign' }));
+    await screen.findByRole('option', { name: 'Computer Science (1 seats left)' });
+    expect(api.get).toHaveBeenNthCalledWith(2, 'api/registrar/assign_manual_student.php', {
+      params: { admission_number: 'DTU16R2014' },
+    });
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Assignment' }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('api/registrar/assign_manual_student.php', {
+        admission_number: 'DTU16R2014',
+        department_id: 3,
+      });
+    });
   });
 
   test('shows an error when loading the list fails', async () => {

@@ -50,7 +50,7 @@ describe('ManageUsers', () => {
             first_name: 'Alicia',
             last_name: 'Jones',
             username: 'alice2',
-            email: 'alice2@example.com',
+            email: 'alice2@gmail.com',
             role: 'admin',
           }],
         },
@@ -77,7 +77,7 @@ describe('ManageUsers', () => {
     const roleSelect = screen.getByLabelText(/role/i);
 
     fireEvent.change(usernameInput, { target: { value: 'alice2' } });
-    fireEvent.change(emailInput, { target: { value: 'alice2@example.com' } });
+    fireEvent.change(emailInput, { target: { value: 'alice2@gmail.com' } });
     fireEvent.change(roleSelect, { target: { value: 'admin' } });
 
     fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
@@ -116,7 +116,7 @@ describe('ManageUsers', () => {
     expect(await screen.findByText('1')).toBeInTheDocument();
   });
 
-  it('generates an editable ID for the selected role', async () => {
+  it('offers only staff roles and generates editable IDs for the selected role', async () => {
     api.get.mockResolvedValue({
       data: {
         users: [
@@ -135,9 +135,12 @@ describe('ManageUsers', () => {
     );
 
     const roleSelect = screen.getByLabelText('Role');
-    const idInput = await screen.findByLabelText('Student ID (DTU Format)');
-    await waitFor(() => expect(idInput).toHaveValue('DTU16R1002'));
-    expect(idInput).not.toHaveAttribute('readonly');
+    expect(roleSelect).toHaveValue('registrar');
+    expect(screen.getAllByRole('option').map((option) => option.value)).toEqual(['head', 'admin', 'registrar']);
+    expect(screen.queryByRole('option', { name: 'Student' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Student ID (DTU Format)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Students' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Registrar ID (Staff Format)')).toHaveValue('DTU-REG-008'));
 
     fireEvent.change(roleSelect, { target: { value: 'head' } });
     expect(await screen.findByLabelText('Head of Dept ID (Staff Format)')).toHaveValue('DTU-HOD-003');
@@ -154,7 +157,7 @@ describe('ManageUsers', () => {
     expect(screen.getByText('DTU-ADM-009')).toBeInTheDocument();
   });
 
-  it('sends the selected role ID when creating a user', async () => {
+  it('sends the required Gmail address and selected role ID when creating a user', async () => {
     api.post.mockResolvedValue({ data: { success: true } });
 
     render(
@@ -167,6 +170,7 @@ describe('ManageUsers', () => {
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Morgan' } });
     fireEvent.change(screen.getByLabelText('Username', { selector: 'input' }), { target: { value: 'taylor' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'securepw' } });
+    fireEvent.change(screen.getByLabelText('Email Address *'), { target: { value: 'taylor@gmail.com' } });
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'head' } });
     await screen.findByLabelText('Head of Dept ID (Staff Format)');
 
@@ -178,11 +182,116 @@ describe('ManageUsers', () => {
         last_name: 'Morgan',
         username: 'taylor',
         password: 'securepw',
-        email: '',
+        email: 'taylor@gmail.com',
         role: 'head',
         phone_number: '',
         id_number: 'DTU-HOD-001',
       });
     });
+
+  });
+
+  it('requires a valid Gmail address before creating a user', async () => {
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByLabelText('Email Address *');
+    expect(emailInput).toBeRequired();
+    fireEvent.change(emailInput, { target: { value: 'taylor@example.com' } });
+    fireEvent.submit(emailInput.closest('form'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A valid @gmail.com address is required.');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('prevents user creation when the password is shorter than eight characters', async () => {
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    const passwordInput = screen.getByLabelText('Password');
+    expect(passwordInput).toHaveAttribute('minLength', '8');
+    fireEvent.change(passwordInput, { target: { value: 'seven77' } });
+    fireEvent.submit(passwordInput.closest('form'));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Password must be at least 8 characters long.');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('shows the Gmail requirement when the email field is empty', async () => {
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    const emailInput = screen.getByLabelText('Email Address *');
+    expect(emailInput).toBeRequired();
+    fireEvent.invalid(emailInput);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A valid @gmail.com address is required.');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('shows a clear message when the phone number is already registered', async () => {
+    api.post.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          success: false,
+          message: 'Phone number already exists in the system.',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Taylor' } });
+    fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Morgan' } });
+    fireEvent.change(screen.getByLabelText('Username', { selector: 'input' }), { target: { value: 'taylor' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'securepw' } });
+    fireEvent.change(screen.getByLabelText('Email Address *'), { target: { value: 'taylor@gmail.com' } });
+    fireEvent.change(screen.getByLabelText('Phone Number'), { target: { value: '0912345678' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This phone number is already registered.');
+  });
+
+  it('shows a clear message when the Gmail address is already registered', async () => {
+    api.post.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          success: false,
+          message: 'This email address is already registered.',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Taylor' } });
+    fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Morgan' } });
+    fireEvent.change(screen.getByLabelText('Username', { selector: 'input' }), { target: { value: 'taylor' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'securepw' } });
+    fireEvent.change(screen.getByLabelText('Email Address *'), { target: { value: 'taylor@gmail.com' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This email address is already registered.');
   });
 });

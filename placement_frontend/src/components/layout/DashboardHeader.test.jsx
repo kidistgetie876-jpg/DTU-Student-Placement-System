@@ -6,26 +6,29 @@ import DashboardHeader from './DashboardHeader.jsx';
 import Header from './Header.jsx';
 import { LanguageProvider } from '../../contexts/LanguageContext.jsx';
 import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
+import { AuthProvider } from '../../contexts/AuthContext.jsx';
 
 const renderDashboardHeader = (props = {}) => render(
   <MemoryRouter initialEntries={['/dashboard']}>
     <ThemeProvider>
       <LanguageProvider>
-        <Routes>
-          <Route
-            path="/dashboard"
-            element={(
-              <DashboardHeader
-                username="Aster"
-                role="Registrar"
-                subtitle="Review placements, departments, and approvals."
-                dashboardPath="/dashboard"
-                {...props}
-              />
-            )}
-          />
-          <Route path="/login" element={<div>Login destination</div>} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/dashboard"
+              element={(
+                <DashboardHeader
+                  username="Aster"
+                  role="Registrar"
+                  subtitle="Review placements, departments, and approvals."
+                  dashboardPath="/dashboard"
+                  {...props}
+                />
+              )}
+            />
+            <Route path="/login" element={<div>Login destination</div>} />
+          </Routes>
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   </MemoryRouter>
@@ -35,9 +38,11 @@ const renderGlobalDashboardHeader = () => render(
   <MemoryRouter initialEntries={['/registrar-dashboard/overview']}>
     <ThemeProvider>
       <LanguageProvider>
-        <Routes>
-          <Route path="/registrar-dashboard/overview" element={<Header />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/registrar-dashboard/overview" element={<Header />} />
+          </Routes>
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   </MemoryRouter>
@@ -72,7 +77,7 @@ describe('DashboardHeader', () => {
               last_name: 'Gebre',
               full_name: 'Aster Gebre',
               username: 'Aster',
-              email: 'aster@example.com',
+              email: 'aster@gmail.com',
               role: 'registrar',
             },
           }
@@ -87,7 +92,7 @@ describe('DashboardHeader', () => {
       first_name: 'Aster',
       last_name: 'Gebre',
       username: 'Aster',
-      email: 'aster@example.com',
+      email: 'aster@gmail.com',
       role: 'registrar',
     }));
   });
@@ -129,26 +134,39 @@ describe('DashboardHeader', () => {
     renderDashboardHeader();
 
     expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
 
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toBeInTheDocument();
     const profileMenu = screen.getByRole('menu', { name: 'User profile menu' });
     expect(within(profileMenu).getByText('Aster Gebre')).toBeInTheDocument();
-    expect(within(profileMenu).getByText('aster@example.com')).toBeInTheDocument();
+    expect(within(profileMenu).getByText('aster@gmail.com')).toBeInTheDocument();
     expect(screen.getByText('Registrar')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'My Dashboard' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'View Profile / Edit Profile' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Edit Profile' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Change Password' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Dashboard Settings' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Profile' }));
+    expect(screen.getByRole('dialog', { name: 'Edit Profile' })).toBeInTheDocument();
   });
 
   it('loads the profile from the authenticated profile API', async () => {
     renderDashboardHeader();
 
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('api/common/get_profile.php'));
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toHaveTextContent('Aster Gebre');
     expect(screen.getByRole('menu', { name: 'User profile menu' })).toHaveTextContent('Registrar');
+  });
+
+  it('clears stale local authentication and returns to login when the PHP session is missing', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, role: 'registrar' }));
+    api.get.mockRejectedValue({ response: { status: 401 } });
+
+    renderDashboardHeader();
+
+    expect(await screen.findByText('Login destination')).toBeInTheDocument();
+    expect(localStorage.getItem('user')).toBeNull();
   });
 
   it('loads unread notifications, marks a selected notification and supports mark all read', async () => {
@@ -162,7 +180,7 @@ describe('DashboardHeader', () => {
               last_name: 'Gebre',
               full_name: 'Aster Gebre',
               username: 'Aster',
-              email: 'aster@example.com',
+              email: 'aster@gmail.com',
               role: 'registrar',
             },
           }
@@ -180,7 +198,10 @@ describe('DashboardHeader', () => {
     renderDashboardHeader({ variant: 'navigation' });
 
     const bellButton = await screen.findByRole('button', { name: 'Notifications (2)' });
-    expect(api.get).toHaveBeenCalledWith('api/common/get_notifications.php');
+    expect(api.get).toHaveBeenCalledWith('api/common/get_notifications.php', {
+      params: {},
+      withCredentials: true,
+    });
     fireEvent.click(bellButton);
     expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /First alert/ }));
@@ -189,11 +210,15 @@ describe('DashboardHeader', () => {
     expect(postSpy).toHaveBeenCalledWith('api/common/mark_notifications_read.php', {
       notification_id: 31,
       notification_type: 'general',
-    });
+    }, { withCredentials: true });
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })).toBeInTheDocument());
-    expect(postSpy).toHaveBeenCalledWith('api/common/mark_notifications_read.php', { mark_all: true });
+    expect(postSpy).toHaveBeenCalledWith(
+      'api/common/mark_notifications_read.php',
+      { mark_all: true },
+      { withCredentials: true },
+    );
     expect(screen.queryByRole('button', { name: 'Notifications (0)' })).not.toBeInTheDocument();
   });
 
@@ -204,30 +229,50 @@ describe('DashboardHeader', () => {
       last_name: 'Abebe',
       full_name: 'Aster Abebe',
       username: 'Aster',
-      email: 'aster.abebe@example.com',
+      email: 'aster.abebe@gmail.com',
       role: 'registrar',
     };
     jest.spyOn(api, 'post').mockResolvedValue({
-      data: { success: true, message: 'Profile updated successfully.', profile: updatedProfile },
+      data: { success: true, message: 'Profile updated successfully.', user: updatedProfile },
     });
     renderDashboardHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'View Profile / Edit Profile' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Profile' }));
     fireEvent.change(screen.getByLabelText('Full Name'), { target: { value: 'Aster Abebe' } });
-    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'aster.abebe@example.com' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'aster.abebe@gmail.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       'api/common/update_profile.php',
       expect.any(FormData),
-      { headers: { 'Content-Type': 'multipart/form-data' } }
+      { headers: { Accept: 'application/json' } }
     ));
     const formData = api.post.mock.calls[0][1];
     expect(formData.get('full_name')).toBe('Aster Abebe');
-    expect(formData.get('email')).toBe('aster.abebe@example.com');
+    expect(formData.get('email')).toBe('aster.abebe@gmail.com');
     expect(await screen.findByRole('status')).toHaveTextContent('Profile updated successfully.');
-    expect(localStorage.getItem('user')).toContain('aster.abebe@example.com');
+    expect(screen.queryByRole('dialog', { name: 'Edit Profile' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aster Abebe, aster.abebe@gmail.com' })).toBeInTheDocument();
+    expect(screen.getByText('Aster Abebe')).toBeInTheDocument();
+    expect(localStorage.getItem('user')).toContain('aster.abebe@gmail.com');
+    expect(JSON.parse(localStorage.getItem('user'))).toEqual(expect.objectContaining({
+      full_name: 'Aster Abebe',
+      email: 'aster.abebe@gmail.com',
+    }));
+  });
+
+  it('rejects non-Gmail profile addresses before calling the profile API', async () => {
+    const postSpy = jest.spyOn(api, 'post');
+    renderDashboardHeader();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Profile' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'aster@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A valid @gmail.com address is required.');
+    expect(postSpy).not.toHaveBeenCalled();
   });
 
   it('previews and uploads a validated profile photo', async () => {
@@ -244,7 +289,7 @@ describe('DashboardHeader', () => {
           first_name: 'Aster',
           last_name: 'Gebre',
           username: 'Aster',
-          email: 'aster@example.com',
+          email: 'aster@gmail.com',
           role: 'registrar',
           profile_photo: 'uploads/profile-photos/0123456789abcdef0123456789abcdef.png',
         },
@@ -252,8 +297,8 @@ describe('DashboardHeader', () => {
     });
     renderDashboardHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'View Profile / Edit Profile' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Profile' }));
     fireEvent.change(screen.getByLabelText('Profile Photo'), { target: { files: [photo] } });
     expect(await screen.findByAltText('Profile preview')).toHaveAttribute('src', expect.stringContaining('blob:'));
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
@@ -261,10 +306,11 @@ describe('DashboardHeader', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       'api/common/update_profile.php',
       expect.any(FormData),
-      { headers: { 'Content-Type': 'multipart/form-data' } }
+      { headers: { Accept: 'application/json' } }
     ));
     expect(api.post.mock.calls[0][1].get('profile_photo')).toBe(photo);
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    expect(screen.queryByRole('dialog', { name: 'Edit Profile' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     const displayedPhotos = document.querySelectorAll('.dashboard-profile-avatar img');
     expect(displayedPhotos).toHaveLength(2);
     expect(displayedPhotos[0].getAttribute('src')).toContain('uploads/profile-photos/0123456789abcdef0123456789abcdef.png');
@@ -297,7 +343,7 @@ describe('DashboardHeader', () => {
     });
     renderDashboardHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Change Password' }));
     expect(document.body.querySelector('.dashboard-modal-backdrop')).toBeInTheDocument();
     expect(document.querySelector('.main-header-container .dashboard-modal-backdrop')).toBeNull();
@@ -317,7 +363,7 @@ describe('DashboardHeader', () => {
   it('toggles visibility for each Change Password field', () => {
     renderDashboardHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Change Password' }));
 
     const currentPassword = screen.getByLabelText('Current Password');
@@ -333,7 +379,7 @@ describe('DashboardHeader', () => {
   it('opens theme and language settings from the profile menu', () => {
     renderDashboardHeader();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Dashboard Settings' }));
     expect(screen.getByRole('dialog', { name: 'Dashboard Settings' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Eye Care' }));
@@ -348,7 +394,7 @@ describe('DashboardHeader', () => {
     sessionStorage.setItem('authToken', 'session-token');
 
     renderDashboardHeader();
-    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@example.com' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sign Out' }));
 
     expect(await screen.findByText('Login destination')).toBeInTheDocument();

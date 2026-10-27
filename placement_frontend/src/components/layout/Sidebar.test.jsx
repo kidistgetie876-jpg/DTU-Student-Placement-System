@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import Sidebar from './Sidebar.jsx';
 import { LanguageProvider } from '../../contexts/LanguageContext.jsx';
 import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
+import { AuthProvider } from '../../contexts/AuthContext.jsx';
 import DashboardHeader from './DashboardHeader.jsx';
 
 const renderSidebar = (props) => render(
@@ -47,6 +48,29 @@ describe('Sidebar', () => {
     });
   });
 
+  it('keeps logout out of the registrar navigation', () => {
+    renderSidebar({ role: 'registrar', activeItem: 'overview', onSelect: jest.fn() });
+
+    expect(screen.queryByRole('button', { name: /log ?out|sign ?out/i })).not.toBeInTheDocument();
+  });
+
+  it('provides a dedicated Placement Settings destination for registrars', () => {
+    const onSelect = jest.fn();
+    renderSidebar({ role: 'registrar', activeItem: 'settings', onSelect });
+
+    const settings = screen.getByRole('button', { name: 'Placement Settings' });
+    expect(settings).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(settings);
+    expect(onSelect).toHaveBeenCalledWith('settings');
+  });
+
+  it('places Placed Students immediately above Unassigned Students for registrars', () => {
+    renderSidebar({ role: 'registrar', activeItem: 'overview', onSelect: jest.fn() });
+    const labels = screen.getAllByRole('button').map((button) => button.textContent.trim());
+
+    expect(labels.indexOf('Placed Students')).toBe(labels.indexOf('Unassigned Students') - 1);
+  });
+
   it('does not show the Preferences page in the Department Head navigation', () => {
     renderSidebar({ role: 'head', activeItem: 'overview', onSelect: jest.fn() });
 
@@ -66,10 +90,12 @@ describe('Sidebar', () => {
       <MemoryRouter>
         <ThemeProvider>
           <LanguageProvider>
-            <>
-              <DashboardHeader username="Aster" role="Registrar" subtitle="" />
-              <Sidebar role="registrar" activeItem="overview" onSelect={jest.fn()} />
-            </>
+            <AuthProvider>
+              <>
+                <DashboardHeader username="Aster" role="Registrar" subtitle="" />
+                <Sidebar role="registrar" activeItem="overview" onSelect={jest.fn()} />
+              </>
+            </AuthProvider>
           </LanguageProvider>
         </ThemeProvider>
       </MemoryRouter>

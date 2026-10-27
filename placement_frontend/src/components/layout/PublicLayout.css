@@ -8,3 +8,21 @@
 .public-layout-main {
   flex: 1 0 auto;
 }
+
+.login-route-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.login-route-shell > .main-header-container {
+  position: relative;
+}
+
+.login-route-shell > .login-route-main {
+  display: flex;
+  flex: 1 0 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}

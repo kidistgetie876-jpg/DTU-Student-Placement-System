@@ -114,7 +114,19 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('row', { name: /DTU-001/ })).toBeInTheDocument();
+    const studentRow = screen.getByRole('row', { name: /DTU-001/ });
+    expect(studentRow).toBeInTheDocument();
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent.trim());
+    const minorityIndex = headers.indexOf('Minority');
+    expect(headers.slice(minorityIndex, minorityIndex + 3)).toEqual([
+      'Minority',
+      'Cumulative Score',
+      'Placement Status',
+    ]);
+    const studentCells = within(studentRow).getAllByRole('cell');
+    expect(studentCells[11]).toHaveTextContent('No');
+    expect(studentCells[12]).toHaveTextContent('0.00');
+    expect(studentCells[13]).toHaveTextContent('Pending');
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
@@ -137,9 +149,25 @@ describe('StudentInformation', () => {
           total_mark: 450,
           cgpa: 3.75,
           coc_score: 27,
-          cumulative_score: 86.42,
+          cumulative_score: 98.88,
           disability: 'No',
           minority: 'Yes',
+          female_flag: true,
+          disability_flag: false,
+          minority_flag: true,
+          score_breakdown: {
+            cgpa_contribution: 46.88,
+            grade12_contribution: 15,
+            coc_contribution: 27,
+            base_score: 88.88,
+            female_bonus: 0,
+            minority_bonus: 0,
+            disability_bonus: 0,
+            scenario_bonus: 10,
+            applied_scenario: 'minority_female',
+            affirmative_action_bonus: 10,
+            cumulative_score: 98.88,
+          },
           placement_status: 'Pending',
         }],
       },
@@ -162,7 +190,7 @@ describe('StudentInformation', () => {
     expect(screen.getByText('450')).toBeInTheDocument();
     expect(screen.getByText('3.75')).toBeInTheDocument();
     expect(screen.getByText('27')).toBeInTheDocument();
-    expect(within(studentRow).getByRole('cell', { name: '86.42' })).toBeInTheDocument();
+    expect(within(studentRow).getByRole('cell', { name: '98.88' })).toBeInTheDocument();
     expect(screen.getByText('Yes')).toBeInTheDocument();
     [
       'Admission Number',
@@ -184,6 +212,19 @@ describe('StudentInformation', () => {
       expect(screen.getByRole('columnheader', { name: heading })).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Show score breakdown for DTU-2026-001' }));
+    const breakdown = screen.getByRole('region', {
+      name: 'Cumulative score breakdown for DTU-2026-001',
+    });
+    expect(within(breakdown).getByText('Base total: 88.88')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Female: Yes')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Minority / developing region (Amhara): Yes')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Disability: No')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Applied rule: Minority / Developing Region (Female)')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Scenario bonus: +10.00')).toBeInTheDocument();
+    expect(within(breakdown).getByText('Total bonus: +10.00')).toBeInTheDocument();
+    expect(within(breakdown).getByText(/88\.88 \+ 10\.00 = 98\.88/)).toBeInTheDocument();
+
     expect(api.get).toHaveBeenCalledWith('api/registrar/student_information.php', {
       withCredentials: true,
     });
@@ -202,6 +243,38 @@ describe('StudentInformation', () => {
 
     const studentRow = screen.getByRole('row', { name: /DTU-004/ });
     expect(within(studentRow).getByRole('cell', { name: '0.00' })).toBeInTheDocument();
+  });
+
+  it('formats CGPA to two decimals and shows a dash for a missing COC score', () => {
+    render(
+      <MemoryRouter>
+        <StudentInformation students={[{
+          admission_number: 'DTU-006',
+          given_name: 'Mahi',
+          cgpa: 3.5,
+          coc_score: null,
+        }]} />
+      </MemoryRouter>,
+    );
+
+    const cells = within(screen.getByRole('row', { name: /DTU-006/ })).getAllByRole('cell');
+    expect(cells[8]).toHaveTextContent('3.50');
+    expect(cells[9]).toHaveTextContent('—');
+  });
+
+  it('clamps cumulative scores above 100 in the student table', () => {
+    render(
+      <MemoryRouter>
+        <StudentInformation students={[{
+          admission_number: 'DTU-005',
+          given_name: 'Alem',
+          cumulative_score: 100.63,
+        }]} />
+      </MemoryRouter>,
+    );
+
+    const studentRow = screen.getByRole('row', { name: /DTU-005/ });
+    expect(within(studentRow).getByText('100.00')).toBeInTheDocument();
   });
 
   it('accepts a direct student array response from the API', async () => {
@@ -241,7 +314,7 @@ describe('StudentInformation', () => {
     );
 
     const row = screen.getByRole('row', { name: /DTU-003/ });
-    expect(within(row).getByRole('cell', { name: '3.2' })).toBeInTheDocument();
+    expect(within(row).getByRole('cell', { name: '3.20' })).toBeInTheDocument();
     fireEvent.click(within(row).getByRole('button', { name: 'Update Scores' }));
     expect(onEditScores).toHaveBeenCalledWith(expect.objectContaining({ admission_number: 'DTU-003' }));
   });

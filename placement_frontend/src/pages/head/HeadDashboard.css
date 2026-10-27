@@ -1,18 +1,18 @@
 .head-dashboard{min-height:100vh;background:var(--dtu-bg);padding-top:112px}
 .head-dashboard .sidebar{
   position:fixed;
-  left:12px;
-  top:124px;
-  width:calc(16.666667% - 24px);
-  height:calc(100vh - 136px);
+  left:0;
+  top:112px;
+  width:16.666667%;
+  height:calc(100vh - 112px);
   min-height:0;
   overflow-y:auto;
   overflow-x:hidden;
-  border:1px solid rgba(148,163,184,.12);
-  border-radius:18px;
-  background:#0f172a;
+  border:0;
+  border-radius:0;
+  background:linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
   color:#ffffff;
-  box-shadow:0 16px 38px rgba(15,23,42,.2);
+  box-shadow:none;
   z-index:1020;
 }
 .head-dashboard .main-section{

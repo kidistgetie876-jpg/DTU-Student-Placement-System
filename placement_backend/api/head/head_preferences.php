@@ -33,7 +33,7 @@ try {
     $user = $userSql->get_result()->fetch_assoc();
     $userSql->close();
 
-    if (!$user || !in_array(strtolower((string) $user['role']), ['head', 'hod', 'coordinator'], true)) {
+    if (!$user || !in_array(strtolower(trim((string) $user['role'])), ['head', 'department head', 'department_head', 'hod', 'coordinator'], true)) {
         respond(['success' => false, 'message' => 'Only department heads can manage these preferences.'], 403);
     }
 

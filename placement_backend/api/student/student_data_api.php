@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/cors.php';
 sendCorsHeaders();
 header("Content-Type: application/json");
 include __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../common/student_placement_schema.php';
 try {
     $db = getDbConnection();
 } catch (Throwable $error) {
@@ -42,6 +43,26 @@ $coalesce = static function (string ...$expressions): string {
 
 $studentColumn = static fn (string $name): string => $column('student_data', $studentColumns, $name);
 $userColumn = static fn (string $name): string => $column('users', $userColumns, $name);
+$mosheColumns = studentPlacementTableColumns($db, 'moshe_students');
+$profileAdmissionExpression = studentPlacementTextExpression($studentColumns, 'student_data', ['admission_number', 'id_number']);
+if ($userColumn('id_number') !== 'NULL') {
+    $profileAdmissionExpression = "COALESCE(NULLIF({$profileAdmissionExpression}, ''), NULLIF(users.id_number, ''))";
+}
+$mosheJoin = in_array('admission_number', $mosheColumns, true)
+    ? " LEFT JOIN moshe_students ON TRIM(moshe_students.admission_number) = TRIM({$profileAdmissionExpression})"
+    : '';
+$fieldOfStudyParts = array_values(array_filter([
+    $studentColumn('field_of_study') !== 'NULL' ? "NULLIF(student_data.`field_of_study`, '')" : null,
+    $studentColumn('stream') !== 'NULL' ? "NULLIF(student_data.`stream`, '')" : null,
+    $userColumn('field_of_study') !== 'NULL' ? "NULLIF(users.`field_of_study`, '')" : null,
+    $userColumn('stream') !== 'NULL' ? "NULLIF(users.`stream`, '')" : null,
+    $mosheJoin !== '' && in_array('field_of_study', $mosheColumns, true)
+        ? "NULLIF(moshe_students.field_of_study, '')"
+        : null,
+]));
+$fieldOfStudyExpression = $fieldOfStudyParts
+    ? 'COALESCE(' . implode(', ', $fieldOfStudyParts) . ')'
+    : 'NULL';
 $resolvedUserId = $coalesce($studentColumn('user_id'), $userColumn('id'));
 $userJoinConditions = [];
 if ($studentColumn('user_id') !== 'NULL' && $userColumn('id') !== 'NULL') {
@@ -67,7 +88,8 @@ $fields = [
     $coalesce($studentColumn('email'), $userColumn('email')) . ' AS email',
     $coalesce($studentColumn('gpa'), $studentColumn('cgpa')) . ' AS gpa',
     $coalesce($studentColumn('cgpa'), $studentColumn('gpa')) . ' AS cgpa',
-    $studentColumn('stream') . ' AS stream',
+    $fieldOfStudyExpression . ' AS field_of_study',
+    $fieldOfStudyExpression . ' AS stream',
     $studentColumn('status') . ' AS status',
     $coalesce($studentColumn('grade_12_result'), $studentColumn('total_mark')) . ' AS grade_12_result',
     $coalesce($studentColumn('coc_result'), $studentColumn('coc_score')) . ' AS coc_result',
@@ -79,7 +101,8 @@ $fields = [
     $studentColumn('department') . ' AS department',
 ];
 $select = 'SELECT ' . implode(', ', $fields)
-    . ' FROM student_data LEFT JOIN users ON ' . ($userJoinConditions ? implode(' OR ', $userJoinConditions) : '1 = 0');
+    . ' FROM student_data LEFT JOIN users ON ' . ($userJoinConditions ? implode(' OR ', $userJoinConditions) : '1 = 0')
+    . $mosheJoin;
 
 $statement = null;
 $where = [];

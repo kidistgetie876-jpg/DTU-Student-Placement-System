@@ -154,7 +154,7 @@ const getDepartmentStream = (department) => {
 };
 
 
-  const DepartmentRow = ({ department, index, onEdit }) => {
+  const DepartmentRow = ({ department, index, onEdit, onAssignHead }) => {
     const { t } = useLanguage();
     return (
       <tr>
@@ -172,16 +172,26 @@ const getDepartmentStream = (department) => {
             </span>
           ) : <span className="text-muted small">{t('Not Assigned')}</span>}
         </td>
-        <td className="department-edit-cell pe-4 text-end">
-          <button type="button" className="department-edit-button btn btn-sm rounded-3" onClick={() => onEdit(department.id)} aria-label={`${t('Edit')} ${department.name}`}>
-            {t('Edit')}
-          </button>
+        <td className="department-actions-cell pe-4 text-end">
+          <div className="d-flex justify-content-end gap-2">
+            <button
+              type="button"
+              className="department-assign-head-button btn btn-sm rounded-3"
+              onClick={() => onAssignHead(department)}
+              aria-label={`${t('Assign Head')} ${department.name}`}
+            >
+              {t('Assign Head')}
+            </button>
+            <button type="button" className="department-edit-button btn btn-sm rounded-3" onClick={() => onEdit(department.id)} aria-label={`${t('Edit')} ${department.name}`}>
+              {t('Edit')}
+            </button>
+          </div>
         </td>
       </tr>
     );
   };
 
-const DepartmentTable = ({ departments, loading, onEdit }) => {
+const DepartmentTable = ({ departments, loading, onEdit, onAssignHead }) => {
   const { t } = useLanguage();
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -226,12 +236,18 @@ const DepartmentTable = ({ departments, loading, onEdit }) => {
               <th scope="col">{t('NAME')}</th>
               <th scope="col">{t('CAPACITY')}</th>
               <th scope="col" className="text-center">{t('HEAD NAME')}</th>
-              <th scope="col" className="pe-4 text-end">{t('EDIT')}</th>
+              <th scope="col" className="pe-4 text-end">{t('ACTIONS')}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? tableMessage(t('Loading departments...')) : visibleDepartments.length === 0 ? tableMessage(t('No departments found.')) : visibleDepartments.map((department, index) => (
-              <DepartmentRow key={department.id || `${department.name}-${index}`} department={department} index={index} onEdit={onEdit} />
+              <DepartmentRow
+                key={department.id || `${department.name}-${index}`}
+                department={department}
+                index={index}
+                onEdit={onEdit}
+                onAssignHead={onAssignHead}
+              />
             ))}
           </tbody>
         </table>
@@ -267,11 +283,20 @@ const ManageDepartments = () => {
   const [description, setDescription] = useState('');
   const [selectedStreamId, setSelectedStreamId] = useState('default-natural');
   const [collegeName, setCollegeName] = useState('');
+  const [placementGroup, setPlacementGroup] = useState('');
+  const [offeredSemester, setOfferedSemester] = useState(2);
+  const [firstSemesterOnly, setFirstSemesterOnly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalogModalType, setCatalogModalType] = useState('');
   const [catalogName, setCatalogName] = useState('');
   const [catalogSaving, setCatalogSaving] = useState(false);
   const [catalogModalError, setCatalogModalError] = useState('');
+  const [assignmentDepartment, setAssignmentDepartment] = useState(null);
+  const [departmentHeads, setDepartmentHeads] = useState([]);
+  const [selectedHeadId, setSelectedHeadId] = useState('');
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentSaving, setAssignmentSaving] = useState(false);
+  const [assignmentError, setAssignmentError] = useState('');
   
   // Validation state
   const [validationErrors, setValidationErrors] = useState({});
@@ -279,7 +304,7 @@ const ManageDepartments = () => {
   const loadCatalogs = async () => {
     const [streamsResult, collegesResult] = await Promise.allSettled([
       api.get('api/admin/get_streams.php'),
-      api.get('api/admin/get_colleges.php'),
+      api.get('api/common/colleges_api.php'),
     ]);
     const errors = [];
     const readCatalog = (result, key, label) => {
@@ -408,6 +433,67 @@ const ManageDepartments = () => {
     }
   };
 
+  const handleOpenAssignment = async department => {
+    setAssignmentDepartment(department);
+    setSelectedHeadId(String(department.head_id ?? ''));
+    setAssignmentError('');
+    setDepartmentHeads([]);
+    setAssignmentLoading(true);
+
+    try {
+      const response = await api.get('api/admin/users_api.php');
+      const payload = response.data?.users ?? response.data ?? [];
+      const users = Array.isArray(payload) ? payload : [];
+      setDepartmentHeads(users.filter(user => String(user.role || '').trim().toLowerCase() === 'head'));
+    } catch (err) {
+      setAssignmentError(err.response?.data?.message || err.message || 'Unable to load department head accounts.');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  const handleSaveAssignment = async event => {
+    event.preventDefault();
+    if (!assignmentDepartment || !selectedHeadId) {
+      setAssignmentError('Select a department head before saving.');
+      return;
+    }
+
+    setAssignmentSaving(true);
+    setAssignmentError('');
+    try {
+      const response = await api.post('api/admin/assign_department_head.php', {
+        department_id: Number(assignmentDepartment.id),
+        head_id: Number(selectedHeadId),
+      });
+      const result = response.data ?? response;
+      if (!result.success) {
+        throw new Error(result.message || 'Unable to save department head assignment.');
+      }
+
+      const assignedHead = departmentHeads.find(head => String(head.id) === String(selectedHeadId));
+      const headName = [assignedHead?.first_name, assignedHead?.last_name].filter(Boolean).join(' ')
+        || assignedHead?.username
+        || assignedHead?.email
+        || '';
+      setDepartments(current => current.map(department => (
+        String(department.id) === String(assignmentDepartment.id)
+          ? { ...department, head_id: Number(selectedHeadId), head_name: headName }
+          : department
+      )));
+      setAssignmentDepartment(null);
+    } catch (err) {
+      setAssignmentError(err.response?.data?.message || err.message || 'Unable to save department head assignment.');
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
+  const getAssignedDepartment = headId => departments.find(department => (
+    String(department.head_id ?? '') === String(headId)
+    && String(department.id) !== String(assignmentDepartment?.id)
+  ));
+
   // Validation function
   const validateForm = () => {
     const errors = {};
@@ -461,10 +547,19 @@ const ManageDepartments = () => {
         description: description.trim(),
         stream: selectedStream?.name || '',
         college_name: collegeName,
+        college_id: Number.isInteger(Number(streamColleges.find(college => college.name === collegeName)?.id))
+          ? Number(streamColleges.find(college => college.name === collegeName)?.id)
+          : null,
+        offered_semester: Number(offeredSemester),
+        is_first_semester_only: firstSemesterOnly ? 1 : 0,
+        placement_group: placementGroup,
         status: 'active',
       });
       if (res.data.success) {
         setName(''); setDescription(''); setCollegeName('');
+        setPlacementGroup('');
+        setOfferedSemester(2);
+        setFirstSemesterOnly(false);
         setValidationErrors({});
         loadData();
       } else {
@@ -486,13 +581,6 @@ const ManageDepartments = () => {
         </div>
 
         <div className="d-flex gap-2 mt-3 mt-md-0 align-items-center">
-          <button
-            type="button"
-            className="department-assign-head-button btn rounded-pill px-4 shadow-sm fw-bold"
-            onClick={() => navigate('/admin/assign-head')}
-          >
-            {t('+ Assign Head')}
-          </button>
           <span className="badge bg-light text-dark border px-3 py-2 rounded-pill">{departments.length} {t('Depts')}</span>
         </div>
       </div>
@@ -546,6 +634,37 @@ const ManageDepartments = () => {
               />
               {validationErrors.name && <div className="invalid-feedback d-block">{validationErrors.name}</div>}
             </div>
+            <div className="col-md-4">
+              <label className="form-label fw-bold small text-muted" htmlFor="new-department-placement-group">Placement group</label>
+              <select id="new-department-placement-group" className="form-select" value={placementGroup} onChange={event => setPlacementGroup(event.target.value)} required>
+                <option value="">Select placement group</option>
+                {normalizeStreamName(selectedStream?.name) === 'natural science' ? (
+                  <>
+                    <option value="health_science">Health Science</option>
+                    <option value="git">GIT</option>
+                    <option value="other_natural_science">Other Natural Science</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="law">Law</option>
+                    <option value="other_social_science">Other Social Science</option>
+                  </>
+                )}
+              </select>
+            </div>
+            <div className="col-md-4">
+              <label className="form-label fw-bold small text-muted" htmlFor="new-department-offered-semester">Offered semester</label>
+              <select id="new-department-offered-semester" className="form-select" value={offeredSemester} onChange={event => { const semester = Number(event.target.value); setOfferedSemester(semester); if (semester === 2) setFirstSemesterOnly(false); }}>
+                <option value={1}>Semester 1</option>
+                <option value={2}>Semester 2</option>
+              </select>
+            </div>
+            <div className="col-md-4">
+              <div className="form-check mb-2">
+                <input id="new-department-first-semester-only" className="form-check-input" type="checkbox" checked={firstSemesterOnly} onChange={event => { setFirstSemesterOnly(event.target.checked); if (event.target.checked) setOfferedSemester(1); }} />
+                <label className="form-check-label fw-semibold" htmlFor="new-department-first-semester-only">First semester only</label>
+              </div>
+            </div>
             <div className="col-md-12">
               <label className="form-label fw-bold small text-muted">{t('Description')}</label>
               <textarea 
@@ -569,7 +688,107 @@ const ManageDepartments = () => {
         </div>
       </div>
 
-      <DepartmentTable departments={departments} loading={loading} onEdit={id => navigate(`/edit-department/${id}`)} />
+      <DepartmentTable
+        departments={departments}
+        loading={loading}
+        onEdit={id => navigate(`/edit-department/${id}`)}
+        onAssignHead={handleOpenAssignment}
+      />
+
+      {assignmentDepartment && (
+        <div className="department-assign-modal-overlay" role="presentation">
+          <div
+            className="department-assign-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="department-assign-title"
+            aria-describedby={assignmentError ? 'department-assign-error' : undefined}
+          >
+            <form onSubmit={handleSaveAssignment}>
+              <div className="department-assign-modal-header">
+                <div>
+                  <h2 className="department-assign-modal-title" id="department-assign-title">Assign Department Head</h2>
+                  <p className="small text-muted mb-0">Assign a head to {assignmentDepartment.name}.</p>
+                </div>
+                <button
+                  type="button"
+                  className="department-catalog-modal-close"
+                  aria-label="Close"
+                  onClick={() => setAssignmentDepartment(null)}
+                  disabled={assignmentSaving}
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
+              </div>
+              <dl className="department-assign-details">
+                <div><dt>Name</dt><dd>{assignmentDepartment.name}</dd></div>
+                <div><dt>Stream</dt><dd>{assignmentDepartment.stream || 'Not set'}</dd></div>
+                <div><dt>College</dt><dd>{assignmentDepartment.college_name || 'Not set'}</dd></div>
+              </dl>
+              <label className="department-catalog-modal-label" htmlFor="department-head-select">Department Head</label>
+              <select
+                id="department-head-select"
+                className="form-select"
+                value={selectedHeadId}
+                onChange={event => setSelectedHeadId(event.target.value)}
+                disabled={assignmentLoading || assignmentSaving}
+                required
+              >
+                <option value="">-- Select a Department Head --</option>
+                {departmentHeads.map(head => {
+                  const assignedDepartment = getAssignedDepartment(head.id);
+                  const displayName = [head.first_name, head.last_name].filter(Boolean).join(' ')
+                    || head.username
+                    || head.email
+                    || `User ${head.id}`;
+                  return (
+                    <option
+                      key={head.id}
+                      value={head.id}
+                      disabled={Boolean(assignedDepartment)}
+                    >
+                      {displayName}{assignedDepartment ? ` — assigned to ${assignedDepartment.name}` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {assignmentLoading && <div className="form-text">Loading department head accounts...</div>}
+              {!assignmentLoading && departmentHeads.length === 0 && (
+                <div className="form-text">No Department Head accounts are available.</div>
+              )}
+              {assignmentError && (
+                <div className="department-catalog-modal-error" id="department-assign-error" role="alert">
+                  {assignmentError}
+                </div>
+              )}
+              <div className="department-catalog-modal-actions">
+                <button
+                  type="button"
+                  className="department-catalog-modal-cancel"
+                  onClick={() => setAssignmentDepartment(null)}
+                  disabled={assignmentSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="department-assign-modal-submit"
+                  disabled={assignmentLoading || assignmentSaving || departmentHeads.length === 0}
+                >
+                  {assignmentSaving ? 'Saving...' : 'Save Assignment'}
+                </button>
+              </div>
+            </form>
+          </div>
+          <button
+            type="button"
+            className="department-catalog-modal-backdrop-dismiss"
+            aria-label="Close assignment dialog"
+            onClick={() => setAssignmentDepartment(null)}
+            disabled={assignmentSaving}
+          />
+        </div>
+      )}
 
       {catalogModalType && (
         <div className="department-catalog-modal-overlay" role="presentation">

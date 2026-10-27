@@ -1,0 +1,46 @@
+.unassigned-students-page {
+  border-radius: 1rem;
+}
+
+.unassigned-table-wrap {
+  overflow: auto;
+  border: 1px solid #dce3ec;
+  border-radius: 0.75rem;
+}
+
+.unassigned-table-wrap table {
+  min-width: 980px;
+}
+
+.unassigned-table-wrap th,
+.unassigned-table-wrap td {
+  padding: 0.9rem 1rem;
+  border-color: #e6ebf1;
+  vertical-align: middle;
+}
+
+.unassigned-table-wrap th {
+  white-space: nowrap;
+  color: #465468;
+  font-size: 0.78rem;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.unassigned-reason-alert {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #f3dfaa;
+  border-radius: 0.65rem;
+  background: #fff9e9;
+  color: #664d03;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 575.98px) {
+  .unassigned-table-wrap th,
+  .unassigned-table-wrap td {
+    padding: 0.75rem;
+  }
+}

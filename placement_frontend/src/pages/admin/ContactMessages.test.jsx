@@ -39,7 +39,9 @@ describe('ContactMessages', () => {
         ],
       },
     });
-    api.post.mockResolvedValue({ data: { success: true } });
+    api.post.mockResolvedValue({
+      data: { success: true, email_sent: true, message: 'Email sent and reply recorded.' },
+    });
   });
 
   it('loads messages, filters by read state, and opens full details while marking unread as read', async () => {
@@ -75,7 +77,7 @@ describe('ContactMessages', () => {
         message_id: 12,
       });
     });
-    expect(await screen.findByRole('status')).toHaveTextContent('Reply sent successfully!');
+    expect(await screen.findByRole('status')).toHaveTextContent('Email sent and reply recorded.');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Replied')).toBeInTheDocument();
   });
@@ -100,8 +102,33 @@ describe('ContactMessages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send Reply' }));
 
     expect(screen.getByRole('button', { name: 'Sending...' })).toBeDisabled();
-    finishSend({ data: { success: true, message: 'Reply sent successfully!' } });
-    expect(await screen.findByRole('status')).toHaveTextContent('Reply sent successfully!');
+    finishSend({ data: { success: true, email_sent: true, message: 'Email sent and reply recorded.' } });
+    expect(await screen.findByRole('status')).toHaveTextContent('Email sent and reply recorded.');
+  });
+
+  it('marks the message as replied when email delivery is unavailable but the reply is saved', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        success: true,
+        email_sent: false,
+        message: 'Reply saved, but email delivery failed. Check Gmail SMTP configuration and server logs.',
+      },
+    });
+
+    render(<ContactMessages />);
+    await screen.findByText('Aster Mekonnen');
+    fireEvent.click(screen.getAllByRole('button', { name: 'View message' })[0]);
+    await screen.findByText('Could you clarify the placement dates?');
+    fireEvent.click(screen.getByRole('button', { name: 'Reply' }));
+    fireEvent.change(screen.getByLabelText('Your reply'), { target: { value: 'Thanks.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send Reply' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Reply saved, but email delivery failed. Check Gmail SMTP configuration and server logs.'
+    );
+    expect(within(screen.getByRole('dialog')).getByText('Replied')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByLabelText('Your reply')).toHaveValue('Thanks.');
   });
 
   it('deletes a message from history after confirmation', async () => {

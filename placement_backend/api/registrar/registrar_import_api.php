@@ -1,9 +1,11 @@
 <?php
-header('Access-Control-Allow-Origin: http://localhost:3000');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
-header('Access-Control-Allow-Credentials: true');
-header('Content-Type: application/json; charset=UTF-8');
+$origin = $_SERVER['HTTP_ORIGIN'] ?? 'http://localhost:3000';
+if (in_array($origin, ['http://localhost:3000', 'http://localhost:3001'])) {
+    header("Access-Control-Allow-Origin: $origin");
+}
+header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Credentials: true");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -63,7 +65,7 @@ try {
         sendJson(['success' => false, 'message' => 'Student list is empty.'], 400);
     }
 
-    $defaultPassword = '123456';
+    $defaultPassword = '12345678';
     $hashedDefaultPassword = password_hash($defaultPassword, PASSWORD_DEFAULT);
     $newCount = 0;
     $updatedCount = 0;
@@ -81,9 +83,9 @@ try {
         $gpa = isset($student['gpa']) ? (float) $student['gpa'] : 0.0;
         $stream = normalizeText($student['stream'] ?? $student['department_stream'] ?? '');
 
-        if ($username === '' || $email === '') {
+        if ($username === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || preg_match('/^[a-zA-Z0-9._%+-]+@gmail\.com$/', $email) !== 1) {
             $skippedCount++;
-            $errors[] = 'Skipped one record because username or email was missing.';
+            $errors[] = 'Skipped one record because a username and valid @gmail.com address are required.';
             continue;
         }
 

@@ -21,12 +21,36 @@ $db = getDbConnection();
 $updated = 0;
 
 try {
+    $columnsResult = $db->query('SHOW COLUMNS FROM placement_results');
+    if (!$columnsResult) {
+        throw new RuntimeException('Unable to inspect placement result schema: ' . $db->error);
+    }
+    $placementColumns = array_column($columnsResult->fetch_all(MYSQLI_ASSOC), 'Field');
+    $columnsResult->free();
+    if (!in_array('student_id', $placementColumns, true)
+        || !in_array('dept_name', $placementColumns, true)
+        || !in_array('status', $placementColumns, true)) {
+        throw new RuntimeException('Placement results are missing required columns.');
+    }
+
+    $updates = ["status = 'Published'"];
+    if (in_array('approved_at', $placementColumns, true)) {
+        $updates[] = 'approved_at = COALESCE(approved_at, NOW())';
+    }
+    if (in_array('is_published', $placementColumns, true)) {
+        $updates[] = 'is_published = 1';
+    }
+
     $db->begin_transaction();
 
-    $placementSql = $db->prepare('UPDATE placement_results SET status = ?, approved_at = NOW() WHERE student_id = ? AND dept_name = ?');
-    $studentSql = $db->prepare('UPDATE student_data SET status = "Approved", department = ? WHERE user_id = ?');
-
-    if (!$placementSql || !$studentSql) {
+    $placementSql = $db->prepare(
+        'UPDATE placement_results SET ' . implode(', ', $updates)
+        . " WHERE student_id = ? AND dept_name = ?
+             AND LOWER(TRIM(status)) IN ('pending', 'approved')
+             AND NULLIF(TRIM(COALESCE(dept_name, '')), '') IS NOT NULL
+             AND LOWER(TRIM(dept_name)) NOT IN ('not assigned', 'unassigned')"
+    );
+    if (!$placementSql) {
         throw new Exception('Unable to prepare placement approval update');
     }
 
@@ -34,38 +58,35 @@ try {
         $studentId = (int) ($placement['studentId'] ?? $placement['student_id'] ?? 0);
         $department = trim((string) ($placement['department'] ?? $placement['dept_name'] ?? ''));
 
-        if ($studentId <= 0 || $department === '') {
+        if ($studentId <= 0 || $department === ''
+            || in_array(strtolower($department), ['not assigned', 'unassigned'], true)) {
             continue;
         }
 
-        $status = 'Approved';
-        $placementSql->bind_param('sis', $status, $studentId, $department);
+        $placementSql->bind_param('is', $studentId, $department);
         if (!$placementSql->execute()) {
-            throw new Exception('Unable to approve placement result');
+            throw new Exception('Unable to publish placement result: ' . $placementSql->error);
         }
 
-        $studentSql->bind_param('si', $department, $studentId);
-        if (!$studentSql->execute()) {
-            throw new Exception('Unable to save approved department');
-        }
-
-        if ($studentSql->affected_rows > 0 || $placementSql->affected_rows > 0) {
-            $updated++;
-        }
-    }
-
-    if ($updated === 0) {
-        throw new Exception('No matching placement records were found');
+        $updated += $placementSql->affected_rows;
     }
 
     $placementSql->close();
-    $studentSql->close();
-    $db->commit();
+    if (!$db->commit()) {
+        throw new RuntimeException('Unable to commit published placement results: ' . $db->error);
+    }
 
-    echo json_encode(['success' => true, 'message' => 'Placement results published successfully', 'updated' => $updated]);
+    echo json_encode([
+        'success' => true,
+        'message' => $updated > 0 ? 'Placement results published successfully' : 'No matching unpublished placements found',
+        'updated' => $updated,
+    ]);
 } catch (Throwable $error) {
     $db->rollback();
+    error_log('Publish placement results failed: ' . $error->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => $error->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Unable to publish placement results.']);
+} finally {
+    $db->close();
 }
 ?>

@@ -10,26 +10,65 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     passwordResetResponse(['success' => false, 'message' => 'Only POST requests are allowed.'], 405);
 }
 
-$input = json_decode(file_get_contents('php://input'), true);
-$email = strtolower(trim((string) ($input['email'] ?? '')));
-$code = trim((string) ($input['code'] ?? ''));
-$newPassword = (string) ($input['newPassword'] ?? '');
+$input = json_decode((string) file_get_contents('php://input'), true);
+if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+    passwordResetResponse([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Request body must be valid JSON.'
+    ], 400);
+}
+
+$emailInput = $input['email'] ?? null;
+$codeInput = $input['code'] ?? null;
+$passwordInput = $input['new_password'] ?? $input['newPassword'] ?? null;
+if (!is_string($emailInput) || !is_string($codeInput) || !is_string($passwordInput)) {
+    passwordResetResponse([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Email, verification code, and new password are required.'
+    ], 400);
+}
+
+$email = strtolower(trim($emailInput));
+$code = trim($codeInput);
+$newPassword = $passwordInput;
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !preg_match('/^\d{6}$/', $code)) {
-    passwordResetResponse(['success' => false, 'message' => 'Enter a valid email address and six-digit verification code.'], 400);
+    passwordResetResponse([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Enter a valid email address and six-digit verification code.'
+    ], 400);
 }
 if (strlen($newPassword) < 6) {
-    passwordResetResponse(['success' => false, 'message' => 'Password must be at least 6 characters long.'], 400);
+    passwordResetResponse([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Password must be at least 6 characters long.'
+    ], 400);
 }
 
-$db = getDbConnection();
+$db = null;
+$transactionOpen = false;
 try {
+    $db = getDbConnection();
+    if (!($db instanceof mysqli)) {
+        throw new RuntimeException('Password reset database connection is unavailable.');
+    }
     ensurePasswordResetTokensTable($db);
     if (!$db->begin_transaction()) {
         throw new RuntimeException('Unable to start password reset transaction: ' . $db->error);
     }
+    $transactionOpen = true;
 
-    $userStatement = $db->prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1');
+    $userStatement = $db->prepare(
+        'SELECT id
+         FROM users
+         WHERE LOWER(email) = LOWER(?)
+         LIMIT 1
+         FOR UPDATE'
+    );
     if (!$userStatement) {
         throw new RuntimeException('Unable to prepare password reset account lookup: ' . $db->error);
     }
@@ -42,7 +81,12 @@ try {
 
     if (!$user) {
         $db->rollback();
-        passwordResetResponse(['success' => false, 'message' => 'The code is invalid or expired. Request a new code and try again.'], 400);
+        $transactionOpen = false;
+        passwordResetResponse([
+            'status' => 'error',
+            'success' => false,
+            'message' => 'The code is invalid or expired. Request a new code and try again.'
+        ], 400);
     }
 
     $userId = (int) $user['id'];
@@ -65,13 +109,23 @@ try {
 
     if (!$token || (int) $token['is_valid'] !== 1 || (int) $token['attempts'] >= 5) {
         $deleteStatement = $db->prepare('DELETE FROM password_reset_tokens WHERE user_id = ?');
-        if ($deleteStatement) {
-            $deleteStatement->bind_param('i', $userId);
-            $deleteStatement->execute();
-            $deleteStatement->close();
+        if (!$deleteStatement) {
+            throw new RuntimeException('Unable to prepare expired reset code cleanup: ' . $db->error);
         }
-        $db->commit();
-        passwordResetResponse(['success' => false, 'message' => 'The code is invalid or expired. Request a new code and try again.'], 400);
+        $deleteStatement->bind_param('i', $userId);
+        if (!$deleteStatement->execute()) {
+            throw new RuntimeException('Unable to clear expired reset code: ' . $deleteStatement->error);
+        }
+        $deleteStatement->close();
+        if (!$db->commit()) {
+            throw new RuntimeException('Unable to complete expired reset code cleanup: ' . $db->error);
+        }
+        $transactionOpen = false;
+        passwordResetResponse([
+            'status' => 'error',
+            'success' => false,
+            'message' => 'The code is invalid or expired. Request a new code and try again.'
+        ], 400);
     }
 
     if (!password_verify($code, (string) $token['code_hash'])) {
@@ -84,11 +138,21 @@ try {
             throw new RuntimeException('Unable to record password reset attempt: ' . $attemptStatement->error);
         }
         $attemptStatement->close();
-        $db->commit();
-        passwordResetResponse(['success' => false, 'message' => 'The code is invalid or expired. Request a new code and try again.'], 400);
+        if (!$db->commit()) {
+            throw new RuntimeException('Unable to save reset code attempt: ' . $db->error);
+        }
+        $transactionOpen = false;
+        passwordResetResponse([
+            'status' => 'error',
+            'success' => false,
+            'message' => 'The code is invalid or expired. Request a new code and try again.'
+        ], 400);
     }
 
     $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+    if (!is_string($passwordHash) || $passwordHash === '') {
+        throw new RuntimeException('Unable to hash the new password.');
+    }
     $updateStatement = $db->prepare('UPDATE users SET password = ? WHERE id = ?');
     if (!$updateStatement) {
         throw new RuntimeException('Unable to prepare password update: ' . $db->error);
@@ -112,13 +176,30 @@ try {
     if (!$db->commit()) {
         throw new RuntimeException('Unable to commit password reset: ' . $db->error);
     }
+    $transactionOpen = false;
 
-    passwordResetResponse(['success' => true, 'message' => 'Your password has been reset. You can now sign in.']);
+    passwordResetResponse([
+        'status' => 'success',
+        'success' => true,
+        'message' => 'Password reset successfully'
+    ]);
 } catch (Throwable $error) {
-    $db->rollback();
     error_log('Password reset completion failed: ' . $error->getMessage());
-    passwordResetResponse(['success' => false, 'message' => 'Unable to reset the password right now.'], 500);
+    if ($db instanceof mysqli && $transactionOpen) {
+        try {
+            $db->rollback();
+        } catch (Throwable $rollbackError) {
+            error_log('Password reset rollback failed: ' . $rollbackError->getMessage());
+        }
+    }
+    passwordResetResponse([
+        'status' => 'error',
+        'success' => false,
+        'message' => 'Password reset is temporarily unavailable. Please try again later.'
+    ], 503);
 } finally {
-    $db->close();
+    if ($db instanceof mysqli) {
+        $db->close();
+    }
 }
 ?>

@@ -2,20 +2,35 @@ import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import api from '../../services/api.js';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { useAuth } from '../../contexts/AuthContext.jsx'; // AuthContext እዚህ ተጨምሯል
 import './DashboardHeader.css';
 
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-const EditProfileModal = ({ profile, onClose, onSaved }) => {
+const EditProfileModal = ({ isOpen, profile = {}, onClose, onSaved }) => {
   const { t } = useLanguage();
-  const [fullName, setFullName] = useState(profile.full_name || profile.username || '');
-  const [email, setEmail] = useState(profile.email || '');
+  const { setUser } = useAuth(); // Global UI/Header state እንዲቀየር setUser ተወስዷል
+
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // profile prop ሲቀየር ወይም ሞዳሉ ሲከፈት Form Input እንዳይቀደድ ማስተካከያ
+  useEffect(() => {
+    if (isOpen) {
+      setFullName(profile.full_name || profile.username || '');
+      setEmail(profile.email || '');
+      setError('');
+      setSuccess('');
+      setPhoto(null);
+      setPhotoPreview('');
+    }
+  }, [isOpen, profile]);
 
   useEffect(() => {
     if (!photo) {
@@ -57,12 +72,13 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
     setSuccess('');
     const name = fullName.trim();
     const normalizedEmail = email.trim();
+
     if (!name) {
       setError(t('Enter your full name.'));
       return;
     }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
-      setError(t('Enter a valid email address.'));
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(normalizedEmail)) {
+      setError(t('A valid @gmail.com address is required.'));
       return;
     }
 
@@ -74,13 +90,35 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
     setSaving(true);
     try {
       const response = await api.post('api/common/update_profile.php', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { Accept: 'application/json' },
       });
-      if (!response.data?.success || !response.data?.profile) {
+
+      const updatedUser = response.data?.user || response.data?.profile;
+
+      if (!response.data?.success || !updatedUser) {
         throw new Error(response.data?.message || t('Unable to update profile.'));
       }
-      onSaved(response.data.profile);
-      setSuccess(response.data.message || t('Profile updated successfully.'));
+
+      // 1. የ React Global Auth State ወዲያውኑ ይዘመናል (Header/Navbar እንዲቀየር)
+      if (typeof setUser === 'function') {
+        setUser(updatedUser);
+      }
+
+      // 2. LocalStorage ይዘመናል (Page reload ቢደረግ እንኳ እንዳይጠፋ)
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+
+      const successMsg = response.data.message || t('Profile updated successfully.');
+      setSuccess(successMsg);
+
+      if (typeof onSaved === 'function') {
+        onSaved(updatedUser, successMsg);
+      }
+
+      // ከ 1 ሴኮንድ በኋላ ሞዳሉን መዝጋት
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+
     } catch (requestError) {
       setError(requestError.response?.data?.message || requestError.message || t('Unable to update profile.'));
     } finally {
@@ -92,10 +130,15 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
     ? `${api.defaults.baseURL.replace(/\/+$/, '')}/${profile.profile_photo.replace(/^\/+/, '')}`
     : '';
 
+  if (!isOpen) return null;
+
   return (
-    <div className="dashboard-modal-backdrop" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
-    }}>
+    <div
+      className="dashboard-modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
       <section
         className="dashboard-modal"
         role="dialog"
@@ -104,7 +147,13 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
       >
         <div className="dashboard-modal-header">
           <h3 id="dashboard-modal-title">{t('Edit Profile')}</h3>
-          <button type="button" className="dashboard-modal-close" aria-label={t('Close')} onClick={onClose} disabled={saving}>
+          <button
+            type="button"
+            className="dashboard-modal-close"
+            aria-label={t('Close')}
+            onClick={onClose}
+            disabled={saving}
+          >
             <X size={20} aria-hidden="true" />
           </button>
         </div>
@@ -115,12 +164,16 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
         <form onSubmit={saveProfile}>
           <div className="dashboard-profile-photo-field">
             <div className="dashboard-profile-photo-preview">
-              {photoPreview || currentPhoto
-                ? <img src={photoPreview || currentPhoto} alt={t('Profile preview')} />
-                : <span aria-hidden="true">{(fullName || '?').slice(0, 1).toUpperCase()}</span>}
+              {photoPreview || currentPhoto ? (
+                <img src={photoPreview || currentPhoto} alt={t('Profile preview')} />
+              ) : (
+                <span aria-hidden="true">{(fullName || '?').slice(0, 1).toUpperCase()}</span>
+              )}
             </div>
             <div className="dashboard-profile-photo-input">
-              <label className="form-label" htmlFor="dashboard-profile-photo">{t('Profile Photo')}</label>
+              <label className="form-label" htmlFor="dashboard-profile-photo">
+                {t('Profile Photo')}
+              </label>
               <input
                 id="dashboard-profile-photo"
                 className="form-control"
@@ -133,7 +186,9 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
             </div>
           </div>
 
-          <label className="form-label" htmlFor="dashboard-profile-name">{t('Full Name')}</label>
+          <label className="form-label" htmlFor="dashboard-profile-name">
+            {t('Full Name')}
+          </label>
           <input
             id="dashboard-profile-name"
             className="form-control mb-3"
@@ -145,7 +200,10 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
             onChange={(event) => setFullName(event.target.value)}
             disabled={saving}
           />
-          <label className="form-label" htmlFor="dashboard-profile-email">{t('Email')}</label>
+
+          <label className="form-label" htmlFor="dashboard-profile-email">
+            {t('Email')}
+          </label>
           <input
             id="dashboard-profile-email"
             className="form-control mb-3"
@@ -157,8 +215,16 @@ const EditProfileModal = ({ profile, onClose, onSaved }) => {
             onChange={(event) => setEmail(event.target.value)}
             disabled={saving}
           />
+
           <div className="dashboard-modal-actions">
-            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>{t('Cancel')}</button>
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={onClose}
+              disabled={saving}
+            >
+              {t('Cancel')}
+            </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? t('Saving…') : t('Save Profile')}
             </button>
