@@ -61,7 +61,7 @@ function ensureDepartmentCapacityApprovalSchema(mysqli $db): void
     }
     $approvalStatusDefinition = $approvalStatusColumn->fetch_assoc();
     $approvalStatusColumn->free();
-    if (!str_contains(strtolower((string) ($approvalStatusDefinition['Type'] ?? '')), "'reopened'")) {
+    if (strpos(strtolower((string) ($approvalStatusDefinition['Type'] ?? '')), "'reopened'") === false) {
         if (!$db->query(
             "ALTER TABLE departments MODIFY approval_status ENUM('pending', 'approved', 'reopened') NOT NULL DEFAULT 'pending'"
         )) {

@@ -55,7 +55,7 @@ function Header() {
   useEffect(() => {
     setUser(getStoredUser());
     setIsMenuOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, setUser]);
 
   useEffect(() => {
     let isMounted = true;

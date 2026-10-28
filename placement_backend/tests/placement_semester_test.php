@@ -217,6 +217,41 @@ assertSemesterRule(
 );
 assertSemesterRule(
     false,
+    placementShouldMarkStudentUnassigned(1, false, 'CAPACITY_FULL'),
+    'A partial first-semester run must keep unsuccessful students pending for other colleges.'
+);
+assertSemesterRule(
+    false,
+    placementShouldMarkStudentUnassigned(1, true, 'CAPACITY_FULL'),
+    'A first-semester run must not mark students unassigned before the second-semester cycle.'
+);
+assertSemesterRule(
+    false,
+    placementShouldMarkStudentUnassigned(1, true, 'NO_CHOICES'),
+    'A student without choices must not be marked unassigned due to exhausted capacity.'
+);
+assertSemesterRule(
+    false,
+    placementShouldMarkStudentUnassigned(1, true, 'NO_ELIGIBLE_DEPARTMENT', true),
+    'A 1st-semester no-match result must remain pending for the next semester cycle instead of becoming unassigned.'
+);
+assertSemesterRule(
+    false,
+    placementShouldMarkStudentUnassigned(2, false, 'CAPACITY_FULL'),
+    'A partial second-semester run must keep unsuccessful students pending.'
+);
+assertSemesterRule(
+    false,
+    placementShouldMarkStudentUnassigned(2, true, 'CAPACITY_FULL', false),
+    'Students remain pending while any university capacity remains.'
+);
+assertSemesterRule(
+    true,
+    placementShouldMarkStudentUnassigned(2, true, 'CAPACITY_FULL', true),
+    'Only a complete second-semester run after institution-wide capacity exhaustion may mark students unassigned.'
+);
+assertSemesterRule(
+    false,
     placementDepartmentCanReceiveFinalAssignment([
         'name' => 'Law',
         'college_name' => 'School of Law',
@@ -327,6 +362,20 @@ if (($broadSocialTarget['placement_group'] ?? '') !== 'other_social_science'
     ) !== null) {
     throw new RuntimeException('A broad Choice 1 must reserve available second-semester group capacity with its original rank.');
 }
+    $pendingBroadTarget = placementFirstSemesterAllocationTarget(
+        'Social',
+        [$broadSocialChoice],
+        [
+            ['id' => 34, 'name' => 'Economics', 'college_name' => 'Business and Economics', 'stream' => 'Social', 'offered_semester' => 2],
+            ['id' => 35, 'name' => 'Sociology', 'college_name' => 'Social Sciences and Humanities', 'stream' => 'Social', 'offered_semester' => 2],
+        ],
+        ['other_social_science' => 2]
+    );
+    if (($pendingBroadTarget['placement_group'] ?? '') !== 'other_social_science'
+        || ($pendingBroadTarget['college_name'] ?? '') !== 'College of Other Social Sciences'
+        || ($pendingBroadTarget['choice_rank'] ?? 0) !== 1) {
+        throw new RuntimeException('A broad student choice must retain its selected second-semester group pool and rank.');
+    }
 $expandedCollegePreferences = placementExpandCollegePreferences(
     [['dept_id' => 41, 'department' => 'Medicine', 'priority' => 2]],
     [
@@ -337,9 +386,9 @@ $expandedCollegePreferences = placementExpandCollegePreferences(
     'Natural Science',
     1
 );
-if (array_column($expandedCollegePreferences, 'department') !== ['Medicine', 'Pharmacy']
-    || array_column($expandedCollegePreferences, 'priority') !== [2, 2]) {
-    throw new RuntimeException('A ranked college choice must compete across all eligible first-semester departments in that college.');
+if (array_column($expandedCollegePreferences, 'department') !== ['Medicine']
+    || array_column($expandedCollegePreferences, 'priority') !== [2]) {
+    throw new RuntimeException('An explicit department choice must not expand to unselected departments in the same college.');
 }
 $expandedSocialPreferences = placementExpandCollegePreferences(
     [
@@ -843,6 +892,28 @@ if (($target['college_id'] ?? null) !== 10) {
 $target = placementFirstSemesterAllocationTarget(
     'Natural Science',
     [
+        ['department' => 'Medicine', 'college_name' => 'Health Science', 'priority' => 1],
+        ['department' => 'Computer Science', 'college_name' => 'Gafat Institute of Technology', 'priority' => 2],
+    ],
+    [
+        ['name' => 'Medicine', 'college_id' => 10, 'college_name' => 'Health Science', 'stream' => 'Natural'],
+        ['name' => 'Computer Science', 'college_id' => 20, 'college_name' => 'Gafat Institute of Technology', 'stream' => 'Natural'],
+    ],
+    ['health_science' => 0, 'git' => 0],
+    ['health_science' => 0, 'git' => 0],
+    ['id:10' => 0, 'id:20' => 0],
+    ['id:10' => 0, 'id:20' => 0],
+    ['id:10' => 0, 'id:20' => 0],
+    ['health_science' => 0, 'git' => 0],
+    true
+);
+if (($target['college_id'] ?? null) !== 10 || ($target['placement_group'] ?? '') !== 'health_science') {
+    throw new RuntimeException('An exhausted first-semester Health Science preference must remain queued for its second-semester cycle.');
+}
+
+$target = placementFirstSemesterAllocationTarget(
+    'Natural Science',
+    [
         ['dept_id' => 101, 'department' => 'Medicine', 'college_id' => 10, 'college_name' => 'College of Health Science'],
         ['dept_id' => 202, 'department' => 'Computer Science', 'college_id' => 20, 'college_name' => 'Gafat Institute of Technology'],
     ],
@@ -859,6 +930,28 @@ $target = placementFirstSemesterAllocationTarget(
 );
 if ($target !== null) {
     throw new RuntimeException('A second-semester reservation must not replace an available first-semester seat in the preferred college.');
+}
+
+$target = placementFirstSemesterAllocationTarget(
+    'Natural Science',
+    [
+        ['dept_id' => 101, 'department' => 'Medicine', 'college_id' => 10, 'college_name' => 'College of Health Science'],
+    ],
+    [
+        ['id' => 101, 'name' => 'Medicine', 'college_id' => 10, 'college_name' => 'Health Science', 'stream' => 'Natural'],
+    ],
+    ['health_science' => 2],
+    ['health_science' => 2],
+    ['id:10' => 2],
+    ['id:10' => 2],
+    ['id:10' => 2],
+    ['health_science' => 2],
+    true
+);
+if (($target['college_id'] ?? null) !== 10
+    || ($target['college_name'] ?? '') !== 'Health Science'
+    || ($target['placement_group'] ?? '') !== 'health_science') {
+    throw new RuntimeException('An unplaced first-semester student must keep the preferred college pool even when first-semester capacity remains.');
 }
 
 $target = placementFirstSemesterAllocationTarget(

@@ -4,6 +4,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_name('DTUPLACEMENTSESSID');
 }
 
+if (!function_exists('str_contains')) {
+    function str_contains(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strpos($haystack, $needle) !== false;
+    }
+}
+
 require_once __DIR__ . '/cors.php';
 sendCorsHeaders();
 

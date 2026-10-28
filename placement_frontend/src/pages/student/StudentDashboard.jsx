@@ -423,18 +423,14 @@ const StudentDashboard = () => {
         const firstSemesterChoicesEditable = ['pending', 'pending 1st semester'].includes(statusText)
           && !(hasSecondSemesterAllocation && secondSemesterEligible && registrarPortalOpen);
         const isChoiceEditable = !secondSemesterFinalized && (
-          isPlacementLockFlagSet(
+          (isPlacementLockFlagSet(
             placementStatus.is_choice_editable ?? resPrefs.data?.is_choice_editable,
-          ) && (activeSemester !== 2 || registrarPortalOpen)
+          ) && (activeSemester !== 2 || registrarPortalOpen))
           || firstSemesterChoicesEditable
           || pendingSecondSemesterEditable
         );
         setChoiceEditingAllowed(isChoiceEditable);
-        const isSecondSemesterStudent = (
-          activeSemester === 2
-          || registrarPortalOpen
-          || isSecondSemesterStage
-        )
+        const isSecondSemesterStudent = (activeSemester === 2 || registrarPortalOpen)
           && (secondSemesterEligible || pendingSecondSemesterEditable)
           && hasSecondSemesterAllocation;
         const currentSemester = isSecondSemesterStudent ? 2 : 1;
@@ -892,18 +888,14 @@ const StudentDashboard = () => {
         const firstSemesterChoicesEditable = ['pending', 'pending 1st semester'].includes(statusText)
           && !(hasSecondSemesterAllocation && secondSemesterEligible && registrarPortalOpen);
         const isChoiceEditable = !secondSemesterFinalized && (
-          isPlacementLockFlagSet(
+          (isPlacementLockFlagSet(
             statusData.is_choice_editable ?? preferencesResponse.data?.is_choice_editable,
-          ) && (activeSemester !== 2 || registrarPortalOpen)
+          ) && (activeSemester !== 2 || registrarPortalOpen))
           || firstSemesterChoicesEditable
           || pendingSecondSemesterEditable
         );
         setChoiceEditingAllowed(isChoiceEditable);
-        const isSecondSemesterStudent = (
-          activeSemester === 2
-          || registrarPortalOpen
-          || isSecondSemesterStage
-        )
+        const isSecondSemesterStudent = (activeSemester === 2 || registrarPortalOpen)
           && (secondSemesterEligible || pendingSecondSemesterEditable)
           && hasSecondSemesterAllocation;
         const response = isSecondSemesterStudent
@@ -1034,8 +1026,12 @@ const StudentDashboard = () => {
   }, [
     profile?.admission_number,
     profile?.id_number,
+    profile?.placement_status,
+    profile?.status,
     student?.id,
     student?.id_number,
+    student?.placement_status,
+    student?.status,
     student?.student_id,
     tab,
   ]);

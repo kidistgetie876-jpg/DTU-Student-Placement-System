@@ -287,7 +287,7 @@ try {
         $normalizedPlacementStatus = "LOWER(TRIM(COALESCE({$studentPlacementStatusExpression}, '')))";
         if ($activeSemester === 1) {
             $eligibleStatusConditions[] = "(
-                {$normalizedPlacementStatus} IN ('pending', 'pending 1st semester', '')
+                {$normalizedPlacementStatus} IN ('pending', 'pending 1st semester', '', 'not assigned', 'unassigned')
                 AND {$normalizedPlacementStatus} NOT LIKE '%2nd semester%'
             )";
         } else {

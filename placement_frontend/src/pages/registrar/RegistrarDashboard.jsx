@@ -398,15 +398,18 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
   }
 };
 
+export const isDeferredPlacement = (placement) => {
+  const status = String(placement?.status || '').trim().toLowerCase().replace(/_/g, ' ');
+  return status === 'deferred'
+    || status === 'pending 2nd semester'
+    || status === 'pending second semester';
+};
+
 export const exportPlacementResults = (placements, format = 'csv', statusFilter = 'all') => {
   const headers = ['Student ID', 'Student Name', 'Merit Score', 'Department', 'College', 'Stream', 'Choice Rank', 'Status'];
-  const isDeferred = (placement) => (
-    placement.status === 'deferred'
-    || String(placement.status || '').trim().toLowerCase() === 'pending 2nd semester'
-  );
   const filteredPlacements = placements.filter((placement) => {
     if (statusFilter === 'assigned') return placement.status === 'placed';
-    if (statusFilter === 'deferred') return isDeferred(placement);
+    if (statusFilter === 'deferred') return isDeferredPlacement(placement);
     if (statusFilter === 'unassigned') return placement.status === 'unassigned';
     return true;
   });
@@ -420,7 +423,7 @@ export const exportPlacementResults = (placements, format = 'csv', statusFilter 
     'Choice Rank': placement.choiceRank || '-',
     Status: placement.status === 'placed'
       ? 'Assigned'
-      : isDeferred(placement)
+      : isDeferredPlacement(placement)
         ? 'Pending 2nd Semester'
         : 'Unassigned',
   }));
@@ -1620,10 +1623,10 @@ const RegistrarDashboard = () => {
             const gender = String(official.sex || '');
             const hasDisability = parseYesNo(official.disability);
             const minority = parseYesNo(official.minority);
-            const hasCgpaScore = official.cgpa !== null && official.cgpa !== undefined
-              || profile?.cgpa !== null && profile?.cgpa !== undefined
-              || profile?.gpa !== null && profile?.gpa !== undefined
-              || user?.cgpa !== null && user?.cgpa !== undefined;
+            const hasCgpaScore = (official.cgpa !== null && official.cgpa !== undefined)
+              || (profile?.cgpa !== null && profile?.cgpa !== undefined)
+              || (profile?.gpa !== null && profile?.gpa !== undefined)
+              || (user?.cgpa !== null && user?.cgpa !== undefined);
             const fullName = [
               official.given_name,
               official.father_name,
@@ -2365,6 +2368,7 @@ const RegistrarDashboard = () => {
         assigned: Number(summary.assignedStudents ?? result.assigned ?? 0),
         unassigned: Number(summary.unassignedStudents ?? result.unassigned ?? 0),
         deferred: Number(summary.deferredStudents ?? 0),
+        pending: Number(summary.pendingStudents ?? 0),
         alreadyPlaced: Number(summary.alreadyPlacedStudents ?? result.already_placed ?? 0),
         total: Number(summary.totalStudents ?? result.total_processed ?? 0),
       };
@@ -3290,7 +3294,7 @@ const RegistrarDashboard = () => {
                                   className="form-check-input"
                                   aria-label={`Select ${student.admission_number || student.id_number}`}
                                   checked={selectedPreferenceAdmissions.includes(String(student.admission_number || student.id_number || '').trim())}
-                                  disabled={!student.admission_number && !student.id_number || clearingStudentPreferences || deletingStudents}
+                                  disabled={(!student.admission_number && !student.id_number) || clearingStudentPreferences || deletingStudents}
                                   onChange={(event) => {
                                     const admissionNumber = String(student.admission_number || student.id_number || '').trim();
                                     if (!admissionNumber) return;
@@ -4432,10 +4436,10 @@ const RegistrarDashboard = () => {
                       </div>
                     </div>
 
-                    {activeSemester === 1 && placementMode === 1 && (
+                    {(activeSemester === 1 || activeSemester === 2) && placementMode === activeSemester && (
                       <div className="form-check mt-3">
                         <input
-                          id="complete-semester-one-batch"
+                          id={`complete-semester-${activeSemester}-batch`}
                           className="form-check-input"
                           type="checkbox"
                           checked={completeSemesterRun}
@@ -4444,8 +4448,10 @@ const RegistrarDashboard = () => {
                             || !placementCandidatesData.every((student) => selectedStudentIds.includes(String(student.id)))}
                           onChange={(event) => setCompleteSemesterRun(event.target.checked)}
                         />
-                        <label className="form-check-label" htmlFor="complete-semester-one-batch">
-                          Complete Semester 1 and open Semester 2 preferences
+                        <label className="form-check-label" htmlFor={`complete-semester-${activeSemester}-batch`}>
+                          {activeSemester === 1
+                            ? 'Complete Semester 1 and open Semester 2 preferences'
+                            : 'Complete Semester 2 after checking all remaining university capacity'}
                         </label>
                       </div>
                     )}
@@ -4712,13 +4718,12 @@ const RegistrarDashboard = () => {
 
                       const fullRosterIds = placementCandidatesData
                         .map((student) => String(student.id));
-                      const fullScopeSelected = activeSemester === 1
-                        && selectedStream === ''
+                      const fullScopeSelected = selectedStream === ''
                         && fullRosterIds.length > 0
                         && fullRosterIds.every((id) => selectedStudentIds.includes(id));
                       if (completeSemesterRun && !fullScopeSelected) {
-                        setRunResult({ assigned: 0, unassigned: 0, error: 'Select every candidate across all streams and colleges before completing the first-semester batch.' });
-                        setPlacementError('A partial selection cannot advance the active semester.');
+                        setRunResult({ assigned: 0, unassigned: 0, error: 'Select every candidate across all streams and colleges before completing the semester.' });
+                        setPlacementError('A partial selection cannot complete the active semester.');
                         return;
                       }
 
@@ -4760,7 +4765,7 @@ const RegistrarDashboard = () => {
                               const formattedPreferences = preferences
                                 .map((pref, index) => ({
                                   priority: Number(pref?.priority ?? pref?.rank ?? index + 1),
-                                  department: pref?.dept_name || pref?.department || pref?.name || pref?.college || pref?.stream || '',
+                                  department: pref?.dept_name || pref?.department || pref?.name || pref?.college || '',
                                   college_name: pref?.college_name || pref?.collegeName || pref?.college || '',
                                   stream: pref?.stream || '',
                                 }))
@@ -4856,7 +4861,8 @@ const RegistrarDashboard = () => {
                           setStudentRecordsRefreshToken((token) => token + 1);
                         }
                         const deferred = Number(summary.deferredStudents || 0);
-                        const outcome = { assigned, unassigned, deferred, alreadyPlaced, total: students.length };
+                        const pending = Number(summary.pendingStudents || 0);
+                        const outcome = { assigned, unassigned, deferred, pending, alreadyPlaced, total: students.length };
 
                         setRunResult(outcome);
                         setUnassignedStudentsRefreshToken((token) => token + 1);
@@ -4989,6 +4995,9 @@ const RegistrarDashboard = () => {
                     {runResult.deferred > 0 && (
                       <div>Pending 2nd Semester: <strong>{runResult.deferred}</strong></div>
                     )}
+                    {runResult.pending > 0 && (
+                      <div>Pending further placement review: <strong>{runResult.pending}</strong></div>
+                    )}
                     <div>Unassigned: <strong>{runResult.unassigned}</strong></div>
                     {runResult.alreadyPlaced > 0 && (
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
@@ -5058,8 +5067,7 @@ const RegistrarDashboard = () => {
                             <tbody>
                               {latestPlacementRun.placements.map((placement, index) => {
                                 const assigned = placement.status === 'placed';
-                                const deferred = placement.status === 'deferred'
-                                  || String(placement.status || '').trim().toLowerCase() === 'pending 2nd semester';
+                                const deferred = isDeferredPlacement(placement);
 
                                 return (
                                   <tr key={`${placement.studentId || placement.id_number || placement.admission_number || 'student'}-${placement.department || 'unassigned'}-${index}`}>

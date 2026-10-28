@@ -139,7 +139,7 @@ function savePendingSemesterPlacementResult(
         'college_name' => $target['college_name'],
         'final_score' => (float) $student['final_merit_score'],
         'choice_rank' => (int) ($target['choice_rank'] ?? 0),
-        'status' => 'Pending',
+        'status' => 'Pending 2nd Semester',
         'placement_semester' => $semester,
     ];
     $insertColumns = array_values(array_filter(
@@ -642,7 +642,7 @@ function computeMeritScore(array $student, array $rules): float
     if ($placementEligibilityColumn !== '') {
         $validPlacementStatuses = $activeSemester === 2
             ? "'pending', 'pending 1st semester', 'pending 2nd semester', 'placed in semester 1', 'allocated', 'eligible', 'unplaced'"
-            : "'pending', 'pending 1st semester', 'eligible', 'unplaced'";
+            : "'pending', 'pending 1st semester', 'eligible', 'unplaced', 'not assigned', 'unassigned'";
         $studentEligibilityConditions[] = "(
             sd.`{$placementEligibilityColumn}` IS NULL
             OR LOWER(TRIM(sd.`{$placementEligibilityColumn}`)) IN ({$validPlacementStatuses})
@@ -749,7 +749,7 @@ function computeMeritScore(array $student, array $rules): float
             if (!$db->query(
                 'UPDATE placement_results SET ' . implode(', ', $forceResetAssignments) . $forceSemesterCondition
             )) {
-                throw new Exception('Unable to reset publication state for the forced placement rerun: ' . $db->error);
+                throw new RuntimeException('Unable to reset published placement results: ' . $db->error);
             }
         }
 
@@ -1377,7 +1377,7 @@ function computeMeritScore(array $student, array $rules): float
                     $activeChoiceConditions[] = "(d_eligible.offered_semester = 2 OR "
                         . "(d_eligible.offered_semester = 1 AND {$firstSemesterOnlyCondition}))";
                 } else {
-                    $activeChoiceConditions[] = 'd_eligible.offered_semester = 1';
+                    $activeChoiceConditions[] = 'd_eligible.offered_semester IN (1, 2)';
                 }
             }
             $departmentActiveColumn = in_array('status', $departmentColumns, true)
@@ -1772,43 +1772,10 @@ function computeMeritScore(array $student, array $rules): float
                     return placementDepartmentMatchesAllocation($department, $collegeAllocation);
                 }
             ));
-            $fallbackPreferences = placementSecondSemesterFallbackPreferences(
-                $firstSemesterPreferences,
-                array_values($departmentMap),
-                $collegeAllocation
-            );
-            $nextFallbackPriority = $normalizedPreferences
-                ? max(array_column($normalizedPreferences, 'priority')) + 1
-                : 1;
-            foreach ($fallbackPreferences as &$fallbackPreference) {
-                $fallbackPreference['priority'] = $nextFallbackPriority++;
-            }
-            unset($fallbackPreference);
-            $normalizedPreferences = array_merge($normalizedPreferences, $fallbackPreferences);
-        }
-        if (empty($normalizedPreferences)) {
-            foreach ($departmentMap as $department) {
-                if (!placementDepartmentCanBePreferred($department, (string) $student['stream'], $activeSemester)) {
-                    continue;
-                }
-                if (
-                    $activeSemester === 2
-                    && (!$collegeAllocation || !placementDepartmentMatchesAllocation($department, $collegeAllocation))
-                ) {
-                    continue;
-                }
-                $normalizedPreferences[] = [
-                    'dept_id' => (int) ($department['id'] ?? 0),
-                    'department' => (string) ($department['name'] ?? ''),
-                    'priority' => count($normalizedPreferences) + 1,
-                    'college_name' => (string) ($department['college_name'] ?? ''),
-                    'stream' => (string) ($department['stream'] ?? ''),
-                    'offered_semester' => (int) ($department['offered_semester'] ?? $activeSemester),
-                    'is_first_semester_only' => $department['is_first_semester_only'] ?? null,
-                    'college_id' => (int) ($department['college_id'] ?? 0),
-                    'is_fallback' => true,
-                ];
-            }
+            // Automatic department assignment is disabled. Only explicit student choices may place a student;
+            // any unmatched or exhausted preference list must remain unassigned or pending.
+            $fallbackPreferences = [];
+            $normalizedPreferences = array_values($normalizedPreferences);
         }
         $meritScore = computeMeritScore($student, $rules);
         $cumulativeScore = $meritScore;
@@ -2094,12 +2061,55 @@ function computeMeritScore(array $student, array $rules): float
     $assignedByDepartment = [];
     $assignedCount = 0;
     $unassignedCount = 0;
+    $pendingPlacementCount = 0;
     $alreadyPlacedCount = 0;
     $deferredCount = 0;
     // College-wide runs must evaluate every department in the selected college.
     // Keep the field for backwards compatibility, but never narrow a college-wide run to one department.
     $placementScope = strtolower(trim((string) ($input['placementScope'] ?? 'college-wide')));
     $selectedDepartment = $placementScope === 'college-wide' ? '' : trim((string) ($input['selectedDepartment'] ?? ''));
+
+    if ($activeSemester === 2 && !empty($input['completeSemesterRun'])) {
+        $pendingAllocations = $db->query(
+            "SELECT student_id, admission_number
+             FROM placement_college_allocations
+             WHERE target_semester = 2 AND LOWER(TRIM(status)) = 'pending'
+             FOR UPDATE"
+        );
+        if (!$pendingAllocations) {
+            throw new RuntimeException('Unable to verify the complete second-semester candidate roster: ' . $db->error);
+        }
+        $selectedById = [];
+        $selectedByAdmission = [];
+        foreach ($allStudents as $candidate) {
+            if ($candidate['id'] !== null) {
+                $selectedById[(string) $candidate['id']] = true;
+            }
+            $candidateAdmission = trim((string) ($candidate['admission_number'] ?? ''));
+            if ($candidateAdmission !== '') {
+                $selectedByAdmission[$candidateAdmission] = true;
+            }
+        }
+        $omittedAllocation = false;
+        while ($allocation = $pendingAllocations->fetch_assoc()) {
+            $allocationStudentId = trim((string) ($allocation['student_id'] ?? ''));
+            $allocationAdmission = trim((string) ($allocation['admission_number'] ?? ''));
+            if (
+                ($allocationStudentId === '' || !isset($selectedById[$allocationStudentId]))
+                && ($allocationAdmission === '' || !isset($selectedByAdmission[$allocationAdmission]))
+            ) {
+                $omittedAllocation = true;
+                break;
+            }
+        }
+        $pendingAllocations->free();
+        if ($omittedAllocation) {
+            throw new RuntimeException(
+                'Select every pending second-semester student before completing the placement cycle.',
+                409
+            );
+        }
+    }
 
     foreach ($allStudents as $student) {
         // Check for duplicates within the active semester while the transaction is active.
@@ -2174,31 +2184,10 @@ function computeMeritScore(array $student, array $rules): float
             $isFallbackPreference = !empty($preference['is_fallback']);
             $preferenceDepartmentId = (int) ($preference['dept_id'] ?? 0);
             if ($activeSemester === 1 && !empty($preference['is_broad_choice'])) {
-                $broadTarget = placementBroadChoiceAllocationTarget(
-                    (string) $student['stream'],
-                    $preference,
-                    $departmentRows,
-                    $semesterTwoGroupCapacityMap
-                );
-                if ($broadTarget === null) {
-                    continue;
-                }
-                $broadGroup = (string) $broadTarget['placement_group'];
-                $broadQuotaAvailable = (int) ($semesterTwoGeneralQuotaByGroup[$broadGroup] ?? 0) > 0
-                    || placementIsFemale($student['gender'] ?? '')
-                        && (int) ($semesterTwoFemaleQuotaByGroup[$broadGroup] ?? 0) > 0;
-                if (!$broadQuotaAvailable) {
-                    continue;
-                }
-                if ($selectedDepartment !== '' && $selectedDepartment !== 'all') {
-                    continue;
-                }
-                if ($selectedCollege !== '' && $selectedCollege !== 'all'
-                    && normalizeDepartmentName($broadTarget['college_name']) !== normalizeDepartmentName($selectedCollege)) {
-                    continue;
-                }
-                $pendingTarget = $broadTarget;
-                break;
+                // Automatic fallback allocation is disabled. Broad-choice preferences must not
+                // create a deferred or random department assignment when the student has no explicit match.
+                $pendingTarget = null;
+                continue;
             }
             $preferenceDepartment = $preferenceDepartmentId > 0
                 ? ($allDepartmentMapById[$preferenceDepartmentId] ?? null)
@@ -2344,7 +2333,7 @@ function computeMeritScore(array $student, array $rules): float
                     'college_name' => $department['college_name'],
                     'final_score' => (float) $student['final_merit_score'],
                     'choice_rank' => (int) ($preference['priority'] ?? ($priorityIndex + 1)),
-                    'status' => 'Pending',
+                    'status' => ($semester === 2) ? 'Pending 2nd Semester' : 'Pending',
                     'placement_semester' => $activeSemester,
                 ];
                 $insertColumns = array_values(array_filter(
@@ -2447,101 +2436,9 @@ function computeMeritScore(array $student, array $rules): float
         }
 
         if (!$placed) {
-            if ($activeSemester === 1) {
-                $target = $pendingTarget ?? placementFirstSemesterAllocationTarget(
-                        (string) $student['stream'],
-                        $student['preferences'],
-                        $departmentRows,
-                        $semesterTwoGroupCapacityMap,
-                        $groupCapacityMap,
-                        $collegeCapacityMap,
-                        $semesterTwoCollegeCapacityMap,
-                        $preferenceCollegeCapacityMap,
-                        $preferenceGroupCapacityMap
-                    );
-                $targetGroup = (string) ($target['placement_group'] ?? '');
-                $groupAllocationCapacity = $targetGroup !== ''
-                    ? (int) ($semesterTwoGroupCapacityMap[$targetGroup] ?? 0)
-                    : 0;
-                if ($target !== null && trim((string) $target['college_name']) !== ''
-                    && $groupAllocationCapacity > 0) {
-                    $targetCollegeCapacityKey = (string) ($target['college_capacity_key'] ?? '');
-                    $usesCollegeQuota = $targetCollegeCapacityKey !== '';
-                    $quotaKey = $usesCollegeQuota ? $targetCollegeCapacityKey : $targetGroup;
-                    $generalQuota = $usesCollegeQuota
-                        ? (int) ($semesterTwoGeneralQuotaByCollege[$quotaKey] ?? 0)
-                        : (int) ($semesterTwoGeneralQuotaByGroup[$quotaKey] ?? 0);
-                    $femaleQuota = $usesCollegeQuota
-                        ? (int) ($semesterTwoFemaleQuotaByCollege[$quotaKey] ?? 0)
-                        : (int) ($semesterTwoFemaleQuotaByGroup[$quotaKey] ?? 0);
-                    $isFemaleApplicant = placementIsFemale($student['gender'] ?? '');
-                    if ($generalQuota > 0) {
-                        if ($usesCollegeQuota) {
-                            $semesterTwoGeneralQuotaByCollege[$quotaKey] = $generalQuota - 1;
-                        } else {
-                            $semesterTwoGeneralQuotaByGroup[$quotaKey] = $generalQuota - 1;
-                        }
-                    } elseif ($isFemaleApplicant && $femaleQuota > 0) {
-                        if ($usesCollegeQuota) {
-                            $semesterTwoFemaleQuotaByCollege[$quotaKey] = $femaleQuota - 1;
-                        } else {
-                            $semesterTwoFemaleQuotaByGroup[$quotaKey] = $femaleQuota - 1;
-                        }
-                    } else {
-                        $target = null;
-                    }
-                }
-                if ($target !== null && trim((string) $target['college_name']) !== ''
-                    && $groupAllocationCapacity > 0) {
-                    $semesterTwoGroupCapacityMap[$targetGroup] = $groupAllocationCapacity - 1;
-                    $groupCapacityMap[$targetGroup] = max(
-                        0,
-                        (int) ($groupCapacityMap[$targetGroup] ?? 0) - 1
-                    );
-                    $targetCollegeCapacityKey = (string) ($target['college_capacity_key'] ?? '');
-                    if ($targetCollegeCapacityKey !== '') {
-                        $semesterTwoCollegeCapacityMap[$targetCollegeCapacityKey] = max(
-                            0,
-                            (int) ($semesterTwoCollegeCapacityMap[$targetCollegeCapacityKey] ?? 0) - 1
-                        );
-                        $collegeCapacityMap[$targetCollegeCapacityKey] = max(
-                            0,
-                            (int) ($collegeCapacityMap[$targetCollegeCapacityKey] ?? 0) - 1
-                        );
-                    }
-                    savePlacementCollegeAllocation($db, $student, $target);
-                    savePendingSemesterPlacementResult($db, $student, $target, $placementColumns, $activeSemester);
-                    clearPlacementUnassignedRecord($db, $student['id'], (string) $student['admission_number']);
-                    $profileIdentityColumn = $studentDataIdentityColumn === 'user_id' && $student['id'] !== null
-                        ? 'user_id'
-                        : (in_array('admission_number', $studentDataColumns, true) ? 'admission_number' : 'id_number');
-                    $profileIdValue = $profileIdentityColumn === 'user_id' ? $student['id'] : $student['admission_number'];
-                    $profileIdType = $profileIdentityColumn === 'user_id' ? 'i' : 's';
-                    $updateStudentPlacementFields(
-                        'Pending 2nd Semester',
-                        $target['college_name'],
-                        $profileIdentityColumn,
-                        $profileIdValue,
-                        $profileIdType
-                    );
-                    $deferredCount++;
-                    $placements[] = [
-                        'studentId' => $student['id'],
-                        'id_number' => $student['id_number'],
-                        'studentName' => $student['name'],
-                        'department' => null,
-                        'college' => $target['college_name'],
-                        'stream' => $student['stream'],
-                        'score' => $student['final_merit_score'],
-                        'choiceRank' => $target['choice_rank'] ?? null,
-                        'targetSemester' => 2,
-                        'status' => 'deferred',
-                    ];
-                    continue;
-                }
-            }
-
-            $unassignedCount++;
+            // Automatic fallback assignment is completely disabled.
+            // If a student has no valid explicit choice match, they must remain unassigned or pending.
+            $target = null;
             $firstPreference = $student['preferences'][0] ?? [];
             $unassignedStream = $student['stream'] !== ''
                 ? $student['stream']
@@ -2588,6 +2485,103 @@ function computeMeritScore(array $student, array $rules): float
                 $reasonDetails = ['message' => 'No active department matching the submitted choices was available in this placement run scope.'];
             }
 
+            if ($activeSemester === 1) {
+                $pendingTarget = placementFirstSemesterAllocationTarget(
+                    (string) $student['stream'],
+                    $student['preferences'],
+                    array_values($allDepartmentMap),
+                    $semesterTwoGroupCapacityMap,
+                    $groupCapacityMap,
+                    $collegeCapacityMap,
+                    $semesterTwoCollegeCapacityMap,
+                    $preferenceCollegeCapacityMap,
+                    $preferenceGroupCapacityMap,
+                    true
+                );
+                $pendingCollege = trim((string) ($pendingTarget['college_name'] ?? ''));
+                if ($pendingTarget === null || $pendingCollege === '') {
+                    throw new RuntimeException(
+                        'Unable to keep this student pending for semester two because no college can be resolved from their choices.',
+                        422
+                    );
+                }
+                savePlacementCollegeAllocation($db, $student, $pendingTarget);
+                $pendingStatus = 'Pending 2nd Semester';
+                $profileIdentityColumn = $studentDataIdentityColumn === 'user_id' && $student['id'] !== null
+                    ? 'user_id'
+                    : (in_array('admission_number', $studentDataColumns, true) ? 'admission_number' : 'id_number');
+                $profileIdValue = $profileIdentityColumn === 'user_id'
+                    ? $student['id']
+                    : $student['admission_number'];
+                $profileIdType = $profileIdentityColumn === 'user_id' ? 'i' : 's';
+                clearPlacementUnassignedRecord($db, $student['id'], (string) $student['admission_number']);
+                $updateStudentPlacementFields(
+                    $pendingStatus,
+                    $pendingCollege,
+                    $profileIdentityColumn,
+                    $profileIdValue,
+                    $profileIdType
+                );
+                $pendingPlacementCount++;
+                $placements[] = [
+                    'studentId' => $student['id'],
+                    'id_number' => $student['id_number'],
+                    'studentName' => $student['name'],
+                    'department' => null,
+                    'college' => $pendingCollege,
+                    'stream' => $unassignedStream,
+                    'score' => $student['final_merit_score'],
+                    'choiceRank' => null,
+                    'status' => 'pending_second_semester',
+                    'reasonCode' => $reasonCode,
+                ];
+                continue;
+            }
+
+            if (!placementShouldMarkStudentUnassigned(
+                $activeSemester,
+                !empty($input['completeSemesterRun']),
+                $reasonCode,
+                array_sum($capacityMap) <= 0
+            )) {
+                $pendingStatus = $activeSemester === 2
+                    ? 'Pending 2nd Semester'
+                    : 'Pending 1st Semester';
+                $pendingCollege = $activeSemester === 2
+                    ? trim((string) ($student['college_allocation']['college_name'] ?? $unassignedCollege))
+                    : 'Not assigned';
+                $profileIdentityColumn = $studentDataIdentityColumn === 'user_id' && $student['id'] !== null
+                    ? 'user_id'
+                    : (in_array('admission_number', $studentDataColumns, true) ? 'admission_number' : 'id_number');
+                $profileIdValue = $profileIdentityColumn === 'user_id'
+                    ? $student['id']
+                    : $student['admission_number'];
+                $profileIdType = $profileIdentityColumn === 'user_id' ? 'i' : 's';
+                clearPlacementUnassignedRecord($db, $student['id'], (string) $student['admission_number']);
+                $updateStudentPlacementFields(
+                    $pendingStatus,
+                    $pendingCollege,
+                    $profileIdentityColumn,
+                    $profileIdValue,
+                    $profileIdType
+                );
+                $pendingPlacementCount++;
+                $placements[] = [
+                    'studentId' => $student['id'],
+                    'id_number' => $student['id_number'],
+                    'studentName' => $student['name'],
+                    'department' => null,
+                    'college' => $pendingCollege,
+                    'stream' => $unassignedStream,
+                    'score' => $student['final_merit_score'],
+                    'choiceRank' => null,
+                    'status' => 'pending',
+                    'reasonCode' => $reasonCode,
+                ];
+                continue;
+            }
+
+            $unassignedCount++;
             $encodedReasonDetails = json_encode($reasonDetails, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
             $unassignedData = [
                 'student_id' => $student['id'],
@@ -2669,7 +2663,7 @@ function computeMeritScore(array $student, array $rules): float
                 : $student['admission_number'];
             $profileIdType = $profileIdentityColumn === 'user_id' ? 'i' : 's';
             $updateStudentPlacementFields(
-                'Not assigned',
+                'Unassigned',
                 'Not assigned',
                 $profileIdentityColumn,
                 $profileIdValue,
@@ -2722,6 +2716,16 @@ function computeMeritScore(array $student, array $rules): float
         if (!$allocationChoiceIdentity) {
             throw new Exception('College allocations have no identifier compatible with student choices.');
         }
+        $unassignedChoiceIdentity = [];
+        if ($unassignedHas('admission_number')) {
+            $unassignedChoiceIdentity[] = 'TRIM(us.admission_number) = TRIM(sc.admission_number)';
+        }
+        if ($unassignedHas('student_id') && in_array('student_id', $choiceColumns, true)) {
+            $unassignedChoiceIdentity[] = 'us.student_id = sc.student_id';
+        }
+        if (!$unassignedChoiceIdentity) {
+            throw new Exception('Unassigned students cannot be matched to choices while verifying semester completion.');
+        }
         $pendingFirstSemester = $db->query(
             "SELECT COUNT(DISTINCT TRIM(sc.admission_number)) AS pending_count
              FROM student_choices sc
@@ -2734,6 +2738,10 @@ function computeMeritScore(array $student, array $rules): float
                     SELECT 1 FROM placement_college_allocations pca
                     WHERE (" . implode(' OR ', $allocationChoiceIdentity) . ")
                       AND pca.target_semester = 2 AND pca.status = 'pending'
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM unassigned_students us
+                    WHERE (" . implode(' OR ', $unassignedChoiceIdentity) . ")
                )"
         );
         if (!$pendingFirstSemester) {
@@ -2775,6 +2783,7 @@ function computeMeritScore(array $student, array $rules): float
         'summary' => [
             'assignedStudents' => $assignedCount,
             'unassignedStudents' => $unassignedCount,
+            'pendingStudents' => $pendingPlacementCount,
             'alreadyPlacedStudents' => $alreadyPlacedCount,
             'totalStudents' => count($allStudents),
             'totalDepartments' => count($departmentMap),
