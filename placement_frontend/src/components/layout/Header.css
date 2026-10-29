@@ -19,8 +19,8 @@
 
 /* Tier 1 Styling: University Branding */
 .top-branding-tier {
-  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
-  padding: 1.25rem 0;
+  background: linear-gradient(110deg, #1e1b4b 0%, #172554 58%, #1e3a8a 100%);
+  padding: 0.55rem 0;
   color: white;
   border-bottom: 1px solid rgba(59, 130, 246, 0.5);
 }
@@ -33,13 +33,13 @@
 }
 
 .top-branding-tier.has-dashboard-utilities {
-  padding: 0.85rem 0;
+  padding: 0.45rem 0;
   border-bottom: 1px solid rgba(59, 130, 246, 0.5);
-  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
+  background: linear-gradient(110deg, #1e1b4b 0%, #172554 58%, #1e3a8a 100%);
 }
 
 .university-logo {
-  height: 68px;
+  height: 48px;
   width: auto;
   border-radius: 12px;
   border: 2px solid rgba(96, 165, 250, 0.5);
@@ -54,7 +54,7 @@
 }
 
 .university-name {
-  font-size: 1.85rem;
+  font-size: 1.2rem;
   font-weight: 800;
   margin: 0;
   letter-spacing: 1.2px;
@@ -63,7 +63,7 @@
 }
 
 .system-subtitle {
-  font-size: 1.05rem;
+  font-size: 0.78rem;
   margin: 0;
   color: #dbeafe;
   font-weight: 600;
@@ -258,22 +258,23 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-  .university-name { font-size: 1.25rem; }
-  .system-subtitle { font-size: 0.85rem; }
-  .university-logo { height: 50px; }
+  .university-name { font-size: 1.05rem; }
+  .system-subtitle { font-size: 0.72rem; }
+  .university-logo { height: 44px; }
   .navigation-tier .nav-link { font-size: 0.78rem; padding: 0.35rem 0.6rem !important; }
 }
 
 @media (max-width: 520px) {
-  .top-branding-tier { padding: 0.75rem 0; }
-  .university-name { font-size: 0.95rem; letter-spacing: 0; }
-  .system-subtitle { font-size: 0.7rem; }
-  .university-logo { height: 42px; }
+  .top-branding-tier { padding: 0.5rem 0; }
+  .university-name { font-size: 0.85rem; letter-spacing: 0; }
+  .system-subtitle { font-size: 0.65rem; }
+  .university-logo { height: 38px; }
   .brand-text-wrapper { margin-left: 0.45rem !important; }
 }
 
 @media (max-width: 767.98px) {
   .top-branding-tier.has-dashboard-utilities .container { padding-right: 1rem; padding-left: 1rem; }
+  .top-branding-tier.has-dashboard-utilities .top-branding-content { flex-wrap: nowrap; gap: .55rem; }
   .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation { gap: 0.4rem; }
   .top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger { min-width: 2.65rem; }
   .top-branding-tier.has-dashboard-utilities .dashboard-profile-trigger-copy { display: none; }

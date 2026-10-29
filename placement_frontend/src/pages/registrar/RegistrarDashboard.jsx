@@ -19,7 +19,17 @@ import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { FaTrash } from 'react-icons/fa';
 import { FiCalendar } from 'react-icons/fi';
-import { ChevronDown, ChevronUp, Eye, Info, Pencil, Save } from 'lucide-react';
+import {
+  Building2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  Eye,
+  Info,
+  Pencil,
+  Save,
+} from 'lucide-react';
 import ChoiceMatrix from './ChoiceMatrix.jsx';
 import SecondSemToggle from './SecondSemToggle.jsx';
 import ResetStudentChoices from './ResetStudentChoices.jsx';
@@ -2871,55 +2881,73 @@ const RegistrarDashboard = () => {
               <div className="row g-4 mb-4">
                 <div className="col-lg-4 col-md-6">
                   <div
-                    className="card summary-card shadow-sm h-100"
+                    className="card summary-card registrar-metric-card registrar-metric-card-departments shadow-sm h-100"
                     role="button"
                     tabIndex={0}
                     onClick={() => handleCardClick('departments')}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('departments');
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleCardClick('departments');
+                      }
                     }}
                   >
                     <div className="card-body">
-                      <span className="summary-label">{t('Departments')}</span>
+                      <div className="registrar-metric-heading">
+                        <span className="summary-label">{t('Departments')}</span>
+                        <span className="registrar-metric-icon"><Building2 size={20} aria-hidden="true" /></span>
+                      </div>
                       <h3 className="summary-value">{summary.totalDepartments}</h3>
-                      <small className="text-muted">DTU academic departments</small>
-                      <div className="mt-2"><small className="text-primary fw-bold">Click to view details →</small></div>
+                      <small className="registrar-metric-description">DTU academic departments</small>
+                      <div className="registrar-metric-cta">View details <span aria-hidden="true">→</span></div>
                     </div>
                   </div>
                 </div>
                 <div className="col-lg-4 col-md-6">
                   <div
-                    className="card summary-card shadow-sm h-100"
+                    className="card summary-card registrar-metric-card registrar-metric-card-placed shadow-sm h-100"
                     role="button"
                     tabIndex={0}
                     onClick={() => handleCardClick('placementsCompleted')}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('placementsCompleted');
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleCardClick('placementsCompleted');
+                      }
                     }}
                   >
                     <div className="card-body">
-                      <span className="summary-label">{t('Placements Completed')}</span>
+                      <div className="registrar-metric-heading">
+                        <span className="summary-label">{t('Placements Completed')}</span>
+                        <span className="registrar-metric-icon"><CheckCircle2 size={20} aria-hidden="true" /></span>
+                      </div>
                       <h3 className="summary-value">{summary.placementsCompleted}</h3>
-                      <small className="text-muted">Department assignments finalized</small>
-                      <div className="mt-2"><small className="text-warning fw-bold">Click to view details →</small></div>
+                      <small className="registrar-metric-description">Department assignments finalized</small>
+                      <div className="registrar-metric-cta">View details <span aria-hidden="true">→</span></div>
                     </div>
                   </div>
                 </div>
                 <div className="col-lg-4 col-md-6">
                   <div
-                    className="card summary-card shadow-sm h-100"
+                    className="card summary-card registrar-metric-card registrar-metric-card-pending shadow-sm h-100"
                     role="button"
                     tabIndex={0}
                     onClick={() => handleCardClick('unplacedStudents')}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('unplacedStudents');
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleCardClick('unplacedStudents');
+                      }
                     }}
                   >
                     <div className="card-body">
-                      <span className="summary-label">{t('Unplaced Students')}</span>
+                      <div className="registrar-metric-heading">
+                        <span className="summary-label">{t('Unplaced Students')}</span>
+                        <span className="registrar-metric-icon"><Clock3 size={20} aria-hidden="true" /></span>
+                      </div>
                       <h3 className="summary-value">{summary.awaitingPlacement}</h3>
-                      <small className="text-muted">Awaiting placement run</small>
-                      <div className="mt-2"><small className="fw-bold" style={{ color: '#fd7e14' }}>Click to view details →</small></div>
+                      <small className="registrar-metric-description">Awaiting placement run</small>
+                      <div className="registrar-metric-cta">View details <span aria-hidden="true">→</span></div>
                     </div>
                   </div>
                 </div>
@@ -4083,7 +4111,7 @@ const RegistrarDashboard = () => {
               <ResetStudentChoices activeSemester={activeSemester} />
             </section>
           ) : tab === 'placement-rules' ? (
-            <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900">
+            <div className="placement-rules-page rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900">
               <div>
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
                   <h4 className="mb-0 text-2xl font-bold text-indigo-950 dark:text-slate-100">Placement Rules</h4>

@@ -264,7 +264,7 @@ function Home() {
   return (
     <section className="home-page">
       <div className="container">
-        {/* Hero Banner (በAdmin የሚቀየሩ ጽሁፎች) */}
+        {/* Hero image banner */}
         <div className="home-hero">
           {slides.map((slide, index) => (
             <div
@@ -273,22 +273,14 @@ function Home() {
               style={{ backgroundImage: `url(${slide.image})` }}
             />
           ))}
-
-          <div className="home-hero__overlay">
-            <div className="home-hero__content">
-              <span className="home-hero__badge">{homeSettings.academicYear || homeSettings.heroBadge || slides[0].badge}</span>
-              <h1 className="home-hero__title">{homeSettings.heroTitle || slides[0].title}</h1>
-              <p className="home-hero__text">{homeSettings.heroText || slides[0].text}</p>
-              <div className="home-hero__actions">
-                <Link className="home-hero__button primary btn btn-lg" to="/services">
-                  {homeSettings.heroPrimaryButton}
-                </Link>
-                <Link className="home-hero__button secondary btn btn-lg" to="/contact">
-                  {homeSettings.heroSecondaryButton}
-                </Link>
-              </div>
-            </div>
-          </div>
+        </div>
+        <div className="home-hero__actions home-hero__actions--below">
+          <Link className="home-hero__button primary btn btn-lg" to="/services">
+            {homeSettings.heroPrimaryButton}
+          </Link>
+          <Link className="home-hero__button secondary btn btn-lg" to="/contact">
+            {homeSettings.heroSecondaryButton}
+          </Link>
         </div>
 
         {/* Colleges & Departments Directory */}

@@ -81,11 +81,11 @@
 
 /* Professional UI tokens and global element styles */
 :root{
-  --dtu-bg: #f6f8fb;
+  --dtu-bg: #f8fafc;
   --dtu-surface: #ffffff;
-  --dtu-primary: #0f3d6e;
-  --dtu-primary-600: #2150d6;
-  --dtu-accent: #1d6ca8;
+  --dtu-primary: #1e1b4b;
+  --dtu-primary-600: #4338ca;
+  --dtu-accent: #4f46e5;
   --dtu-muted: #6c757d;
   --dtu-success: #198754;
   --dtu-danger: #dc3545;
@@ -118,7 +118,7 @@ body{
 
 /* Buttons */
 .btn-primary{
-  background: linear-gradient(135deg,var(--dtu-primary),var(--dtu-accent));
+  background: linear-gradient(135deg,var(--dtu-primary),var(--dtu-primary-600));
   border: none;color:#fff;font-weight:700;padding:.6rem 1rem;border-radius:10px;box-shadow:0 10px 24px rgba(15,61,110,0.12);
 }
 .btn-outline-primary{border:1px solid rgba(15,61,110,0.12);color:var(--dtu-primary);background:transparent}

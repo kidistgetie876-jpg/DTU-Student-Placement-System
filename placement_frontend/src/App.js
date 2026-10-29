@@ -141,6 +141,7 @@ function AppRoutes() {
   let blockedFeature = null;
   if (workspaceRole === 'student' && location.pathname.startsWith('/student-dashboard')) {
     const activeTab = new URLSearchParams(location.search).get('tab')
+      || localStorage.getItem('activeTab:student')
       || localStorage.getItem('activeTab')
       || 'overview';
     const featureId = studentFeatureKeys[activeTab];
@@ -151,7 +152,10 @@ function AppRoutes() {
     if (featureId && !isOpen(featureId)) blockedFeature = firstOpenFeature('registrar');
   } else if (['head', 'hod', 'coordinator', 'department_head', 'department head'].includes(workspaceRole)
       && location.pathname.startsWith('/head-dashboard')) {
-    const activeTab = localStorage.getItem('activeTab') || 'overview';
+    const activeTab = new URLSearchParams(location.search).get('tab')
+      || localStorage.getItem('activeTab:head')
+      || localStorage.getItem('activeTab')
+      || 'overview';
     const featureId = headFeatureKeys[activeTab];
     if (featureId && !isOpen(featureId)) blockedFeature = firstOpenFeature('head');
   }

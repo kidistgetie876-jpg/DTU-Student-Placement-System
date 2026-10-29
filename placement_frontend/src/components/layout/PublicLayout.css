@@ -10,8 +10,10 @@
 }
 
 .login-route-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .login-route-shell > .main-header-container {
@@ -20,8 +22,9 @@
 
 .login-route-shell > .login-route-main {
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   box-sizing: border-box;

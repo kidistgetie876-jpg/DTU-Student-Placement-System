@@ -10,7 +10,7 @@ function PublicLayout({ children, isLogin = false, mainClassName = '' }) {
       <main className={`public-layout-main ${mainClassName}`.trim()}>
         {children}
       </main>
-      <Footer />
+      {!isLogin && <Footer />}
     </div>
   );
 }

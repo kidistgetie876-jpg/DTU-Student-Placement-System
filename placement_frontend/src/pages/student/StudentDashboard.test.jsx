@@ -7,13 +7,14 @@ import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
 import { AuthProvider } from '../../contexts/AuthContext.jsx';
 
 const mockNavigate = jest.fn();
+let mockLocation = { pathname: '/student-dashboard', search: '' };
 
 jest.mock('../../contexts/RolePermissionsContext.jsx', () => ({
   useRolePermissions: () => ({ isOpen: () => true }),
 }));
 
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ search: '' }),
+  useLocation: () => mockLocation,
   useNavigate: () => mockNavigate,
 }));
 
@@ -39,6 +40,7 @@ describe('StudentDashboard', () => {
     localStorage.clear();
     jest.clearAllMocks();
     mockNavigate.mockReset();
+    mockLocation = { pathname: '/student-dashboard', search: '' };
 
     localStorage.setItem('user', JSON.stringify({ id: '1', username: 'Alice', role: 'student' }));
     api.get.mockImplementation((url, requestConfig) => {
@@ -56,15 +58,44 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
 
     expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
-    expect(screen.getByText(/GPA/i)).toBeInTheDocument();
+    expect(screen.getByText('CGPA')).toBeInTheDocument();
     expect(screen.getByText(/Stream/i)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Placement status' })).toBeInTheDocument();
+    expect(screen.getByText('Current placement status')).toBeInTheDocument();
+    expect(screen.getByText('Student placement overview')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Disability' })).not.toBeInTheDocument();
-    expect(screen.getByText('ID: 1')).toBeInTheDocument();
+    expect(screen.getByText(/ID:/)).toHaveTextContent('1');
 
     fireEvent.click(screen.getByRole('button', { name: /submit preferences/i }));
 
     expect(screen.getByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith({
+      pathname: '/student-dashboard',
+      search: '?tab=preferences',
+    });
+  });
+
+  it('restores the selected tab from the dashboard URL after a refresh', async () => {
+    mockLocation = { pathname: '/student-dashboard', search: '?tab=preferences' };
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findByText(/Rank Your Department Preferences/i)).toBeInTheDocument();
+  });
+
+  it('opens academic score details from an academic metric card', async () => {
+    render(<StudentDashboard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'View CGPA details' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Final Score Details' })).toBeInTheDocument();
+  });
+
+  it('opens placement results from the placement stage card', async () => {
+    render(<StudentDashboard />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'View placement status' }));
+
+    expect(await screen.findByRole('heading', { name: 'Placement Result' })).toBeInTheDocument();
   });
 
   it('moves a selected college choice to another rank and clears its previous rank', async () => {

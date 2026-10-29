@@ -4,10 +4,12 @@ import {
   AlertCircle,
   Award,
   Bell,
+  BookOpen,
   CheckCheck,
   CheckCircle2,
   Clock,
   Download,
+  GraduationCap,
   MapPin,
   Printer,
 } from 'lucide-react';
@@ -252,16 +254,30 @@ const StudentDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [tab, setTabState] = useState(() => {
     const requestedTab = new URLSearchParams(location.search).get('tab');
-    return ['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(requestedTab)
-      ? requestedTab
+    const savedTab = requestedTab || localStorage.getItem('activeTab:student');
+    return ['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(savedTab)
+      ? savedTab
       : 'overview';
   });
 
   const setTab = (nextTab) => {
-    if (nextTab === 'save-page') return;
+    if (!['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(nextTab)) return;
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set('tab', nextTab);
+    navigate({ pathname: location.pathname, search: `?${searchParams.toString()}` });
+    localStorage.setItem('activeTab:student', nextTab);
     localStorage.setItem('activeTab', nextTab);
     setTabState(nextTab);
   };
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(location.search).get('tab');
+    if (['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(requestedTab)) {
+      setTabState(requestedTab);
+      localStorage.setItem('activeTab:student', requestedTab);
+      localStorage.setItem('activeTab', requestedTab);
+    }
+  }, [location.search]);
 
   const [allDepartments, setAllDepartments] = useState([]);
   const [dynamicGroupDepartments, setDynamicGroupDepartments] = useState({});
@@ -269,6 +285,7 @@ const StudentDashboard = () => {
   const [firstSemesterPreferences, setFirstSemesterPreferences] = useState([]);
   const [semesterTwoPreferences, setSemesterTwoPreferences] = useState([]);
   const [placementResult, setPlacementResult] = useState(null);
+  const [currentPlacementStatus, setCurrentPlacementStatus] = useState(null);
   const [preferenceSemester, setPreferenceSemester] = useState(1);
   const [activePlacementSemester, setActivePlacementSemester] = useState(null);
   const [assignedCollege, setAssignedCollege] = useState('');
@@ -365,6 +382,7 @@ const StudentDashboard = () => {
           if (placementStatus.success === false) {
             throw new Error(placementStatus.message || 'Unable to load student placement status.');
           }
+          setCurrentPlacementStatus(placementStatus);
           setPlacementStatusError('');
         } catch (error) {
           console.error('Unable to load student placement status:', error);
@@ -1208,6 +1226,32 @@ const StudentDashboard = () => {
     displayedPreferenceAlerts.add(text);
     return <div key={text} className={className} role={role}>{text}</div>;
   };
+  const overviewPlacementStatus = String(
+    currentPlacementStatus?.status
+      || currentPlacementStatus?.placement_status
+      || profile?.placement_status
+      || profile?.status
+      || student?.placement_status
+      || student?.status
+      || 'Pending',
+  ).trim();
+  const overviewIsPlaced = ['assigned', 'placed', 'approved', 'completed'].includes(
+    overviewPlacementStatus.toLowerCase(),
+  );
+  const overviewScore = profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A';
+  const overviewChoices = (firstSemesterPreferences.length ? firstSemesterPreferences : semesterTwoPreferences)
+    .flatMap((choice) => {
+      if (choice?.department || choice?.name) return [choice.department || choice.name];
+      if (Array.isArray(choice?.departments) && choice.departments.length) return choice.departments;
+      return choice?.group ? [preferenceGroupLabel(choice.group)] : [];
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+  const studentAcademicMetrics = [
+    { label: 'CGPA', value: profile?.cgpa ?? profile?.gpa ?? '0.00', icon: GraduationCap, iconClass: 'bg-indigo-50 text-indigo-700' },
+    { label: 'Grade 12', value: profile?.grade_12_result ?? profile?.total_mark ?? 'N/A', icon: BookOpen, iconClass: 'bg-blue-50 text-blue-700' },
+    { label: 'COC score', value: profile?.coc_result ?? profile?.coc_score ?? 'N/A', icon: Award, iconClass: 'bg-violet-50 text-violet-700' },
+  ];
 
   if (loading) return <div className="p-6 text-center">Loading student portal...</div>;
 
@@ -1230,25 +1274,98 @@ const StudentDashboard = () => {
           />
 
           {tab === 'overview' && (
-            <section className="container-fluid">
+            <section className="container-fluid student-overview space-y-5">
               <h1 className="visually-hidden">Student dashboard</h1>
-              <p>ID: {profile?.id_number || student?.id_number || student?.id || 'Not available'}</p>
-              <div className="row g-3">
-                <div className="col-md-4"><h2>CGPA</h2><p>{Number(profile?.gpa) === 0 && profile?.cgpa ? profile.cgpa : profile?.cgpa ?? profile?.gpa ?? '0.00'}</p></div>
-                <div className="col-md-4"><h2>Grade 12</h2><p>{profile?.grade_12_result ?? profile?.total_mark ?? 'Not available'}</p></div>
-                <div className="col-md-4"><h2>COC Score</h2><p>{profile?.coc_result ?? profile?.coc_score ?? 'Not available'}</p></div>
-                <div className="col-md-4"><h2>Stream</h2><p>{profile?.field_of_study || profile?.stream || student?.stream || 'Not available'}</p></div>
-                <div className="col-md-4"><h2>Final Score</h2><button type="button" aria-label="View Final Score details" onClick={openFinalScoreDetails}>{profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A'}</button></div>
+              <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm sm:p-7">
+                <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(240px,.7fr)] lg:items-center">
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Student placement overview</p>
+                    <h2 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Your placement overview</h2>
+                    <p className="mb-4 max-w-2xl text-sm leading-6 text-slate-600">
+                      Review your academic profile and follow your current placement stage.
+                    </p>
+                    <p className="mb-0 text-sm text-slate-600">
+                      <span className="font-semibold text-slate-900">
+                        ID: {profile?.id_number || student?.id_number || student?.id || 'Not available'}
+                      </span>
+                      <span className="mx-2 text-slate-300">|</span>
+                      Stream <span className="font-semibold text-slate-900">{assignedStream || 'Not available'}</span>
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold text-slate-700">Current placement status</span>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                        overviewIsPlaced ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${overviewIsPlaced ? 'bg-emerald-600' : 'bg-amber-600'}`} aria-hidden="true" />
+                        {overviewPlacementStatus}
+                      </span>
+                    </div>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-600">Cumulative merit score</p>
+                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-slate-900">
+                      {typeof overviewScore === 'number' ? overviewScore.toFixed(2) : overviewScore}
+                    </p>
+                    <button
+                      type="button"
+                      aria-label="View Final Score details"
+                      onClick={openFinalScoreDetails}
+                      className="mt-2 rounded-md text-xs font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-4 transition hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    >
+                      View score breakdown
+                    </button>
+                    <p className="mb-0 mt-1 text-xs text-slate-600">
+                      Active cycle: Semester {currentPlacementStatus?.active_semester || activePlacementSemester || preferenceSemester}
+                    </p>
+                    {overviewChoices.length > 0 && (
+                      <div className="mt-4 border-t border-slate-200 pt-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-600">Submitted choices</p>
+                        <div className="flex flex-wrap gap-2">
+                          {overviewChoices.map((choice, index) => (
+                            <span key={`${choice}-${index}`} className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-900">
+                              {index + 1}. {choice}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {studentAcademicMetrics.map(({ label, value, icon: MetricIcon, iconClass }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-label={`View ${label} details`}
+                    onClick={openFinalScoreDetails}
+                    className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  >
+                    <div className="mb-6 flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                      <span className={`grid h-10 w-10 place-items-center rounded-xl ${iconClass}`}>
+                        <MetricIcon size={20} aria-hidden="true" />
+                      </span>
+                    </div>
+                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-slate-900">{value}</p>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-label="View placement status"
+                  onClick={() => setTab('result')}
+                  className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+                >
+                  <div className="mb-5 flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Placement stage</span>
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                      <Clock size={20} aria-hidden="true" />
+                    </span>
+                  </div>
+                  <p className="mb-0 break-words text-lg font-extrabold tracking-tight text-slate-900">{overviewPlacementStatus}</p>
+                  <p className="mb-0 mt-1 text-xs text-slate-500">Latest status from the Registrar</p>
+                </button>
               </div>
-              <section className="card p-3 my-3">
-                <h2 className="h5">Placement status</h2>
-                <p>{profile?.status || 'Pending'}</p>
-              </section>
-              <section className="card p-3">
-                <h2 className="h5">Recent announcements</h2>
-                {notificationsLoading ? <p role="status">Loading recent notifications...</p> : notifications.slice(0, 3).map((item) => <p key={item.id}>{item.title || item.message}</p>)}
-                <button type="button" onClick={() => setTab('notifications')}>View all</button>
-              </section>
               {finalScoreDetails && (
                 <div role="dialog" aria-label="Final Score Details">
                   <h2>Final Score Details</h2>

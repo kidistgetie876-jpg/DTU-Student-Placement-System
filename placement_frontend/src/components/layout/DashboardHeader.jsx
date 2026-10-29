@@ -398,7 +398,7 @@ const DashboardHeader = ({
     <>
       {profileToast && <div className="dashboard-profile-save-toast" role="status" aria-live="polite">{profileToast}</div>}
       {showGreeting && (
-        <header className="dashboard-topbar mb-4">
+        <header className={`dashboard-topbar${variant === 'welcome' ? ' dashboard-welcome-banner' : ''} mb-4`}>
           <div className="dashboard-topbar-copy">
             <h2 className="fw-bold mb-0">
               {t(greeting)}, <span>{username || activeProfile.username || displayName}</span>!

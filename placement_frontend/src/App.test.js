@@ -132,21 +132,21 @@ describe('Login', () => {
     });
   });
 
-  test('renders the login route inside the public header and footer shell', async () => {
+  test('renders the login route inside the public header without the footer', async () => {
     mockAppApiResponses();
     window.history.pushState({}, '', '/login');
 
     render(<App />);
 
-    expect(await screen.findByRole('dialog', { name: /user login/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Log in' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Reset your password' })).toHaveAttribute('aria-selected', 'false');
+    expect(await screen.findByLabelText('Admission ID / Email')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'SDPS' })).toBeInTheDocument();
     const navigation = screen.getByRole('navigation');
     for (const link of ['Home', 'Services', 'Placement Info', 'Announcements', 'Contact']) {
       expect(await within(navigation).findByRole('link', { name: link })).toBeInTheDocument();
     }
-    expect(within(navigation).getByRole('button', { name: /^login$/i })).toBeInTheDocument();
-    expect(screen.getByRole('contentinfo')).toBeInTheDocument();
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
+    expect(within(navigation).getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/login');
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /let’s talk about your next step/i })).not.toBeInTheDocument();
   });
 

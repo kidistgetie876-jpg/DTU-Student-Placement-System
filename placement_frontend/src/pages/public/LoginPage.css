@@ -1,19 +1,20 @@
 .login-page {
   display: flex;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   align-items: center;
   justify-content: center;
   padding-block: 0.5rem;
 }
 
-.login-page .login-card {
-  padding: 0.625rem 1.125rem;
-}
-
 .login-page .login-logo {
   width: 3rem;
   height: 3rem;
+}
+
+.login-page .login-card {
+  padding: 2rem;
 }
 
 .login-forgot-link {
@@ -90,8 +91,12 @@
 }
 
 @media (max-height: 700px) {
-  .login-page .login-card {
-    padding: 0.5rem 0.875rem;
+  .login-route-shell .login-page {
+    padding-block: 0;
+  }
+
+  .login-route-shell .login-page .login-card {
+    padding: 1rem 1.5rem;
   }
 
   .login-page .login-logo {

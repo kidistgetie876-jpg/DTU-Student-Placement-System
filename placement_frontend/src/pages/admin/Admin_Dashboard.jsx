@@ -47,6 +47,7 @@ const AdminDashboard = () => {
   const { isOpen } = useRolePermissions();
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedTab = new URLSearchParams(location.search).get('tab');
   const [admin, setAdmin] = useState(null);
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -76,7 +77,8 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   const [tab, setTabState] = useState(() => {
-    const initialTab = location.state?.activeTab;
+    const initialTab = requestedTab || location.state?.activeTab
+      || localStorage.getItem('activeTab:admin');
     return adminTabs.includes(initialTab) ? initialTab : 'dashboard';
   });
   const setTab = useCallback((nextTab) => {
@@ -84,9 +86,22 @@ const AdminDashboard = () => {
     if (!adminTabs.includes(normalizedTab)) return;
     const permissionId = adminTabPermissions[normalizedTab];
     if (permissionId && !isOpen(permissionId)) return;
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set('tab', normalizedTab);
+    navigate({ pathname: location.pathname, search: `?${searchParams.toString()}` });
+    localStorage.setItem('activeTab:admin', normalizedTab);
     localStorage.setItem('activeTab', normalizedTab);
     setTabState(normalizedTab);
-  }, [isOpen]);
+  }, [isOpen, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const routeTab = new URLSearchParams(location.search).get('tab');
+    if (adminTabs.includes(routeTab)) {
+      setTabState(routeTab);
+      localStorage.setItem('activeTab:admin', routeTab);
+      localStorage.setItem('activeTab', routeTab);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     const permissionId = adminTabPermissions[tab];

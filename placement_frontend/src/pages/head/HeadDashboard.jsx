@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import dtuLogo from '../../assets/images6.jpg';
@@ -36,18 +36,33 @@ const HEAD_TABS = ['overview', 'approvals', 'capacity', 'students', 'reports'];
 const HeadDashboard = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
   const [leader, setLeader] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTabState] = useState(() => {
-    const savedTab = localStorage.getItem('activeTab');
+    const requestedTab = new URLSearchParams(location.search).get('tab');
+    const savedTab = requestedTab || localStorage.getItem('activeTab:head');
     return HEAD_TABS.includes(savedTab) ? savedTab : 'overview';
   });
   const [dashboardError, setDashboardError] = useState('');
   const setTab = (nextTab) => {
     if (!HEAD_TABS.includes(nextTab)) return;
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set('tab', nextTab);
+    navigate({ pathname: location.pathname, search: `?${searchParams.toString()}` });
+    localStorage.setItem('activeTab:head', nextTab);
     localStorage.setItem('activeTab', nextTab);
     setTabState(nextTab);
   };
+
+  useEffect(() => {
+    const routeTab = new URLSearchParams(location.search).get('tab');
+    if (HEAD_TABS.includes(routeTab)) {
+      setTabState(routeTab);
+      localStorage.setItem('activeTab:head', routeTab);
+      localStorage.setItem('activeTab', routeTab);
+    }
+  }, [location.search]);
   const [department, setDepartment] = useState({});
   const [departments, setDepartments] = useState([]);
   const [placedStudents, setPlacedStudents] = useState([]);

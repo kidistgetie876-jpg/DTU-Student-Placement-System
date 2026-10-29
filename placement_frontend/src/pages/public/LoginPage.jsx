@@ -218,26 +218,26 @@ const LoginPage = () => {
   };
 
   return (
-    <section className="login-page relative isolate flex w-full items-center justify-center bg-gradient-to-br from-slate-100 via-indigo-50/30 to-slate-100 px-4 py-4 sm:px-6 lg:px-8">
+    <section className="login-page relative isolate flex w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/30 to-slate-100 px-4 sm:px-6 lg:px-8">
       <div aria-hidden="true" className="pointer-events-none absolute -left-24 top-8 h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl" />
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 -right-16 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(129,140,248,0.10),transparent_45%)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-md">
-        <div className="login-card w-full animate-login-enter rounded-2xl border border-slate-200/80 bg-white p-3 shadow-2xl shadow-slate-900/15 motion-reduce:animate-none sm:px-5 sm:py-3">
-          <div className="mb-1.5 text-center">
+        <div className="login-card w-full animate-login-enter rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/15 motion-reduce:animate-none">
+          <div className="mb-4 text-center">
             <img
               src={dtuLogo}
               alt="Debre Tabor University logo"
-              className="login-logo mx-auto mb-1 rounded-2xl border border-amber-300/70 bg-white p-1 shadow-lg shadow-indigo-950/10"
+              className="login-logo mx-auto mb-2 rounded-2xl border border-amber-300/70 bg-white p-1 shadow-lg shadow-indigo-950/10"
             />
-            <p className="mb-0.5 text-xs font-bold uppercase tracking-[0.2em] text-indigo-700">
+            <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-indigo-700">
               Debre Tabor University
             </p>
             <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
               SDPS
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">Sign in to continue to your placement portal</p>
+            <p className="mt-2 text-xs text-slate-500">Sign in to continue to your placement portal</p>
           </div>
 
           {error && (
@@ -246,7 +246,7 @@ const LoginPage = () => {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-1.5">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label htmlFor="login-identifier" className="mb-0.5 block text-sm font-semibold text-slate-700">
                 Admission ID / Email
@@ -293,7 +293,7 @@ const LoginPage = () => {
 
             <button
               type="submit"
-              className="login-sign-in-button group flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              className="login-sign-in-button group flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               disabled={loading}
             >
               <span className="text-white">{loading ? 'Signing in…' : 'Sign In'}</span>
@@ -301,7 +301,7 @@ const LoginPage = () => {
             </button>
           </form>
 
-          <p className="mt-1.5 text-center text-xs leading-4 text-slate-500">
+          <p className="mt-4 text-center text-xs leading-4 text-slate-500">
             Authorized access only · Debre Tabor University
           </p>
         </div>

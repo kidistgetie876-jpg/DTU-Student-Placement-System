@@ -1742,17 +1742,17 @@ body.dark-mode .approve-results-notice.error {
 .admin-dashboard > .row,
 .head-dashboard > .row,
 .student-dashboard-container > .row {
-  min-height: calc(100vh - 112px);
+  min-height: calc(100vh - 76px);
 }
 
 .student-dashboard-container {
-  min-height: calc(100vh - 112px);
+  min-height: calc(100vh - 76px);
 }
 
 :is(.admin-dashboard, .head-dashboard, .student-dashboard-container) .role-sidebar {
   border: 0 !important;
   border-radius: 0 !important;
-  background: linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%) !important;
+  background: linear-gradient(180deg, #1e1b4b 0%, #172554 100%) !important;
   box-shadow: none !important;
 }
 
