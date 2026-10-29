@@ -103,4 +103,5 @@ if (!$user) {
 }
 
 $user['full_name'] = trim((string) $user['first_name'] . ' ' . (string) $user['last_name']);
+$user['profile_picture'] = $user['profile_photo'] ?? null;
 profileResponse(['success' => true, 'profile' => $user]);

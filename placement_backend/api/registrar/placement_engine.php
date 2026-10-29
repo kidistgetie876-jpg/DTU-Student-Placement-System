@@ -524,7 +524,7 @@ if (in_array('active_semester', $placementSettingsColumns, true)) {
 if (!in_array($activeSemester, [1, 2], true)) {
     $activeSemester = 1;
 }
-if ($rerunUnpublished && $requestedSemester !== null && $requestedSemester !== $activeSemester) {
+if ($requestedSemester !== null && $requestedSemester !== $activeSemester) {
     throw new RuntimeException(
         "The requested Semester {$requestedSemester} does not match the active placement semester ({$activeSemester}). Refresh placement settings and try again.",
         409
@@ -1147,6 +1147,24 @@ function computeMeritScore(array $student, array $rules): float
     }
 
     $studentValidationErrors = [];
+    $matchedSelectedIds = array_fill_keys(array_map(
+        static fn($student): string => is_array($student)
+            ? (string) ($student['id'] ?? $student['student_id'] ?? '')
+            : '',
+        $studentEntries
+    ), true);
+    if (!$rerunUnpublished) {
+        foreach ($selectedSet as $selectedId) {
+            if (!isset($matchedSelectedIds[(string) $selectedId])) {
+                $studentValidationErrors[] = [
+                    'student_id' => (string) $selectedId,
+                    'admission_number' => '',
+                    'missing_fields' => ['candidate_record'],
+                    'message' => 'Selected candidate is no longer available in the active placement roster.',
+                ];
+            }
+        }
+    }
     $studentEntries = array_values(array_filter($studentEntries, static function ($student) use (&$studentValidationErrors): bool {
         $studentIdentifier = trim((string) ($student['id'] ?? $student['student_id'] ?? ''));
         $admissionIdentifier = trim((string) ($student['admission_number'] ?? $student['id_number'] ?? ''));
@@ -1161,10 +1179,6 @@ function computeMeritScore(array $student, array $rules): float
         }
         return true;
     }));
-    if (empty($studentEntries)) {
-        throw new RuntimeException('No valid student identifiers were provided for placement.', 422);
-    }
-
     $allStudents = [];
     $mosheColumns = studentPlacementTableColumns($db, 'moshe_students');
     $simsColumns = studentPlacementTableColumns($db, 'sims_students');
@@ -1355,12 +1369,12 @@ function computeMeritScore(array $student, array $rules): float
         $eligibleChoiceName = studentPlacementTextExpression(
             $choiceColumns,
             'sc_eligible',
-            ['dept_name', 'department_name']
+            ['dept_name', 'department_name', 'department', 'name']
         );
         $eligibleChoicePriority = studentPlacementColumnExpression(
             $choiceColumns,
             'sc_eligible',
-            ['priority'],
+            ['priority', 'choice_rank', 'rank', 'choice_order'],
             '99'
         );
         $eligibleChoiceJoin = '';
@@ -1410,7 +1424,11 @@ function computeMeritScore(array $student, array $rules): float
         $officialStudentEligibilityCondition = "(($eligibleProfileCondition) OR $activeChoiceEligibilityCondition)";
         if ($activeSemester === 2) {
             $secondSemesterStatusCondition = $placementEligibilityColumn !== ''
-                ? "LOWER(TRIM(COALESCE(sd.`{$placementEligibilityColumn}`, ''))) = 'pending 2nd semester'"
+                ? "LOWER(TRIM(COALESCE(sd.`{$placementEligibilityColumn}`, ''))) IN (
+                    '', 'pending', 'pending 1st semester', 'pending 2nd semester',
+                    'not assigned', 'unassigned', 'placed in semester 1',
+                    'allocated', 'eligible', 'unplaced'
+                )"
                 : '1 = 0';
             $officialStudentEligibilityCondition = "({$activeProfileCondition} AND "
                 . "{$secondSemesterStatusCondition} AND {$activeChoicesExist})";
@@ -1509,7 +1527,6 @@ function computeMeritScore(array $student, array $rules): float
         }
 
         $preferences = [];
-        $firstSemesterPreferences = [];
         $studentIdentifier = $student['id'] === null ? '' : (string) $student['id'];
         $admissionIdentifier = (string) $officialStudent['admission_number'];
         $choiceIdentityConditions = [];
@@ -1527,16 +1544,22 @@ function computeMeritScore(array $student, array $rules): float
         if (in_array('admission_number', $choiceColumns, true) && $admissionIdentifier !== '') {
             $choiceIdentityConditions[] = 'TRIM(sc.admission_number) = TRIM(?)';
         }
-        if (!$choiceIdentityConditions && !empty($student['preferences'])) {
-            $preferences = $student['preferences'];
-        }
         $choiceDepartmentIdColumn = in_array('dept_id', $choiceColumns, true)
             ? 'dept_id'
             : (in_array('department_id', $choiceColumns, true) ? 'department_id' : '');
-        $choiceName = studentPlacementTextExpression($choiceColumns, 'sc', ['dept_name', 'department_name']);
-        $choiceCollege = studentPlacementTextExpression($choiceColumns, 'sc', ['college_name']);
+        $choiceName = studentPlacementTextExpression(
+            $choiceColumns,
+            'sc',
+            ['dept_name', 'department_name', 'department', 'name']
+        );
+        $choiceCollege = studentPlacementTextExpression($choiceColumns, 'sc', ['college_name', 'college']);
         $choiceStream = studentPlacementTextExpression($choiceColumns, 'sc', ['stream']);
-        $choicePriority = studentPlacementColumnExpression($choiceColumns, 'sc', ['priority'], '99');
+        $choicePriority = studentPlacementColumnExpression(
+            $choiceColumns,
+            'sc',
+            ['priority', 'choice_rank', 'rank', 'choice_order'],
+            '99'
+        );
         $choiceDepartmentJoin = '';
         if ($choiceDepartmentIdColumn !== '' && in_array('id', $departmentColumns, true)) {
             $choiceDepartmentJoin = " LEFT JOIN departments d ON d.id = sc.`{$choiceDepartmentIdColumn}`";
@@ -1615,68 +1638,14 @@ function computeMeritScore(array $student, array $rules): float
             }
             $choiceSql->close();
         }
-        if (
-            $activeSemester === 2
-            && in_array('semester', $choiceColumns, true)
-            && $choiceIdentityConditions
-        ) {
-            $firstSemesterChoiceSql = $db->prepare(
-                "SELECT {$choiceDepartmentId} AS dept_id, {$choiceName} AS dept_name,
-                        {$choiceCollege} AS college_name, {$choiceStream} AS stream,
-                        {$choiceOfferedSemester} AS offered_semester,
-                        {$choiceFirstSemesterOnly} AS is_first_semester_only,
-                        {$choiceCollegeId} AS college_id, {$choicePriority} AS priority
-                 FROM student_choices sc{$choiceDepartmentJoin}
-                 WHERE (" . implode(' OR ', $choiceIdentityConditions) . ")
-                   AND sc.semester = 1
-                 ORDER BY {$choicePriority} ASC"
-            );
-            if (!$firstSemesterChoiceSql) {
-                throw new Exception('Unable to prepare first-semester preference lookup');
-            }
-            $firstSemesterChoiceValues = [];
-            foreach ($choiceIdentityConditions as $condition) {
-                $firstSemesterChoiceValues[] = strpos($condition, 'user_id') !== false
-                    || strpos($condition, 'student_id') !== false && strpos($condition, 'TRIM') === false
-                    ? $studentIdentifier
-                    : $admissionIdentifier;
-            }
-            $firstSemesterChoiceTypes = str_repeat('s', count($firstSemesterChoiceValues));
-            $firstSemesterChoiceArguments = [$firstSemesterChoiceTypes];
-            foreach ($firstSemesterChoiceValues as $index => $choiceValue) {
-                $firstSemesterChoiceArguments[] = &$firstSemesterChoiceValues[$index];
-            }
-            if (!call_user_func_array([$firstSemesterChoiceSql, 'bind_param'], $firstSemesterChoiceArguments)) {
-                $firstSemesterChoiceSql->close();
-                throw new Exception('Unable to bind first-semester preference lookup');
-            }
-            if (!$firstSemesterChoiceSql->execute()) {
-                $firstSemesterChoiceSql->close();
-                throw new Exception('Unable to load first-semester preferences');
-            }
-            $firstSemesterChoiceRows = $firstSemesterChoiceSql->get_result();
-            while ($row = $firstSemesterChoiceRows->fetch_assoc()) {
-                $firstSemesterPreferences[] = [
-                    'dept_id' => (int) ($row['dept_id'] ?? 0),
-                    'department' => trim((string) ($row['dept_name'] ?? '')),
-                    'priority' => (int) ($row['priority'] ?? 99),
-                    'college_name' => trim((string) ($row['college_name'] ?? '')),
-                    'stream' => trim((string) ($row['stream'] ?? '')),
-                    'offered_semester' => isset($row['offered_semester'])
-                        ? (int) $row['offered_semester']
-                        : null,
-                    'is_first_semester_only' => $row['is_first_semester_only'] ?? null,
-                    'college_id' => (int) ($row['college_id'] ?? 0),
-                ];
-            }
-            $firstSemesterChoiceSql->close();
-        }
-        if (empty($preferences)) {
-            $preferences = $student['preferences'] ?? $student['choices'] ?? [];
-        }
-
         $normalizedPreferences = [];
         foreach ($preferences as $idx => $preference) {
+            if (
+                isset($preference['semester'])
+                && (int) $preference['semester'] !== $activeSemester
+            ) {
+                continue;
+            }
             $name = trim((string) ($preference['department'] ?? $preference['name'] ?? $preference['dept_name'] ?? $preference['department_name'] ?? ''));
             if ($name === '' && (int) ($preference['dept_id'] ?? 0) <= 0) {
                 $name = trim((string) ($preference['college_name'] ?? $preference['collegeName'] ?? $preference['college'] ?? ''));
@@ -1725,6 +1694,15 @@ function computeMeritScore(array $student, array $rules): float
             ];
             continue;
         }
+        if (!$normalizedPreferences) {
+            $studentValidationErrors[] = [
+                'student_id' => $requestedId,
+                'admission_number' => $requestedAdmission,
+                'missing_fields' => ['student_choices'],
+                'message' => 'Student has no qualifying choices for the active semester.',
+            ];
+            continue;
+        }
         $normalizedPreferences = placementExpandCollegePreferences(
             $normalizedPreferences,
             array_values($departmentMap),
@@ -1759,23 +1737,31 @@ function computeMeritScore(array $student, array $rules): float
             }
             $collegeAllocation = $allocationQuery->get_result()->fetch_assoc() ?: null;
             $allocationQuery->close();
-            if (!$collegeAllocation) {
-                throw new Exception('Every semester-two candidate must have a pending college allocation');
-            }
-            $normalizedPreferences = array_values(array_filter(
-                $normalizedPreferences,
-                static function (array $preference) use ($departmentMap, $collegeAllocation, $activeSemester): bool {
-                    $department = $departmentMap[normalizeDepartmentName($preference['department'])] ?? null;
-                    if (!$department || !placementDepartmentOfferedInSemester($department, $activeSemester)) {
-                        return false;
+            if ($collegeAllocation) {
+                $normalizedPreferences = array_values(array_filter(
+                    $normalizedPreferences,
+                    static function (array $preference) use ($departmentMap, $collegeAllocation, $activeSemester): bool {
+                        $department = $departmentMap[normalizeDepartmentName($preference['department'])] ?? null;
+                        if (!$department || !placementDepartmentOfferedInSemester($department, $activeSemester)) {
+                            return false;
+                        }
+                        return placementDepartmentMatchesAllocation($department, $collegeAllocation);
                     }
-                    return placementDepartmentMatchesAllocation($department, $collegeAllocation);
-                }
-            ));
-            // Automatic department assignment is disabled. Only explicit student choices may place a student;
-            // any unmatched or exhausted preference list must remain unassigned or pending.
+                ));
+            }
             $fallbackPreferences = [];
             $normalizedPreferences = array_values($normalizedPreferences);
+            if (!$normalizedPreferences) {
+                $studentValidationErrors[] = [
+                    'student_id' => $requestedId,
+                    'admission_number' => $requestedAdmission,
+                    'missing_fields' => ['student_choices'],
+                    'message' => $collegeAllocation
+                        ? 'Student has no qualifying choices for the allocated college in semester two.'
+                        : 'Student has no qualifying department choices for semester two.',
+                ];
+                continue;
+            }
         }
         $meritScore = computeMeritScore($student, $rules);
         $cumulativeScore = $meritScore;
@@ -1826,21 +1812,27 @@ function computeMeritScore(array $student, array $rules): float
     }
 
     if (empty($allStudents)) {
-        $validationSummary = array_map(
-            static function (array $error): string {
-                $identity = trim((string) ($error['admission_number'] ?? ''));
-                if ($identity === '') {
-                    $identity = trim((string) ($error['student_id'] ?? 'Unknown student'));
-                }
-                return $identity . ': ' . (string) ($error['message'] ?? 'Student could not be processed.');
-            },
-            $studentValidationErrors
-        );
-        $message = 'No selected students met placement eligibility or had sufficient score data.';
-        if ($validationSummary) {
-            $message .= ' ' . implode(' ', $validationSummary);
-        }
-        throw new RuntimeException($message, 422);
+        $db->rollback();
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'message' => 'No candidates were processed; all selected candidates were skipped.',
+            'summary' => [
+                'assignedStudents' => 0,
+                'unassignedStudents' => 0,
+                'pendingStudents' => 0,
+                'alreadyPlacedStudents' => 0,
+                'totalStudents' => 0,
+                'selectedStudents' => count($selectedSet),
+                'skippedStudents' => count($studentValidationErrors),
+                'semester' => $activeSemester,
+                'nextSemester' => $activeSemester,
+            ],
+            'placements' => [],
+            'skipped' => $studentValidationErrors,
+            'student_errors' => $studentValidationErrors,
+        ], JSON_UNESCAPED_UNICODE);
+        return;
     }
 
     $allStudents = sortPlacementStudentsByMerit($allStudents);
@@ -2788,6 +2780,8 @@ function computeMeritScore(array $student, array $rules): float
             'totalStudents' => count($allStudents),
             'totalDepartments' => count($departmentMap),
             'deferredStudents' => $deferredCount,
+            'selectedStudents' => count($selectedSet),
+            'skippedStudents' => count($studentValidationErrors),
             'semester' => $activeSemester,
             'nextSemester' => $nextSemester,
             'departmentCapacity' => $departmentCapacitySummary,
@@ -2797,6 +2791,7 @@ function computeMeritScore(array $student, array $rules): float
         'unassigned' => $unassignedCount,
         'already_placed' => $alreadyPlacedCount,
         'total_processed' => count($allStudents),
+        'skipped' => $studentValidationErrors,
         'student_errors' => $studentValidationErrors,
     ]);
 } catch (Throwable $e) {

@@ -8,7 +8,12 @@ import { AuthProvider } from '../../contexts/AuthContext.jsx';
 
 const mockNavigate = jest.fn();
 
+jest.mock('../../contexts/RolePermissionsContext.jsx', () => ({
+  useRolePermissions: () => ({ isOpen: () => true }),
+}));
+
 jest.mock('react-router-dom', () => ({
+  useLocation: () => ({ search: '' }),
   useNavigate: () => mockNavigate,
 }));
 
@@ -1375,7 +1380,7 @@ describe('StudentDashboard', () => {
       }
       return Promise.resolve({ data: {} });
     });
-    api.post.mockResolvedValue({ data: { success: true } });
+    api.post.mockResolvedValue({ data: { success: true, semester: 1, saved_count: 2 } });
 
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
@@ -1590,7 +1595,7 @@ describe('StudentDashboard', () => {
       }
       return Promise.resolve({ data: {} });
     });
-    api.post.mockResolvedValue({ data: { success: true } });
+    api.post.mockResolvedValue({ data: { success: true, semester: 2, saved_count: 2 } });
 
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
@@ -1622,6 +1627,8 @@ describe('StudentDashboard', () => {
         ],
       },
     ));
+    expect(screen.getByText('Semester 2 preferences saved and verified (2 choices).'))
+      .toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Update Preferences' }));
     expect(screen.getByLabelText('Choice #1')).toHaveValue('');

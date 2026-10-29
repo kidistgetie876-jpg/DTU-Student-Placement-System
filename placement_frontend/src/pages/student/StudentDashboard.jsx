@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   Award,
@@ -261,9 +261,15 @@ const getDepartmentStream = (department) => {
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTabState] = useState('overview');
+  const [tab, setTabState] = useState(() => {
+    const requestedTab = new URLSearchParams(location.search).get('tab');
+    return ['overview', 'preferences', 'result', 'appeal', 'notifications'].includes(requestedTab)
+      ? requestedTab
+      : 'overview';
+  });
 
   const setTab = (nextTab) => {
     if (nextTab === 'save-page') return;
@@ -678,6 +684,7 @@ const StudentDashboard = () => {
     ).trim();
 
     if (preferenceSemester === 2) {
+      const submissionSemester = Number(preferenceSemester);
       const selectedChoices = semesterTwoPreferences.slice(0, semesterTwoChoiceCount);
       if (!selectedChoices.length || selectedChoices.some((choice) => !choice)) {
         setPrefError('Please rank every active department in your allocated college.');
@@ -712,11 +719,15 @@ const StudentDashboard = () => {
         const response = await api.post('api/student/student_preferences.php', {
           ...(admissionNumber ? { admission_number: admissionNumber } : {}),
           student_id: profile?.id || student?.id || student?.student_id || student?.id_number || '',
-          semester: preferenceSemester,
+          semester: submissionSemester,
           choices: formattedChoices,
         });
-        if (!response.data?.success) throw new Error(response.data?.message || 'Failed to submit preferences.');
-        setPrefSuccess('Preferences submitted successfully!');
+        if (!response.data?.success
+          || Number(response.data.semester) !== submissionSemester
+          || Number(response.data.saved_count) !== formattedChoices.length) {
+          throw new Error(response.data?.message || 'The server could not verify that all preferences were saved for Semester 2.');
+        }
+        setPrefSuccess(`Semester 2 preferences saved and verified (${response.data.saved_count} choices).`);
         setPreferencesSubmitted(true);
         setEditingPreferences(false);
       } catch (error) {
@@ -788,17 +799,20 @@ const StudentDashboard = () => {
       return;
     }
     try {
+      const submissionSemester = Number(preferenceSemester);
       const payload = {
         ...(admissionNumber ? { admission_number: admissionNumber } : {}),
         student_id: profile?.id || student?.id || student?.student_id || student?.id_number || '',
-        semester: preferenceSemester,
+        semester: submissionSemester,
         choices: formattedChoices,
       };
       const res = await api.post('api/student/student_preferences.php', payload);
       if (res.data?.success) {
-        setPrefSuccess(preferencesSubmitted
-          ? 'Preferences saved successfully. You can update your choices anytime until the Registrar publishes the final results.'
-          : 'Preferences submitted successfully!');
+        if (Number(res.data.semester) !== submissionSemester
+          || Number(res.data.saved_count) !== formattedChoices.length) {
+          throw new Error(res.data.message || `The server could not verify that all preferences were saved for Semester ${submissionSemester}.`);
+        }
+        setPrefSuccess(`Semester ${submissionSemester} preferences saved and verified (${res.data.saved_count} choices).`);
         setPreferencesSubmitted(true);
         setEditingPreferences(false);
       } else {
@@ -1240,7 +1254,9 @@ const StudentDashboard = () => {
               <h1 className="visually-hidden">Student dashboard</h1>
               <p>ID: {profile?.id_number || student?.id_number || student?.id || 'Not available'}</p>
               <div className="row g-3">
-                <div className="col-md-4"><h2>GPA</h2><p>{Number(profile?.gpa) === 0 && profile?.cgpa ? profile.cgpa : profile?.gpa ?? profile?.cgpa ?? '0.00'}</p></div>
+                <div className="col-md-4"><h2>CGPA</h2><p>{Number(profile?.gpa) === 0 && profile?.cgpa ? profile.cgpa : profile?.cgpa ?? profile?.gpa ?? '0.00'}</p></div>
+                <div className="col-md-4"><h2>Grade 12</h2><p>{profile?.grade_12_result ?? profile?.total_mark ?? 'Not available'}</p></div>
+                <div className="col-md-4"><h2>COC Score</h2><p>{profile?.coc_result ?? profile?.coc_score ?? 'Not available'}</p></div>
                 <div className="col-md-4"><h2>Stream</h2><p>{profile?.field_of_study || profile?.stream || student?.stream || 'Not available'}</p></div>
                 <div className="col-md-4"><h2>Final Score</h2><button type="button" aria-label="View Final Score details" onClick={openFinalScoreDetails}>{profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A'}</button></div>
               </div>

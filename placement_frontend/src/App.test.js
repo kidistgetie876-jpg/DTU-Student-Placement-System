@@ -8,6 +8,8 @@ import {
   parseYesNo as parseRegistrarYesNo,
   filterStudentIdsForPlacement,
   filterPlacementCandidates,
+  getPlacementCandidateIneligibility,
+  normalizePlacementCandidateChoices,
   getPlacementCollegeOptions,
   getPlacementStreamOptions,
   normalizePlacementStream,
@@ -15,6 +17,7 @@ import {
 import { parseYesNo as parseStudentYesNo } from './pages/student/StudentDashboard.jsx';
 import api from './services/api';
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { defaultRolePermissions } from './permissions/roleFeatures.js';
 
 jest.mock('./services/api', () => ({
   __esModule: true,
@@ -27,6 +30,14 @@ jest.mock('./services/api', () => ({
 const CurrentRoute = () => {
   const location = useLocation();
   return <output data-testid="current-route">{location.pathname}</output>;
+};
+
+const mockAppApiResponses = () => {
+  api.get.mockImplementation((endpoint) => Promise.resolve({
+    data: endpoint === 'api/common/role_permissions_api.php'
+      ? { success: true, permissions: defaultRolePermissions }
+      : { settings: { maintenance: { enabled: false } } },
+  }));
 };
 
 describe('Login', () => {
@@ -122,7 +133,7 @@ describe('Login', () => {
   });
 
   test('renders the login route inside the public header and footer shell', async () => {
-    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    mockAppApiResponses();
     window.history.pushState({}, '', '/login');
 
     render(<App />);
@@ -140,7 +151,7 @@ describe('Login', () => {
   });
 
   test('renders the public footer for authenticated visitors', async () => {
-    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    mockAppApiResponses();
     localStorage.setItem('user', JSON.stringify({ id: 1, role: 'student' }));
     window.history.pushState({}, '', '/');
 
@@ -155,7 +166,7 @@ describe('Login', () => {
   });
 
   test('updates public navigation language immediately and persists the selection', async () => {
-    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    mockAppApiResponses();
     window.history.pushState({}, '', '/login');
 
     render(<App />);
@@ -169,7 +180,7 @@ describe('Login', () => {
   });
 
   test('opens the password reset tab from the login page', async () => {
-    api.get.mockResolvedValue({ data: { settings: { maintenance: { enabled: false } } } });
+    mockAppApiResponses();
     window.history.pushState({}, '', '/login');
 
     render(<App />);
@@ -212,9 +223,7 @@ describe('Login', () => {
   });
 
   test('keeps registrar sidebar navigation on its dashboard routes', async () => {
-    api.get.mockResolvedValue({
-      data: { success: true, settings: { maintenance: { enabled: false } } },
-    });
+    mockAppApiResponses();
     localStorage.setItem('user', JSON.stringify({
       id: 9,
       username: 'registrar',
@@ -512,10 +521,10 @@ describe('Login', () => {
 
   test('filters candidates by both selected stream and college', () => {
     const students = [
-      { id: 1, stream: 'Natural', choices: [{ college_name: 'College of Agriculture' }] },
-      { id: 2, stream: 'NaturalScience', choices: [{ college_name: 'College of Health Sciences' }] },
-      { id: 3, stream: 'Social Science', choices: [{ college_name: 'College of Health Sciences' }] },
-      { id: 4, stream: 'Natural Science', choices: [{ college_name: 'College of Business & Economics' }] },
+      { id: 1, stream: 'Natural', choices: [{ dept_name: 'Agriculture', college_name: 'College of Agriculture' }] },
+      { id: 2, stream: 'NaturalScience', choices: [{ dept_name: 'Medicine', college_name: 'College of Health Sciences' }] },
+      { id: 3, stream: 'Social Science', choices: [{ dept_name: 'Medicine', college_name: 'College of Health Sciences' }] },
+      { id: 4, stream: 'Natural Science', choices: [{ dept_name: 'Management', college_name: 'College of Business & Economics' }] },
       { id: 5, stream: 'Natural Science', choices: [] },
     ];
     const visibleCandidates = filterPlacementCandidates(
@@ -528,21 +537,96 @@ describe('Login', () => {
     expect(visibleCandidates).toHaveLength(1);
   });
 
-  test('includes candidates without saved choices when requested', () => {
+  test('excludes candidates without saved preferences and malformed choice rows', () => {
     const students = [
       { id: 1, stream: 'Natural Science', choices: [] },
-      { id: 2, stream: 'Social Science', choices: [] },
+      { id: 2, stream: 'Natural Science', choices: [{}] },
+      { id: 3, stream: 'Natural Science', choices: [{ dept_name: 'Computer Science' }] },
     ];
 
     const visibleCandidates = filterPlacementCandidates(
       students,
       'Natural Science',
       'all',
-      false,
-      true,
     );
 
-    expect(visibleCandidates.map((student) => student.id)).toEqual([1]);
+    expect(visibleCandidates.map((student) => student.id)).toEqual([3]);
+  });
+
+  test('maps semester-two choices and alternate department/rank fields for placement rows', () => {
+    const candidate = normalizePlacementCandidateChoices({
+      id: 21,
+      choices: [{ dept_name: 'Old semester choice', priority: 1 }],
+      semester_2_choices: [
+        { department_name: 'Computer Science', choice_rank: 2 },
+        { department: 'Information Technology', rank: 1 },
+        { name: '', choice_order: 3 },
+      ],
+    }, 2);
+
+    expect(candidate.choices).toEqual([
+      expect.objectContaining({
+        dept_name: 'Information Technology',
+        department: 'Information Technology',
+        priority: 1,
+      }),
+      expect.objectContaining({
+        dept_name: 'Computer Science',
+        department: 'Computer Science',
+        priority: 2,
+      }),
+    ]);
+    expect(candidate.semester_2_choices).toEqual(candidate.choices);
+  });
+
+  test('does not use semester-one choices when the semester-two choice list is explicitly empty', () => {
+    const candidate = normalizePlacementCandidateChoices({
+      id: 22,
+      choices: [{ dept_name: 'Semester One Department', priority: 1 }],
+      semester_2_choices: [],
+    }, 2);
+
+    expect(candidate.choices).toEqual([]);
+    expect(filterPlacementCandidates([candidate], '', 'all')).toEqual([]);
+  });
+
+  test('marks candidates without scores, qualifying choices, or active-semester status as ineligible', () => {
+    const savedChoice = [{ dept_name: 'Computer Science', priority: 1 }];
+
+    expect(getPlacementCandidateIneligibility({
+      choices: savedChoice,
+      has_pending_college_allocation: true,
+      placement_status: 'Pending 2nd Semester',
+      cgpa: 0,
+      g12: 0,
+      coc: 0,
+    }, 2)).toMatch(/score data is missing/i);
+    expect(getPlacementCandidateIneligibility({
+      choices: [],
+      cgpa: 3,
+    }, 1)).toMatch(/preferences/i);
+    expect(getPlacementCandidateIneligibility({
+      choices: savedChoice,
+      placement_status: 'Pending 1st Semester',
+      cgpa: 3,
+    }, 2)).toBe('');
+    expect(getPlacementCandidateIneligibility({
+      choices: savedChoice,
+      has_pending_college_allocation: false,
+      placement_status: 'Pending 1st Semester',
+      cgpa: 3,
+    }, 2)).toBe('');
+    expect(getPlacementCandidateIneligibility({
+      choices: savedChoice,
+      has_pending_college_allocation: true,
+      placement_status: 'Inactive',
+      cgpa: 3,
+    }, 2)).toMatch(/not eligible/i);
+    expect(getPlacementCandidateIneligibility({
+      choices: savedChoice,
+      placement_status: 'Pending 1st Semester',
+      cgpa: 3,
+    }, 1)).toBe('');
   });
 
   test('does not assign a department by default during registration', async () => {

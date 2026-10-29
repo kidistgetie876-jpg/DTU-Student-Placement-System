@@ -1,4 +1,5 @@
 import React from 'react';
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import api from '../../services/api.js';
@@ -310,10 +311,71 @@ describe('DashboardHeader', () => {
     ));
     expect(api.post.mock.calls[0][1].get('profile_photo')).toBe(photo);
     expect(screen.queryByRole('dialog', { name: 'Edit Profile' })).not.toBeInTheDocument();
+    expect(document.querySelector('.dashboard-profile-trigger img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('uploads/profile-photos/0123456789abcdef0123456789abcdef.png')
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
     const displayedPhotos = document.querySelectorAll('.dashboard-profile-avatar img');
     expect(displayedPhotos).toHaveLength(2);
     expect(displayedPhotos[0].getAttribute('src')).toContain('uploads/profile-photos/0123456789abcdef0123456789abcdef.png');
+  });
+
+  it('keeps the selected photo when the header rerenders while the profile modal is open', async () => {
+    const photo = new File(['image-data'], 'profile.png', { type: 'image/png' });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: jest.fn(() => 'blob:profile-preview') });
+    jest.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        user: {
+          id: 7,
+          full_name: 'Aster Gebre',
+          first_name: 'Aster',
+          last_name: 'Gebre',
+          username: 'Aster',
+          email: 'aster@gmail.com',
+          role: 'registrar',
+          profile_photo: 'uploads/profile-photos/0123456789abcdef0123456789abcdef.png',
+        },
+      },
+    });
+    const RerenderableHeader = () => {
+      const [revision, setRevision] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setRevision((value) => value + 1)}>Rerender header</button>
+          <DashboardHeader username={`Aster ${revision}`} role="Registrar" />
+        </>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <Routes>
+                <Route path="/dashboard" element={<RerenderableHeader />} />
+              </Routes>
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aster Gebre, aster@gmail.com' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Profile' }));
+    fireEvent.change(screen.getByLabelText('Profile Photo'), { target: { files: [photo] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rerender header' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        'api/common/update_profile.php',
+        expect.any(FormData),
+        { headers: { Accept: 'application/json' } }
+      );
+    });
+    expect(api.post.mock.calls[0][1].get('profile_photo')).toBe(photo);
   });
 
   it('renders a clean greeting without controls in dashboard content', () => {

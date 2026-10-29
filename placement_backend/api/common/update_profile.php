@@ -57,20 +57,17 @@ if ($photo && $photo['error'] !== UPLOAD_ERR_NO_FILE) {
         updateProfileResponse(['success' => false, 'message' => 'Invalid profile photo upload.'], 400);
     }
 
-    try {
-        if (!class_exists('finfo')) {
-            throw new RuntimeException('The server file-inspection extension is unavailable.');
-        }
-        $fileInfo = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $fileInfo->file($photo['tmp_name']);
-        $photoExtension = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/webp' => 'webp',
-        ][$mimeType] ?? null;
-    } catch (Throwable $error) {
-        error_log('Unable to inspect uploaded profile photo: ' . $error->getMessage());
+    $imageHeader = file_get_contents($photo['tmp_name'], false, null, 0, 12);
+    if ($imageHeader === false) {
+        error_log('Unable to read the uploaded profile photo header.');
         updateProfileResponse(['success' => false, 'message' => 'Unable to validate the profile photo on the server.'], 500);
+    }
+    if (strncmp($imageHeader, "\xFF\xD8\xFF", 3) === 0) {
+        $photoExtension = 'jpg';
+    } elseif (strncmp($imageHeader, "\x89PNG\r\n\x1A\n", 8) === 0) {
+        $photoExtension = 'png';
+    } elseif (strncmp($imageHeader, 'RIFF', 4) === 0 && substr($imageHeader, 8, 4) === 'WEBP') {
+        $photoExtension = 'webp';
     }
     if ($photoExtension === null) {
         updateProfileResponse(['success' => false, 'message' => 'Choose a JPEG, PNG, or WebP image.'], 400);
@@ -227,6 +224,7 @@ try {
 
     $profile['full_name'] = trim((string) $profile['first_name'] . ' ' . (string) $profile['last_name']);
     $updatedUser = array_merge($profile, ['email' => $email]);
+    $updatedUser['profile_picture'] = $updatedUser['profile_photo'] ?? null;
     $db->close();
     updateProfileResponse([
         'success' => true,

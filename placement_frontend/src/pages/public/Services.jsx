@@ -1,62 +1,73 @@
 import React, { useMemo, useState } from "react";
-import { FaUserCheck, FaListOl, FaPoll, FaFileAlt, FaBalanceScale, FaInfoCircle, FaSearch } from 'react-icons/fa';
-import { Link } from 'react-router-dom';
+import { FaUserGraduate, FaListOl, FaPoll, FaFileAlt, FaBalanceScale, FaInfoCircle, FaSearch } from 'react-icons/fa';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import LoginModal from './LoginModal.jsx';
 import './services.css'; // ከታች ያለውን CSS እዚህ ፋይል ላይ ይጠቀማል
 
 const DTU_SERVICES = [
   {
     id: 'profile',
-    title: 'Academic Profile Verification',
-    category: 'Verification',
-    icon: FaUserCheck,
-    summary: 'Verify your GPA, Grade 12 results, and COC scores before placement begins.',
-    details: 'Ensuring your data is correct is the first step. If you find errors in your GPA or affirmative action points, contact the Registrar immediately.'
+    title: 'Academic Profile & Status Overview',
+    category: 'Profile & Status',
+    icon: FaUserGraduate,
+    destination: '/student-dashboard?tab=overview',
+    summary: 'View your updated academic records (CGPA, Grade 12, COC scores) and track your real-time placement stage status across semester cycles.',
+    details: 'Review your academic scores and current placement stage in your personal student dashboard.'
   },
   {
     id: 'choices',
     title: 'Department Preference Submission',
     category: 'Placement',
     icon: FaListOl,
-    summary: 'Submit and rank your top 5 department choices based on your stream.',
-    details: 'You can select 5 departments under your assigned college. Remember, once the deadline passes, choices cannot be modified.'
+    destination: '/student-dashboard?tab=preferences',
+    summary: 'Select, rank, and submit your top department choices within your assigned college context during open registration windows.',
+    details: 'Review your eligible departments and submit or update your ranked choices while registration is open.'
   },
   {
     id: 'results',
     title: 'Placement Results',
     category: 'Results',
     icon: FaPoll,
-    summary: 'Access your final department assignment once the engine finishes processing.',
-    details: 'View which department you have been assigned to based on your score (GPA 50%, Grade 12 30%, COC 20%) and preferences.'
+    destination: '/student-dashboard?tab=result',
+    summary: 'Check your finalized department assignment, choice rank match, and download your official placement letter once results are published.',
+    details: 'Review your published assignment and print your official placement slip.'
   },
   {
     id: 'appeals',
     title: 'Placement Appeals',
     category: 'Governance',
     icon: FaBalanceScale,
-    summary: 'Submit a formal appeal if you have concerns about your placement result.',
-    details: 'If you believe there was a calculation error or a technical glitch, you can submit an appeal within 3 days of result publication.'
+    destination: '/student-dashboard?tab=appeal',
+    summary: 'Submit formal appeals or request corrections if there are any discrepancies in your merit score or eligibility status.',
+    details: 'Submit a placement appeal and include details about the score or eligibility discrepancy for review.'
   },
   {
     id: 'info',
     title: 'Departmental Catalog',
     category: 'Information',
     icon: FaInfoCircle,
-    summary: 'Explore department descriptions, job opportunities, and requirements.',
-    details: 'Detailed information about each department to help you make informed decisions when ranking your choices.'
+    destination: '/placement-info',
+    summary: 'Explore course offerings, available capacities, career paths, and specific entry requirements for all university departments.',
+    details: 'Explore department capacity and placement information to make informed choices.'
   },
   {
     id: 'criteria',
     title: 'Placement Criteria & Weights',
     category: 'Information',
     icon: FaFileAlt,
-    summary: 'Understand how your total score is calculated for placement.',
-    details: 'Formula: (GPA * 0.5) + (Grade 12 * 0.3) + (COC * 0.2) + Affirmative Action points (Female: +1.5, Disability: +1, Emerging Regions: +1).'
+    destination: '/placement-info',
+    summary: 'Review the 80/20 merit quota policy, female affirmative action guidelines, and CGPA/entrance score weighting formulas.',
+    details: 'Review the current placement scoring, quotas, and affirmative-action guidance.'
   }
 ];
 
 function Services() {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
+  const [loginTarget, setLoginTarget] = useState(null);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(DTU_SERVICES.map(s => s.category)))], []);
 
@@ -67,6 +78,15 @@ function Services() {
       return s.title.toLowerCase().includes(q) || s.summary.toLowerCase().includes(q);
     });
   }, [query, category]);
+
+  const accessService = (service) => {
+    const role = String(user?.role || '').trim().toLowerCase();
+    if (role === 'student') {
+      navigate(service.destination);
+      return;
+    }
+    setLoginTarget(service);
+  };
 
   return (
     <div className="services-container py-5" style={{ paddingTop: '200px' }}>
@@ -119,9 +139,13 @@ function Services() {
                   <h4 className="h5 fw-bold mb-3">{service.title}</h4>
                   <p className="text-muted small mb-4">{service.summary}</p>
                   <div className="mt-auto">
-                    <Link to="/login" className="btn-link text-decoration-none fw-bold small">
+                    <button
+                      type="button"
+                      className="btn-link text-decoration-none fw-bold small border-0 bg-transparent p-0"
+                      onClick={() => accessService(service)}
+                    >
                       Access Service →
-                    </Link>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -136,6 +160,13 @@ function Services() {
           </div>
         )}
       </div>
+      {loginTarget && (
+        <LoginModal
+          isOpen
+          redirectTo={loginTarget.destination}
+          onClose={() => setLoginTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bell,
@@ -20,6 +20,7 @@ import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { useTheme } from '../../contexts/ThemeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import getAttachmentUrl from '../../utils/getAttachmentUrl.js';
+import getProfilePhotoUrl from '../../utils/getProfilePhotoUrl.js';
 import EditProfileModal from './EditProfileModal.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import './DashboardHeader.css';
@@ -53,13 +54,6 @@ const getFullName = (user = {}) => user.full_name
   || user.username
   || '';
 
-const getAvatarUrl = (profile) => {
-  const photo = profile.profile_photo || profile.avatar_url || profile.profile_image || profile.avatar;
-  if (!photo) return '';
-  if (/^(https?:|data:|blob:)/i.test(photo)) return photo;
-  return `${api.defaults.baseURL.replace(/\/+$/, '')}/${String(photo).replace(/^\/+/, '')}`;
-};
-
 const DashboardHeader = ({
   variant = 'full',
   username,
@@ -77,6 +71,7 @@ const DashboardHeader = ({
   const [openMenu, setOpenMenu] = useState(null);
   const [modal, setModal] = useState(null);
   const [profile, setProfile] = useState(() => readStoredUser());
+  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState('');
@@ -93,7 +88,7 @@ const DashboardHeader = ({
   });
   const actionsRef = useRef(null);
   const profileSavedRef = useRef(false);
-  const activeProfile = { ...profile, ...(user || {}) };
+  const activeProfile = useMemo(() => ({ ...profile, ...(user || {}) }), [profile, user]);
   const displayName = getFullName(activeProfile) || fullName || username || 'User';
   const displayEmail = activeProfile.email || email || '';
   const rawRole = String(activeProfile.role || role || localStorage.getItem('role') || 'User').trim().toLowerCase();
@@ -105,12 +100,16 @@ const DashboardHeader = ({
     student: 'Student',
   })[rawRole] || rawRole;
   const displayRole = t(profileRole);
-  const avatarUrl = getAvatarUrl(activeProfile);
+  const avatarUrl = getProfilePhotoUrl(activeProfile);
   const showControls = variant !== 'welcome';
   const showGreeting = variant !== 'navigation';
   const unreadNotifications = notifications.filter((notification) => (
     Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false
   )).length;
+
+  useEffect(() => {
+    setAvatarImageFailed(false);
+  }, [avatarUrl]);
 
   useEffect(() => {
     if (!profileToast) return undefined;
@@ -543,7 +542,9 @@ const DashboardHeader = ({
               onClick={() => setOpenMenu((current) => current === 'profile' ? null : 'profile')}
             >
               <span className="dashboard-profile-avatar" aria-hidden="true">
-                {avatarUrl ? <img src={avatarUrl} alt="" /> : <UserRound size={19} />}
+                {avatarUrl && !avatarImageFailed
+                  ? <img src={avatarUrl} alt="" onError={() => setAvatarImageFailed(true)} />
+                  : (displayName ? displayName.slice(0, 1).toUpperCase() : <UserRound size={19} />)}
               </span>
               <span className="dashboard-profile-trigger-copy">
                 <strong>{displayEmail || displayName}</strong>
@@ -557,7 +558,9 @@ const DashboardHeader = ({
                 <div className="dashboard-dropdown-user">
                   <div className="dashboard-dropdown-user-heading">
                     <span className="dashboard-profile-avatar" aria-hidden="true">
-                      {avatarUrl ? <img src={avatarUrl} alt="" /> : <UserRound size={19} />}
+                      {avatarUrl && !avatarImageFailed
+                        ? <img src={avatarUrl} alt="" onError={() => setAvatarImageFailed(true)} />
+                        : (displayName ? displayName.slice(0, 1).toUpperCase() : <UserRound size={19} />)}
                     </span>
                     <div className="dashboard-dropdown-user-identity">
                       <strong>{displayName}</strong>

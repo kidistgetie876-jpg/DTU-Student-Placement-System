@@ -23,6 +23,8 @@ import Maintenance from './pages/public/Maintenance.jsx';
 import { LanguageProvider } from './contexts/LanguageContext.jsx';
 import { ThemeProvider } from './contexts/ThemeContext.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { RolePermissionsProvider, useRolePermissions } from './contexts/RolePermissionsContext.jsx';
+import { roleFeatures } from './permissions/roleFeatures.js';
 
 const DEFAULT_MAINTENANCE = {
   enabled: false,
@@ -45,6 +47,7 @@ const isMaintenanceEnabled = (value) => value === true || value === 1 || ['true'
 
 function AppRoutes() {
   const location = useLocation();
+  const { isOpen } = useRolePermissions();
   const [maintenance, setMaintenance] = useState(DEFAULT_MAINTENANCE);
   const [maintenanceLoaded, setMaintenanceLoaded] = useState(false);
   const [, setUserRevision] = useState(0);
@@ -98,6 +101,92 @@ function AppRoutes() {
   const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department') || location.pathname.startsWith('/admin/assign-head');
   const isAssignHeadPage = location.pathname === '/admin/assign-head';
   const isPublicPage = ['/', '/services', '/placement-info', '/announcements', '/contact', '/login'].includes(location.pathname);
+  const workspaceRole = String(user?.role || '').trim().toLowerCase();
+  const permissionsRole = ['head', 'hod', 'coordinator', 'department_head', 'department head'].includes(workspaceRole)
+    ? 'head'
+    : workspaceRole;
+  const studentFeatureKeys = {
+    overview: 'student.overview',
+    preferences: 'student.preferences',
+    result: 'student.results',
+    appeal: 'student.appeals',
+    notifications: 'student.notifications',
+  };
+  const registrarFeatureKeys = {
+    overview: 'registrar.overview',
+    'student-info': 'registrar.student-information',
+    'data-import': 'registrar.data-import',
+    'choice-matrix': 'registrar.choice-matrix',
+    capacity: 'registrar.capacity',
+    'department-status': 'registrar.department-status',
+    'placement-rules': 'registrar.placement-rules',
+    settings: 'registrar.settings',
+    deadlines: 'registrar.deadlines',
+    'run-placement': 'registrar.run-placement',
+    'approve-results': 'registrar.approve-results',
+    'placed-students': 'registrar.placed-students',
+    'unassigned-students': 'registrar.unassigned-students',
+    appeals: 'registrar.appeals',
+    reports: 'registrar.reports',
+    announcements: 'registrar.announcements',
+  };
+  const headFeatureKeys = {
+    overview: 'head.overview',
+    approvals: 'head.approvals',
+    capacity: 'head.capacity',
+    students: 'head.students',
+    reports: 'head.reports',
+  };
+  const firstOpenFeature = (role) => roleFeatures[role]?.features.find(({ id }) => isOpen(id));
+  let blockedFeature = null;
+  if (workspaceRole === 'student' && location.pathname.startsWith('/student-dashboard')) {
+    const activeTab = new URLSearchParams(location.search).get('tab')
+      || localStorage.getItem('activeTab')
+      || 'overview';
+    const featureId = studentFeatureKeys[activeTab];
+    if (featureId && !isOpen(featureId)) blockedFeature = firstOpenFeature('student');
+  } else if (workspaceRole === 'registrar' && location.pathname.startsWith('/registrar-dashboard')) {
+    const activeTab = location.pathname.split('/')[2] || 'overview';
+    const featureId = registrarFeatureKeys[activeTab];
+    if (featureId && !isOpen(featureId)) blockedFeature = firstOpenFeature('registrar');
+  } else if (['head', 'hod', 'coordinator', 'department_head', 'department head'].includes(workspaceRole)
+      && location.pathname.startsWith('/head-dashboard')) {
+    const activeTab = localStorage.getItem('activeTab') || 'overview';
+    const featureId = headFeatureKeys[activeTab];
+    if (featureId && !isOpen(featureId)) blockedFeature = firstOpenFeature('head');
+  }
+  if (blockedFeature) {
+    const roleHome = workspaceRole === 'student'
+      ? `/student-dashboard?tab=${blockedFeature.navigationKey}`
+      : workspaceRole === 'registrar'
+        ? `/registrar-dashboard/${blockedFeature.navigationKey}`
+        : '/head-dashboard';
+    return <Navigate to={roleHome} replace />;
+  }
+  const currentRoleFeatureIds = roleFeatures[permissionsRole]?.features.map(({ id }) => id) || [];
+  if (
+    (workspaceRole === 'student' && location.pathname.startsWith('/student-dashboard'))
+    || (workspaceRole === 'registrar' && location.pathname.startsWith('/registrar-dashboard'))
+    || (['head', 'hod', 'coordinator', 'department_head', 'department head'].includes(workspaceRole)
+      && location.pathname.startsWith('/head-dashboard'))
+  ) {
+    if (currentRoleFeatureIds.length > 0 && currentRoleFeatureIds.every((featureId) => !isOpen(featureId))) {
+      return <main className="container py-5"><div className="alert alert-warning" role="status">This workspace is currently unavailable. Contact an Administrator.</div></main>;
+    }
+  }
+  if (permissionsRole === 'admin') {
+    const adminRoutePermissions = [
+      ['/edit-user/', 'admin.users'],
+      ['/edit-department/', 'admin.departments'],
+      ['/admin/assign-head', 'admin.assign-head'],
+    ];
+    const blockedAdminRoute = adminRoutePermissions.find(([path, permissionId]) => (
+      location.pathname.startsWith(path) && !isOpen(permissionId)
+    ));
+    if (blockedAdminRoute) {
+      return <Navigate to="/admin-dashboard" state={{ activeTab: 'role-permissions' }} replace />;
+    }
+  }
   const routes = (
     <Routes>
       <Route path="/" element={<Home />} />
@@ -147,7 +236,9 @@ function App() {
       <ThemeProvider>
         <LanguageProvider>
           <AuthProvider>
-            <AppRoutes />
+            <RolePermissionsProvider>
+              <AppRoutes />
+            </RolePermissionsProvider>
           </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>

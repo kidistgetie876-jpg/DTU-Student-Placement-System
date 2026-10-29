@@ -324,10 +324,11 @@ try {
     if ($admissionNumber === '' || !is_array($choices) || !$choices) {
         sendJsonResponse(['success' => false, 'message' => 'Admission number and choices are required.'], 400);
     }
-    $semester = (int) ($input['semester'] ?? 1);
-    if (!in_array($semester, [1, 2], true)) {
+    $requestedSemester = $input['semester'] ?? null;
+    if (!in_array($requestedSemester, [1, 2, '1', '2'], true)) {
         sendJsonResponse(['success' => false, 'message' => 'A valid placement semester is required.'], 400);
     }
+    $semester = (int) $requestedSemester;
     $activeSemester = getActivePlacementSemester($db);
     $storedPlacementStatus = strtolower(trim(
         getStudentStoredPlacementStatus($db, $studentId, $admissionNumber)
@@ -399,7 +400,7 @@ try {
         ], 403);
     }
     $choiceColumns = getTableColumns($db, 'student_choices');
-    foreach (['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority'] as $requiredColumn) {
+    foreach (['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority', 'semester'] as $requiredColumn) {
         if (!in_array($requiredColumn, $choiceColumns, true)) {
             throw new RuntimeException('The student_choices table is missing required column ' . $requiredColumn);
         }
@@ -681,21 +682,16 @@ try {
         }
     }
 
-    $insertColumns = ['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority'];
-    if (in_array('semester', $choiceColumns, true)) {
-        $insertColumns[] = 'semester';
-    }
+    $insertColumns = ['admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'priority', 'semester'];
 
     $db->begin_transaction();
     try {
         $deleteConditions = ['(' . implode(' OR ', $identityConditions) . ')'];
         $deleteValues = $identityValues;
         $deleteTypes = $identityTypes;
-        if (in_array('semester', $choiceColumns, true)) {
-            $deleteConditions[] = 'semester = ?';
-            $deleteValues[] = (string) $semester;
-            $deleteTypes .= 's';
-        }
+        $deleteConditions[] = 'semester = ?';
+        $deleteValues[] = (string) $semester;
+        $deleteTypes .= 's';
         $delete = $db->prepare(
             'DELETE FROM student_choices WHERE ' . implode(' AND ', $deleteConditions)
         );
@@ -745,10 +741,40 @@ try {
             bindStatementValues($insert, $types, $values);
             $insert->execute();
         }
+        $verification = $db->prepare(
+            'SELECT COUNT(*) AS saved_count,
+                    COUNT(DISTINCT priority) AS distinct_priorities,
+                    SUM(CASE
+                        WHEN dept_id IS NULL OR dept_id <= 0
+                          OR dept_name IS NULL OR TRIM(dept_name) = \'\'
+                        THEN 1 ELSE 0
+                    END) AS incomplete_department_count
+             FROM student_choices
+             WHERE TRIM(admission_number) = TRIM(?) AND semester = ?'
+        );
+        $verification->bind_param('si', $admissionNumber, $semester);
+        $verification->execute();
+        $savedChoices = $verification->get_result()->fetch_assoc();
+        $verification->close();
+        $savedCount = (int) ($savedChoices['saved_count'] ?? 0);
+        $distinctPriorityCount = (int) ($savedChoices['distinct_priorities'] ?? 0);
+        $incompleteDepartmentCount = (int) ($savedChoices['incomplete_department_count'] ?? 0);
+        if (
+            $savedCount !== count($validatedChoices)
+            || $distinctPriorityCount !== $savedCount
+            || ($semester === 2 && $incompleteDepartmentCount !== 0)
+        ) {
+            throw new RuntimeException('Saved preferences did not match the submitted semester, departments, and ranks.');
+        }
         $insert->close();
         $db->commit();
         $db->close();
-        sendJsonResponse(['success' => true, 'message' => 'Preferences saved successfully!']);
+        sendJsonResponse([
+            'success' => true,
+            'message' => 'Preferences saved and verified successfully.',
+            'semester' => $semester,
+            'saved_count' => $savedCount,
+        ]);
     } catch (Throwable $error) {
         $db->rollback();
         throw $error;

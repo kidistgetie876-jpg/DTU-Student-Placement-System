@@ -82,6 +82,53 @@ function dashboardCountWhere(mysqli $db, string $table, array $columns, array $c
     return countQuery($db, $sql);
 }
 
+function dashboardCycleConditions(
+    mysqli $db,
+    array $columns,
+    array $settings,
+    string $alias,
+    bool $includeSemester = false
+): array {
+    $conditions = [];
+    foreach ([
+        'batch_id' => ['active_batch_id', 'batch_id'],
+        'academic_year' => ['active_academic_year', 'academic_year'],
+    ] as $column => $settingCandidates) {
+        if (!in_array($column, $columns, true)) {
+            continue;
+        }
+        foreach ($settingCandidates as $setting) {
+            if (!array_key_exists($setting, $settings) || $settings[$setting] === null || trim((string) $settings[$setting]) === '') {
+                continue;
+            }
+            $value = $db->real_escape_string((string) $settings[$setting]);
+            $conditions[] = "`{$alias}`.`{$column}` = '{$value}'";
+            break;
+        }
+    }
+
+    if ($includeSemester && in_array('placement_semester', $columns, true)) {
+        $semester = (int) ($settings['active_semester'] ?? 1);
+        if (in_array($semester, [1, 2], true)) {
+            $conditions[] = "`{$alias}`.`placement_semester` = {$semester}";
+        }
+    }
+    return $conditions;
+}
+
+function dashboardStudentCountExpression(array $columns, string $alias): string
+{
+    $identifiers = [];
+    foreach (['student_id', 'admission_number', 'id_number'] as $column) {
+        if (in_array($column, $columns, true)) {
+            $identifiers[] = "NULLIF(TRIM(CAST(`{$alias}`.`{$column}` AS CHAR)), '')";
+        }
+    }
+    return $identifiers
+        ? 'COUNT(DISTINCT COALESCE(' . implode(', ', $identifiers) . '))'
+        : 'COUNT(*)';
+}
+
 try {
     require_once __DIR__ . '/../../config/db_config.php';
     $db = getDbConnection();
@@ -90,49 +137,72 @@ try {
     }
     $userColumns = dashboardTableColumns($db, 'users');
     $departmentColumns = dashboardTableColumns($db, 'departments');
+    $studentColumns = dashboardTableColumns($db, 'student_data');
+    $assignmentColumns = dashboardTableColumns($db, 'placement_results');
+    $approvalColumns = dashboardTableColumns($db, 'placement_approvals');
     if (!in_array('role', $userColumns, true) || !in_array('id', $userColumns, true)) {
         throw new RuntimeException('The users table is missing required id or role columns.');
     }
     if (!in_array('id', $departmentColumns, true)) {
         throw new RuntimeException('The departments table is missing its id column.');
     }
-
-    $studentColumns = dashboardTableColumns($db, 'students');
-    $studentTable = $studentColumns ? 'students' : 'student_data';
     if (!$studentColumns) {
-        $studentColumns = dashboardTableColumns($db, $studentTable);
+        throw new RuntimeException('The student_data table is unavailable.');
     }
-    $assignmentColumns = dashboardTableColumns($db, 'department_assignments');
-    $assignmentTable = $assignmentColumns ? 'department_assignments' : 'placement_results';
-    if (!$assignmentColumns) {
-        $assignmentColumns = dashboardTableColumns($db, $assignmentTable);
+
+    $settingsColumns = dashboardTableColumns($db, 'placement_settings');
+    $settings = [];
+    $settingsFields = array_values(array_intersect(
+        ['active_semester', 'active_batch_id', 'batch_id', 'active_academic_year', 'academic_year'],
+        $settingsColumns
+    ));
+    if ($settingsFields) {
+        $settingsResult = $db->query(
+            'SELECT `' . implode('`, `', $settingsFields) . '` FROM placement_settings WHERE id = 1 LIMIT 1'
+        );
+        if (!$settingsResult) {
+            throw new RuntimeException('Unable to load the active placement cycle: ' . $db->error);
+        }
+        $settings = $settingsResult->fetch_assoc() ?: [];
+        $settingsResult->free();
     }
-    $approvalColumns = dashboardTableColumns($db, 'placement_approvals');
 
     $totalDepartments = countQuery($db, 'SELECT COUNT(*) AS total FROM departments');
     $activeStudents = countQuery($db, "SELECT COUNT(*) AS total FROM users WHERE LOWER(TRIM(role)) = 'student'");
 
-    $verifiedConditions = [];
-    if (in_array('status', $studentColumns, true)) {
-        $verifiedConditions['status'] = "LOWER(TRIM(COALESCE(`status`, ''))) = 'verified'";
-    }
+    $studentCycleConditions = dashboardCycleConditions($db, $studentColumns, $settings, 'sd');
+    $verifiedConditions = $studentCycleConditions;
     if (in_array('is_verified', $studentColumns, true)) {
-        $verifiedConditions['is_verified'] = '`is_verified` = 1';
+        $verifiedConditions[] = '`sd`.`is_verified` = 1';
+    } elseif (in_array('is_active', $studentColumns, true)) {
+        $verifiedConditions[] = '`sd`.`is_active` = 1';
+    } elseif (in_array('verification_status', $studentColumns, true)) {
+        $verifiedConditions[] = "LOWER(TRIM(COALESCE(`sd`.`verification_status`, ''))) IN ('verified', 'active', 'approved')";
+    } elseif (in_array('admission_number', $studentColumns, true)) {
+        $verifiedConditions[] = "NULLIF(TRIM(`sd`.`admission_number`), '') IS NOT NULL";
+    } elseif (in_array('id_number', $studentColumns, true)) {
+        $verifiedConditions[] = "NULLIF(TRIM(`sd`.`id_number`), '') IS NOT NULL";
     }
-    $verifiedStudents = dashboardCountWhere($db, $studentTable, $studentColumns, $verifiedConditions);
+    $verifiedStudents = countQuery(
+        $db,
+        'SELECT COUNT(*) AS total FROM student_data sd'
+            . ($verifiedConditions ? ' WHERE ' . implode(' AND ', $verifiedConditions) : '')
+    );
 
-    $awaitingConditions = [];
-    if (in_array('placement_status', $studentColumns, true)) {
-        $awaitingConditions['placement_status'] = "LOWER(TRIM(COALESCE(`placement_status`, ''))) = 'pending'";
-    } elseif (in_array('status', $studentColumns, true)) {
-        $awaitingConditions['status'] = "LOWER(TRIM(COALESCE(`status`, ''))) = 'pending'";
+    $studentPlacementStatus = in_array('placement_status', $studentColumns, true)
+        ? '`sd`.`placement_status`'
+        : (in_array('status', $studentColumns, true) ? '`sd`.`status`' : null);
+    $awaitingPlacement = 0;
+    if ($studentPlacementStatus !== null) {
+        $awaitingConditions = array_merge(
+            $studentCycleConditions,
+            ["LOWER(TRIM(REPLACE(COALESCE({$studentPlacementStatus}, ''), '_', ' '))) IN ('pending 1st semester', 'pending 2nd semester', 'unassigned')"]
+        );
+        $awaitingPlacement = countQuery(
+            $db,
+            'SELECT COUNT(*) AS total FROM student_data sd WHERE ' . implode(' AND ', $awaitingConditions)
+        );
     }
-    foreach (['assigned_department', 'assigned_dept_id'] as $assignmentColumn) {
-        if (in_array($assignmentColumn, $studentColumns, true)) {
-            $awaitingConditions[$assignmentColumn] = "`{$assignmentColumn}` IS NULL";
-        }
-    }
-    $awaitingPlacement = dashboardCountWhere($db, $studentTable, $studentColumns, $awaitingConditions);
 
     $finalizedConditions = [];
     $departmentAssignmentColumn = null;
@@ -145,13 +215,12 @@ try {
     if ($departmentAssignmentColumn !== null) {
         $assignmentStatusCondition = '';
         if (in_array('status', $assignmentColumns, true)) {
-            $assignmentStatusCondition = " WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('approved', 'placed', 'published', 'finalized', 'completed')";
+            $assignmentStatusCondition = " WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('assigned', 'approved', 'placed', 'published', 'finalized', 'completed')";
         }
-        $assignmentTableSql = str_replace('`', '``', $assignmentTable);
         $assignmentColumnSql = str_replace('`', '``', $departmentAssignmentColumn);
         $finalizedDepartments = countQuery($db, "
             SELECT COUNT(DISTINCT `{$assignmentColumnSql}`) AS total
-            FROM `{$assignmentTableSql}`{$assignmentStatusCondition}
+            FROM `placement_results`{$assignmentStatusCondition}
               " . ($assignmentStatusCondition === '' ? " WHERE " : " AND ")
             . "`{$assignmentColumnSql}` IS NOT NULL AND TRIM(CAST(`{$assignmentColumnSql}` AS CHAR)) <> ''
         ");
@@ -165,32 +234,41 @@ try {
         $finalizedDepartments = dashboardCountWhere($db, 'departments', $departmentColumns, $finalizedConditions);
     }
 
-        $studentPlacementStatusColumn = in_array('placement_status', $studentColumns, true)
-            ? 'placement_status'
-            : (in_array('status', $studentColumns, true) ? 'status' : null);
-        $placementsCompleted = $studentPlacementStatusColumn === null
-            ? 0
-            : countQuery($db, "
-                SELECT COUNT(*) AS total
-                FROM `{$studentTable}`
-                WHERE LOWER(TRIM(COALESCE(`{$studentPlacementStatusColumn}`, '')))
-                    IN ('placed', 'approved', 'published')
-            ");
+    $placementsCompleted = 0;
+    if (in_array('status', $assignmentColumns, true)) {
+        $assignmentCycleConditions = dashboardCycleConditions($db, $assignmentColumns, $settings, 'pr', true);
+        $assignmentCycleConditions[] = "LOWER(TRIM(COALESCE(`pr`.`status`, ''))) = 'assigned'";
+        $placementsCompleted = countQuery(
+            $db,
+            'SELECT ' . dashboardStudentCountExpression($assignmentColumns, 'pr')
+                . ' AS total FROM placement_results pr WHERE ' . implode(' AND ', $assignmentCycleConditions)
+        );
+    }
 
     if (in_array('status', $approvalColumns, true)) {
+        $approvalCycleConditions = dashboardCycleConditions($db, $approvalColumns, $settings, 'pa');
+        $approvalCycleConditions[] = "LOWER(TRIM(COALESCE(`pa`.`status`, ''))) IN ('pending', 'pending_approval')";
         $pendingApprovals = countQuery($db, "
-            SELECT COUNT(*) AS total FROM placement_approvals
-            WHERE LOWER(TRIM(COALESCE(status, ''))) = 'pending'
-        ");
+            SELECT COUNT(*) AS total FROM placement_approvals pa
+            WHERE " . implode(' AND ', $approvalCycleConditions)
+        );
     } elseif (in_array('status', $assignmentColumns, true)) {
-        $pendingCountExpression = in_array('student_id', $assignmentColumns, true)
-            ? 'COUNT(DISTINCT student_id)'
-            : 'COUNT(*)';
-        $assignmentTableSql = str_replace('`', '``', $assignmentTable);
+        $pendingConditions = dashboardCycleConditions($db, $assignmentColumns, $settings, 'pr', true);
+        $pendingConditions[] = "LOWER(TRIM(COALESCE(`pr`.`status`, ''))) IN ('pending', 'pending_approval')";
+        if (in_array('is_published', $assignmentColumns, true)) {
+            $pendingConditions[] = 'COALESCE(`pr`.`is_published`, 0) = 0';
+        }
+        if (in_array('dept_name', $assignmentColumns, true)) {
+            $pendingConditions[] = "NULLIF(TRIM(`pr`.`dept_name`), '') IS NOT NULL";
+            $pendingConditions[] = "LOWER(TRIM(`pr`.`dept_name`)) NOT IN ('unassigned', 'not assigned')";
+        } elseif (in_array('dept_id', $assignmentColumns, true)) {
+            $pendingConditions[] = '`pr`.`dept_id` IS NOT NULL';
+        }
         $pendingApprovals = countQuery($db, "
-            SELECT {$pendingCountExpression} AS total FROM `{$assignmentTableSql}`
-            WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('pending', 'pending_approval')
-        ");
+            SELECT " . dashboardStudentCountExpression($assignmentColumns, 'pr') . " AS total
+            FROM placement_results pr
+            WHERE " . implode(' AND ', $pendingConditions)
+        );
     } else {
         $pendingApprovals = 0;
     }
@@ -206,7 +284,9 @@ try {
         'departments' => $totalDepartments,
         'activeStudents' => $activeStudents,
         'placementsCompleted' => $placementsCompleted,
+        'placements_completed' => $placementsCompleted,
         'unplacedStudents' => $awaitingPlacement,
+        'unplaced_students' => $awaitingPlacement,
         'pendingApprovals' => $pendingApprovals,
     ];
     respond([
@@ -215,6 +295,8 @@ try {
         'verified_students' => $verifiedStudents,
         'finalized_departments' => $finalizedDepartments,
         'awaiting_placement' => $awaitingPlacement,
+        'unplaced_students' => $awaitingPlacement,
+        'placements_completed' => $placementsCompleted,
         'pending_approvals' => $pendingApprovals,
         'data' => $stats,
     ]);

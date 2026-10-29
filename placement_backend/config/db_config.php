@@ -104,6 +104,9 @@ if (!function_exists('getDbConnection')) {
                     if (@$connection->real_connect($db_host, $db_user, $pass, $db_name, $port)) {
                         $connection->set_charset('utf8mb4');
                         $mysqli = $connection;
+                        if (function_exists('enforceRoleFeaturePermission')) {
+                            enforceRoleFeaturePermission($mysqli);
+                        }
                         return $mysqli;
                     }
 
@@ -117,6 +120,11 @@ if (!function_exists('getDbConnection')) {
             throw new RuntimeException('Database connection failed: ' . $lastConnectionError);
         }
     }
+}
+
+require_once __DIR__ . '/role_feature_permissions.php';
+if ($mysqli instanceof mysqli) {
+    enforceRoleFeaturePermission($mysqli);
 }
 
 // Audit Log PDO Connection Helper

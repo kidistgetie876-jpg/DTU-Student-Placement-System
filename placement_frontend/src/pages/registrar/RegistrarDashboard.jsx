@@ -543,14 +543,17 @@ export const filterPlacementCandidates = (
   selectedStream,
   selectedCollege,
   loadAllStudentsInStream = false,
-  includeCandidatesWithoutChoices = false,
 ) => {
   const selectedStreamKey = normalizePlacementStream(selectedStream);
   const selectedCollegeKey = normalizePlacementCollege(selectedCollege);
 
   return students.filter((student) => {
-    const choices = Array.isArray(student.choices) ? student.choices : [];
-    if (choices.length === 0 && !includeCandidatesWithoutChoices) return false;
+    const choices = Array.isArray(student.choices)
+      ? student.choices.filter((choice) => String(
+        choice.dept_name || choice.department_name || choice.department || '',
+      ).trim() !== '')
+      : [];
+    if (choices.length === 0) return false;
     if (selectedStreamKey !== 'all' && normalizePlacementStream(student.stream) !== selectedStreamKey) return false;
     if (
       !loadAllStudentsInStream
@@ -559,6 +562,97 @@ export const filterPlacementCandidates = (
     ) return false;
     return true;
   });
+};
+
+export const normalizePlacementCandidateChoices = (student, semester) => {
+  const semesterChoicesKey = semester === 2 ? 'semester_2_choices' : 'semester_1_choices';
+  const hasSemesterChoices = Object.prototype.hasOwnProperty.call(student || {}, semesterChoicesKey);
+  const sourceChoices = hasSemesterChoices
+    ? (Array.isArray(student[semesterChoicesKey]) ? student[semesterChoicesKey] : [])
+    : Array.isArray(student?.choices)
+      ? student.choices
+      : [];
+  const choices = sourceChoices
+    .map((choice, index) => {
+      const department = String(
+        choice?.dept_name
+          ?? choice?.department_name
+          ?? choice?.department
+          ?? choice?.name
+          ?? '',
+      ).trim();
+      const priority = Number(
+        choice?.priority
+          ?? choice?.choice_rank
+          ?? choice?.rank
+          ?? choice?.choice_order
+          ?? index + 1,
+      );
+      return {
+        ...choice,
+        dept_name: department,
+        department,
+        priority: Number.isFinite(priority) && priority >= 1 ? priority : index + 1,
+      };
+    })
+    .filter((choice) => choice.dept_name !== '')
+    .sort((left, right) => left.priority - right.priority);
+
+  return {
+    ...student,
+    choices,
+    [semesterChoicesKey]: choices,
+  };
+};
+
+export const getPlacementCandidateIneligibility = (student, semester, minimumGpa = 1.75) => {
+  const choices = Array.isArray(student?.choices) ? student.choices : [];
+  const qualifyingChoices = choices.filter((choice) => (
+    String(choice?.dept_name || choice?.department_name || choice?.department || '').trim() !== ''
+    && Number(choice?.priority ?? 1) >= 1
+  ));
+  if (qualifyingChoices.length === 0) {
+    return 'No qualifying preferences are saved for this placement stage.';
+  }
+
+  const placementStatus = String(student?.placement_status || student?.status || '').trim().toLowerCase();
+  if (semester === 2 && placementStatus && ![
+    'pending',
+    'pending 1st semester',
+    'pending 2nd semester',
+    'not assigned',
+    'unassigned',
+    'placed in semester 1',
+    'allocated',
+    'eligible',
+    'unplaced',
+  ].includes(placementStatus)) {
+    return 'Student is not eligible for second-semester placement.';
+  }
+  if (semester === 1 && placementStatus && ![
+    'pending',
+    'pending 1st semester',
+    'not assigned',
+    'unassigned',
+  ].includes(placementStatus)) {
+    return 'Student is not eligible for first-semester placement.';
+  }
+
+  const scores = [
+    student?.cgpa,
+    student?.g12 ?? student?.grade12,
+    student?.coc,
+    student?.cumulative_score,
+  ].map(Number).filter(Number.isFinite);
+  if (!scores.some((score) => score > 0)) {
+    return 'Academic score data is missing.';
+  }
+  const cgpa = Number(student?.cgpa);
+  if (cgpa > 0 && cgpa < minimumGpa) {
+    return `CGPA is below the minimum requirement of ${minimumGpa}.`;
+  }
+
+  return '';
 };
 
 const normalizeDepartmentPayload = (payload) => {
@@ -621,11 +715,8 @@ const RegistrarDashboard = () => {
   }, [location.state, navigate, routeTab]);
   const [summary, setSummary] = useState({
     totalDepartments: 0,
-    verifiedStudents: 0,
-    finalizedDepartments: 0,
     placementsCompleted: 0,
     awaitingPlacement: 0,
-    pendingApprovals: 0,
   });
   const [placementRules, setPlacementRules] = useState(() => {
     const defaultRules = {
@@ -736,9 +827,10 @@ const RegistrarDashboard = () => {
   const reportMessageInputRef = useRef(null);
   
   // State for card detail modals
-  const [cardDetailModal, setCardDetailModal] = useState(null); // 'departments', 'activeStudents', 'placementsCompleted', 'unplacedStudents', 'pendingApprovals'
+  const [cardDetailModal, setCardDetailModal] = useState(null); // 'departments', 'placementsCompleted', 'unplacedStudents'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
+  const [cardDetailError, setCardDetailError] = useState('');
   const [studentRecords, setStudentRecords] = useState([]);
   const [expandedStudentScoreId, setExpandedStudentScoreId] = useState(null);
   const [showStudentRegistrationModal, setShowStudentRegistrationModal] = useState(false);
@@ -1424,6 +1516,7 @@ const RegistrarDashboard = () => {
     setCardDetailModal(cardType);
     setCardDetailLoading(true);
     setCardDetailData([]);
+    setCardDetailError('');
 
     try {
       let data = [];
@@ -1438,20 +1531,6 @@ const RegistrarDashboard = () => {
           stream: dept.stream
         }));
       } 
-      else if (cardType === 'activeStudents') {
-        // Show active students
-        data = studentRecords
-          .filter((student) => student.status !== 'Rejected' && student.status !== 'Inactive')
-          .map((student) => ({
-            id: student.id,
-            id_number: student.id_number || student.id,
-            name: student.name,
-            email: student.email,
-            gpa: student.gpa || student.cgpa || '0.00',
-            stream: student.stream || 'Natural',
-            status: student.status
-          }));
-      } 
       else if (cardType === 'placementsCompleted') {
         const response = await api.get('api/registrar/get_placed_students.php');
         if (!response.data?.success || !Array.isArray(response.data.students)) {
@@ -1464,38 +1543,17 @@ const RegistrarDashboard = () => {
         }));
       } 
       else if (cardType === 'unplacedStudents') {
-        const pendingResponse = await api.get('api/registrar/get_pending_results.php');
-        if (!pendingResponse.data?.success) {
-          throw new Error(pendingResponse.data?.message || 'Unable to load pending placement results.');
+        const response = await api.get('api/registrar/get_unplaced_students.php');
+        if (!response.data?.success || !Array.isArray(response.data.students)) {
+          throw new Error(response.data?.message || 'Unable to load unplaced students.');
         }
-        const pendingResults = Array.isArray(pendingResponse.data.results) ? pendingResponse.data.results : [];
-        const pendingStudentIds = new Set(pendingResults.map((result) => String(result.student_id)));
-
-        data = studentRecords
-          .filter((student) => !hasPlacementResult(student) && !pendingStudentIds.has(String(student.id)))
-          .map((student) => ({
-            id: student.id,
-            id_number: student.id_number || student.id,
-            name: student.name,
-            email: student.email,
-            stream: student.stream || 'Natural',
-            status: student.status,
-          }));
-      }
-      else if (cardType === 'pendingApprovals') {
-        const response = await api.get('api/registrar/get_pending_results.php');
-        if (!response.data?.success) {
-          throw new Error(response.data?.message || 'Unable to load pending placement results.');
-        }
-        data = (Array.isArray(response.data.results) ? response.data.results : []).map((result) => ({
-          ...result,
-          name: [result.first_name, result.last_name].filter(Boolean).join(' ') || 'Not available',
-        }));
+        data = response.data.students;
       }
 
       setCardDetailData(data);
     } catch (error) {
       console.error('Error fetching card details:', error);
+      setCardDetailError(error.response?.data?.message || error.message || 'Unable to load card details.');
       setCardDetailData([]);
     } finally {
       setCardDetailLoading(false);
@@ -1773,11 +1831,8 @@ const RegistrarDashboard = () => {
           const stats = response.data?.data ?? response.data;
           setSummary({
             totalDepartments: Number(stats.total_departments ?? stats.departments ?? 0),
-            verifiedStudents: Number(stats.verified_students ?? stats.activeStudents ?? 0),
-            finalizedDepartments: Number(stats.finalized_departments ?? stats.placementsCompleted ?? 0),
             placementsCompleted: Number(stats.placementsCompleted ?? 0),
             awaitingPlacement: Number(stats.awaiting_placement ?? stats.unplacedStudents ?? 0),
-            pendingApprovals: Number(stats.pending_approvals ?? stats.pendingApprovals ?? 0),
           });
         }
       } catch (error) {
@@ -1967,10 +2022,7 @@ const RegistrarDashboard = () => {
           const stats = response.data?.data ?? response.data;
           setSummary({
             totalDepartments: Number(stats.total_departments ?? stats.departments ?? 0),
-            verifiedStudents: Number(stats.verified_students ?? stats.activeStudents ?? 0),
-            finalizedDepartments: Number(stats.finalized_departments ?? stats.placementsCompleted ?? 0),
             awaitingPlacement: Number(stats.awaiting_placement ?? stats.unplacedStudents ?? 0),
-            pendingApprovals: Number(stats.pending_approvals ?? stats.pendingApprovals ?? 0),
           });
         }
       } catch (error) {
@@ -2538,13 +2590,16 @@ const RegistrarDashboard = () => {
         if (response.data?.success === false || response.data?.status === 'error') {
           throw new Error(response.data?.message || 'Unable to load candidate students.');
         }
-        const candidates = Array.isArray(response.data?.candidates)
+        const responseCandidates = Array.isArray(response.data?.candidates)
           ? response.data.candidates
           : Array.isArray(response.data?.students)
             ? response.data.students
             : Array.isArray(response.data?.data)
               ? response.data.data
               : [];
+        const candidates = responseCandidates.map((candidate) => (
+          normalizePlacementCandidateChoices(candidate, placementMode)
+        ));
         console.debug('[Run Placement] Candidate students response', {
           success: response.data?.success,
           filters: response.data?.filters,
@@ -2552,8 +2607,8 @@ const RegistrarDashboard = () => {
           candidates: candidates.map(({ id, stream, choices = [] }) => ({
             id,
             stream,
-            choices: choices.map(({ department, college_name, stream: choiceStream }) => ({
-              department,
+            choices: choices.map(({ dept_name, department, college_name, stream: choiceStream }) => ({
+              department: dept_name || department,
               college: college_name,
               stream: choiceStream,
             })),
@@ -2611,11 +2666,14 @@ const RegistrarDashboard = () => {
     placementCandidatesData,
     selectedStream,
     'all',
-    false,
-    true,
   );
+  const eligiblePlacementCandidates = placementCandidates.filter((student) => (
+    !getPlacementCandidateIneligibility(student, placementMode, placementRules.minGpa)
+  ));
+  const missingSemesterTwoAllocations = placementMode === 2
+    && eligiblePlacementCandidates.some((student) => Number(student.has_pending_college_allocation) !== 1);
   const selectedPlacementCandidateCount = filterStudentIdsForPlacement(
-    placementCandidates,
+    eligiblePlacementCandidates,
     selectedStudentIds,
   ).length;
   const isActivePlacementMode = placementMode === activeSemester;
@@ -2790,21 +2848,15 @@ const RegistrarDashboard = () => {
           {tab === 'overview' ? (
             <>
               <div className="row g-4 mb-4">
-                <div className="col-lg-3 col-md-6">
-                  <div 
-                    className="card summary-card shadow-sm" 
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#0d6efd';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
+                <div className="col-lg-4 col-md-6">
+                  <div
+                    className="card summary-card shadow-sm h-100"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleCardClick('departments')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('departments');
+                    }}
                   >
                     <div className="card-body">
                       <span className="summary-label">{t('Departments')}</span>
@@ -2814,45 +2866,15 @@ const RegistrarDashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="col-lg-3 col-md-6">
-                  <div 
-                    className="card summary-card shadow-sm" 
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#198754';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
-                    onClick={() => handleCardClick('activeStudents')}
-                  >
-                    <div className="card-body">
-                      <span className="summary-label">{t('Verified Students')}</span>
-                      <h3 className="summary-value">{summary.verifiedStudents}</h3>
-                      <small className="text-muted">Verified for this cycle</small>
-                      <div className="mt-2"><small className="text-success fw-bold">Click to view details →</small></div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-lg-3 col-md-6">
-                  <div 
-                    className="card summary-card shadow-sm" 
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#ffc107';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
+                <div className="col-lg-4 col-md-6">
+                  <div
+                    className="card summary-card shadow-sm h-100"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleCardClick('placementsCompleted')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('placementsCompleted');
+                    }}
                   >
                     <div className="card-body">
                       <span className="summary-label">{t('Placements Completed')}</span>
@@ -2862,51 +2884,21 @@ const RegistrarDashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="col-lg-3 col-md-6">
+                <div className="col-lg-4 col-md-6">
                   <div
-                    className="card summary-card shadow-sm"
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#fd7e14';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
+                    className="card summary-card shadow-sm h-100"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleCardClick('unplacedStudents')}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') handleCardClick('unplacedStudents');
+                    }}
                   >
                     <div className="card-body">
                       <span className="summary-label">{t('Unplaced Students')}</span>
                       <h3 className="summary-value">{summary.awaitingPlacement}</h3>
                       <small className="text-muted">Awaiting placement run</small>
                       <div className="mt-2"><small className="fw-bold" style={{ color: '#fd7e14' }}>Click to view details →</small></div>
-                    </div>
-                  </div>
-                </div>
-                <div className="col-lg-3 col-md-6">
-                  <div 
-                    className="card summary-card shadow-sm" 
-                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-5px)';
-                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
-                      e.currentTarget.style.borderColor = '#dc3545';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = '';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
-                    onClick={() => handleCardClick('pendingApprovals')}
-                  >
-                    <div className="card-body">
-                      <span className="summary-label">{t('Pending Approvals')}</span>
-                      <h3 className="summary-value">{summary.pendingApprovals}</h3>
-                      <small className="text-muted">Awaiting registrar approval</small>
-                      <div className="mt-2"><small className="text-danger fw-bold">Click to view details →</small></div>
                     </div>
                   </div>
                 </div>
@@ -2939,10 +2931,8 @@ const RegistrarDashboard = () => {
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <h4 className="fw-bold mb-0">
                         {cardDetailModal === 'departments' && 'All Departments'}
-                        {cardDetailModal === 'activeStudents' && 'Active Students'}
                         {cardDetailModal === 'placementsCompleted' && 'Placed Students'}
                         {cardDetailModal === 'unplacedStudents' && 'Unplaced Students'}
-                        {cardDetailModal === 'pendingApprovals' && 'Pending Placement Approvals'}
                       </h4>
                       <button 
                         className="btn btn-close" 
@@ -2956,6 +2946,8 @@ const RegistrarDashboard = () => {
                           <span className="visually-hidden">Loading...</span>
                         </div>
                       </div>
+                    ) : cardDetailError ? (
+                      <div className="alert alert-danger" role="alert">{cardDetailError}</div>
                     ) : cardDetailData.length === 0 ? (
                       <div className="alert alert-info">No data available</div>
                     ) : (
@@ -2971,17 +2963,6 @@ const RegistrarDashboard = () => {
                                   <th>Stream</th>
                                 </>
                               )}
-                              {cardDetailModal === 'activeStudents' && (
-                                <>
-                                  <th>#</th>
-                                  <th>Student ID</th>
-                                  <th>Name</th>
-                                  <th>Email</th>
-                                  <th>GPA</th>
-                                  <th>Stream</th>
-                                  <th>Status</th>
-                                </>
-                              )}
                               {cardDetailModal === 'placementsCompleted' && (
                                 <>
                                   <th>Name</th>
@@ -2995,18 +2976,8 @@ const RegistrarDashboard = () => {
                                 <>
                                   <th>Student ID</th>
                                   <th>Name</th>
-                                  <th>Email</th>
+                                  <th>College</th>
                                   <th>Stream</th>
-                                  <th>Status</th>
-                                </>
-                              )}
-                              {cardDetailModal === 'pendingApprovals' && (
-                                <>
-                                  <th>Student ID</th>
-                                  <th>Name</th>
-                                  <th>Department</th>
-                                  <th>Score</th>
-                                  <th>Choice Rank</th>
                                   <th>Status</th>
                                 </>
                               )}
@@ -3023,17 +2994,6 @@ const RegistrarDashboard = () => {
                                     <td>{item.stream}</td>
                                   </>
                                 )}
-                                {cardDetailModal === 'activeStudents' && (
-                                  <>
-                                    <td>{idx + 1}</td>
-                                    <td>{item.id_number}</td>
-                                    <td><strong>{item.name}</strong></td>
-                                    <td>{item.email}</td>
-                                    <td>{item.gpa}</td>
-                                    <td><span className="badge bg-primary-subtle text-primary">{item.stream}</span></td>
-                                    <td><span className="badge bg-success">{item.status}</span></td>
-                                  </>
-                                )}
                                 {cardDetailModal === 'placementsCompleted' && (
                                   <>
                                     <td><strong>{item.name}</strong></td>
@@ -3045,21 +3005,11 @@ const RegistrarDashboard = () => {
                                 )}
                                 {cardDetailModal === 'unplacedStudents' && (
                                   <>
-                                    <td>{item.id_number}</td>
-                                    <td><strong>{item.name}</strong></td>
-                                    <td>{item.email}</td>
-                                    <td>{item.stream}</td>
-                                    <td><span className="badge bg-secondary">{item.status}</span></td>
-                                  </>
-                                )}
-                                {cardDetailModal === 'pendingApprovals' && (
-                                  <>
-                                    <td>{item.official_id_number || item.id_number || item.student_id}</td>
-                                    <td><strong>{item.name}</strong></td>
-                                    <td>{item.dept_name}</td>
-                                    <td>{Number(item.final_score ?? 0).toFixed(2)}</td>
-                                    <td>{item.choice_rank}</td>
-                                    <td><span className="badge bg-warning text-dark">{item.status}</span></td>
+                                    <td>{item.admission_number || item.student_id}</td>
+                                    <td><strong>{item.name || 'Student'}</strong></td>
+                                    <td>{item.college || 'Not available'}</td>
+                                    <td>{item.stream || 'Not available'}</td>
+                                    <td><span className="badge bg-secondary">{item.current_status || 'Unassigned'}</span></td>
                                   </>
                                 )}
                               </tr>
@@ -3075,14 +3025,6 @@ const RegistrarDashboard = () => {
                           onClick={() => { setCardDetailModal(null); setTab('run-placement'); }}
                         >
                           Go to Run Placement →
-                        </button>
-                      )}
-                      {cardDetailModal === 'pendingApprovals' && (
-                        <button
-                          className="btn btn-danger me-2"
-                          onClick={() => { setCardDetailModal(null); setTab('approve-results'); }}
-                        >
-                          Go to Approve &amp; Publish Results →
                         </button>
                       )}
                       <button 
@@ -4445,6 +4387,8 @@ const RegistrarDashboard = () => {
                           checked={completeSemesterRun}
                           disabled={selectedStream !== ''
                             || placementCandidatesData.length === 0
+                            || eligiblePlacementCandidates.length !== placementCandidates.length
+                            || missingSemesterTwoAllocations
                             || !placementCandidatesData.every((student) => selectedStudentIds.includes(String(student.id)))}
                           onChange={(event) => setCompleteSemesterRun(event.target.checked)}
                         />
@@ -4454,6 +4398,11 @@ const RegistrarDashboard = () => {
                             : 'Complete Semester 2 after checking all remaining university capacity'}
                         </label>
                       </div>
+                    )}
+                    {missingSemesterTwoAllocations && (
+                      <p className="mt-2 text-sm text-slate-600">
+                        Candidates without a pending college allocation can run using their saved department choices, but cannot complete the entire semester batch.
+                      </p>
                     )}
 
                     {!latestPlacementRun && (
@@ -4480,10 +4429,10 @@ const RegistrarDashboard = () => {
                               <input
                                 type="checkbox"
                                 aria-label="Select all visible candidates"
-                                checked={placementCandidates.length > 0
-                                  && placementCandidates.every((student) => selectedStudentIds.includes(String(student.id)))}
+                                checked={eligiblePlacementCandidates.length > 0
+                                  && eligiblePlacementCandidates.every((student) => selectedStudentIds.includes(String(student.id)))}
                                 onChange={(event) => {
-                                  const visibleIds = placementCandidates.map((student) => String(student.id));
+                                  const visibleIds = eligiblePlacementCandidates.map((student) => String(student.id));
                                   setSelectedStudentIds((previous) => {
                                     if (event.target.checked) {
                                       return Array.from(new Set([...previous, ...visibleIds]));
@@ -4499,6 +4448,11 @@ const RegistrarDashboard = () => {
                             {placementCandidates.map((student) => {
                             const checked = selectedStudentIds.includes(String(student.id));
                             const expanded = expandedCandidateIds.includes(String(student.id));
+                            const ineligibilityReason = getPlacementCandidateIneligibility(
+                              student,
+                              placementMode,
+                              placementRules.minGpa,
+                            );
 
                             return (
                               <div
@@ -4514,6 +4468,7 @@ const RegistrarDashboard = () => {
                                   <input
                                     type="checkbox"
                                     checked={checked}
+                                    disabled={Boolean(ineligibilityReason)}
                                     aria-label={`Select ${student.name || 'student'} (${student.admission_number || student.id_number || 'no admission number'})`}
                                     onChange={() => {
                                       setSelectedStudentIds((prev) => {
@@ -4534,7 +4489,7 @@ const RegistrarDashboard = () => {
                                     </div>
                                     {placementMode === 2 && (
                                       <span className="badge rounded-pill bg-primary-subtle text-primary-emphasis mt-1">
-                                        {student.allocated_college || 'College allocation unavailable'}
+                                        {student.allocated_college || 'Direct preference placement'}
                                       </span>
                                     )}
                                   </div>
@@ -4556,6 +4511,11 @@ const RegistrarDashboard = () => {
                                       : <ChevronDown size={16} aria-hidden="true" />}
                                   </button>
                                 </div>
+                                {ineligibilityReason && (
+                                  <div className="mt-2 text-sm text-amber-700" role="status">
+                                    Ineligible: {ineligibilityReason}
+                                  </div>
+                                )}
                                 {expanded && (
                                   <div id={`candidate-details-${student.id}`} className="border-top mt-3 pt-3">
                                     <div className="flex flex-wrap gap-2">
@@ -4714,13 +4674,25 @@ const RegistrarDashboard = () => {
                         setPlacementError(`Semester ${activeSemester} is currently active. The selected semester is available for preview only.`);
                         return;
                       }
-                      const studentsToPlace = filterStudentIdsForPlacement(placementCandidates, selectedStudentIds);
+                      const studentsToPlace = filterStudentIdsForPlacement(
+                        eligiblePlacementCandidates,
+                        selectedStudentIds,
+                      );
 
                       const fullRosterIds = placementCandidatesData
                         .map((student) => String(student.id));
                       const fullScopeSelected = selectedStream === ''
                         && fullRosterIds.length > 0
                         && fullRosterIds.every((id) => selectedStudentIds.includes(id));
+                      if (completeSemesterRun && eligiblePlacementCandidates.length !== placementCandidates.length) {
+                        setRunResult({
+                          assigned: 0,
+                          unassigned: 0,
+                          error: 'Resolve all ineligible candidates before completing this semester.',
+                        });
+                        setPlacementError('The semester cannot be completed while candidates are ineligible.');
+                        return;
+                      }
                       if (completeSemesterRun && !fullScopeSelected) {
                         setRunResult({ assigned: 0, unassigned: 0, error: 'Select every candidate across all streams and colleges before completing the semester.' });
                         setPlacementError('A partial selection cannot complete the active semester.');
@@ -4745,6 +4717,7 @@ const RegistrarDashboard = () => {
                               if (preferences.length === 0) {
                                 const preferenceParams = new URLSearchParams();
                                 preferenceParams.set('student_id', String(record.id));
+                                preferenceParams.set('semester', String(activeSemester));
                                 if (record.admission_number || record.id_number) {
                                   preferenceParams.set('admission_number', String(record.admission_number || record.id_number));
                                 }
@@ -4764,6 +4737,7 @@ const RegistrarDashboard = () => {
 
                               const formattedPreferences = preferences
                                 .map((pref, index) => ({
+                                  semester: activeSemester,
                                   priority: Number(pref?.priority ?? pref?.rank ?? index + 1),
                                   department: pref?.dept_name || pref?.department || pref?.name || pref?.college || '',
                                   college_name: pref?.college_name || pref?.collegeName || pref?.college || '',
@@ -4808,6 +4782,7 @@ const RegistrarDashboard = () => {
                         const finalizedDepartments = await fetchDepartments();
                         const selectedCollege = 'all';
                         const payload = {
+                          semester: activeSemester,
                           stream: selectedStream,
                           college: selectedCollege,
                           student_ids: studentsToPlace.map((student) => String(student.id)),
@@ -4845,6 +4820,11 @@ const RegistrarDashboard = () => {
                         const assigned = Number(summary.assignedStudents || 0);
                         const unassigned = Number(summary.unassignedStudents || 0);
                         const alreadyPlaced = Number(summary.alreadyPlacedStudents || result.already_placed || 0);
+                        const skipped = Array.isArray(result.skipped)
+                          ? result.skipped
+                          : Array.isArray(result.student_errors)
+                            ? result.student_errors
+                            : [];
                         const nextSemester = Number(summary.nextSemester || summary.semester || activeSemester);
                         const stageAdvanced = nextSemester !== activeSemester;
                         const currentBatch = getPlacementBatchForSemester(
@@ -4862,9 +4842,24 @@ const RegistrarDashboard = () => {
                         }
                         const deferred = Number(summary.deferredStudents || 0);
                         const pending = Number(summary.pendingStudents || 0);
-                        const outcome = { assigned, unassigned, deferred, pending, alreadyPlaced, total: students.length };
+                        const outcome = {
+                          assigned,
+                          unassigned,
+                          deferred,
+                          pending,
+                          alreadyPlaced,
+                          total: Number(summary.totalStudents ?? students.length),
+                          skipped,
+                        };
 
                         setRunResult(outcome);
+                        if (Number(summary.totalStudents || 0) === 0 && skipped.length > 0) {
+                          setPlacementError(result.message || 'No eligible candidates were processed.');
+                          return;
+                        }
+                        setPlacementError(skipped.length > 0
+                          ? `${skipped.length} selected candidate${skipped.length === 1 ? ' was' : 's were'} skipped. Review the reasons below.`
+                          : '');
                         setUnassignedStudentsRefreshToken((token) => token + 1);
                         setPlacementBatch(currentBatch);
                         setPlacementBatch((prev) => prev || currentBatch);
@@ -4903,6 +4898,11 @@ const RegistrarDashboard = () => {
                           assigned: 0,
                           unassigned: 0,
                           error: backendMessage || error?.message || 'Unable to run placement engine.',
+                          skipped: Array.isArray(error?.response?.data?.skipped)
+                            ? error.response.data.skipped
+                            : Array.isArray(error?.response?.data?.student_errors)
+                              ? error.response.data.student_errors
+                              : [],
                         });
                       } finally {
                         setRunning(false);
@@ -4999,11 +4999,23 @@ const RegistrarDashboard = () => {
                       <div>Pending further placement review: <strong>{runResult.pending}</strong></div>
                     )}
                     <div>Unassigned: <strong>{runResult.unassigned}</strong></div>
+                    {runResult.skipped?.length > 0 && (
+                    <div className="alert alert-warning mt-2 py-2" role="status">
+                      <strong>{runResult.skipped.length} candidate{runResult.skipped.length === 1 ? '' : 's'} skipped:</strong>
+                      <ul className="mb-0 mt-1">
+                        {runResult.skipped.map((studentError, index) => (
+                          <li key={`${studentError.admission_number || studentError.student_id || 'candidate'}-${index}`}>
+                            {studentError.admission_number || studentError.student_id || 'Candidate'}: {studentError.message}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    )}
                     {runResult.alreadyPlaced > 0 && (
                       <div>Already placed: <strong>{runResult.alreadyPlaced}</strong> (no duplicate rows created)</div>
                     )}
                     {runResult.error && <div className="alert alert-danger py-2" role="alert">{runResult.error}</div>}
-                    {!runResult.error && (
+                    {!runResult.error && runResult.total > 0 && (
                       <button
                         type="button"
                         className="btn btn-outline-primary btn-sm mt-2"

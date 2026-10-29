@@ -7,6 +7,10 @@ import { ThemeProvider } from '../../contexts/ThemeContext.jsx';
 import { AuthProvider } from '../../contexts/AuthContext.jsx';
 import DashboardHeader from './DashboardHeader.jsx';
 
+jest.mock('../../contexts/RolePermissionsContext.jsx', () => ({
+  useRolePermissions: () => ({ isOpen: () => true }),
+}));
+
 const renderSidebar = (props) => render(
   <ThemeProvider>
     <LanguageProvider>

@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import ManageUsers from './ManageUsers';
 import ManageDepartments from './ManageDepartments';
 import AssignHead from './AssignHead.jsx';
 import DataImport from './DataImport.jsx';
-import SystemConfig from './SystemConfig.jsx';
+import RolePermissions from './RolePermissions.jsx';
 import AuditLogs from './AuditLogs';
 import AdminAccount from './AdminAccount';
 import AdminReports from './AdminReports';
@@ -15,6 +15,7 @@ import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetter
 import Sidebar from '../../components/layout/Sidebar.jsx';
 import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { useRolePermissions } from '../../contexts/RolePermissionsContext.jsx';
 
 const adminTabs = [
   'dashboard',
@@ -24,13 +25,26 @@ const adminTabs = [
   'contact-messages',
   'assign-head',
   'data-import',
-  'system-config',
+  'role-permissions',
   'account-settings',
   'audit-logs',
 ];
 
+const adminTabPermissions = {
+  dashboard: 'admin.overview',
+  manage: 'admin.users',
+  departments: 'admin.departments',
+  reports: 'admin.reports',
+  'contact-messages': 'admin.contact-messages',
+  'assign-head': 'admin.assign-head',
+  'data-import': 'admin.data-import',
+  'audit-logs': 'admin.audit-logs',
+  'account-settings': 'admin.account-settings',
+};
+
 const AdminDashboard = () => {
   const { t } = useLanguage();
+  const { isOpen } = useRolePermissions();
   const navigate = useNavigate();
   const location = useLocation();
   const [admin, setAdmin] = useState(null);
@@ -65,11 +79,21 @@ const AdminDashboard = () => {
     const initialTab = location.state?.activeTab;
     return adminTabs.includes(initialTab) ? initialTab : 'dashboard';
   });
-  const setTab = (nextTab) => {
-    if (!adminTabs.includes(nextTab)) return;
-    localStorage.setItem('activeTab', nextTab);
-    setTabState(nextTab);
-  };
+  const setTab = useCallback((nextTab) => {
+    const normalizedTab = nextTab === 'system-config' ? 'role-permissions' : nextTab;
+    if (!adminTabs.includes(normalizedTab)) return;
+    const permissionId = adminTabPermissions[normalizedTab];
+    if (permissionId && !isOpen(permissionId)) return;
+    localStorage.setItem('activeTab', normalizedTab);
+    setTabState(normalizedTab);
+  }, [isOpen]);
+
+  useEffect(() => {
+    const permissionId = adminTabPermissions[tab];
+    if (permissionId && !isOpen(permissionId)) {
+      setTab('role-permissions');
+    }
+  }, [tab, isOpen, setTab]);
   const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'totalDepartments', 'activeAdmins'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
@@ -81,7 +105,7 @@ const AdminDashboard = () => {
     if (incomingTab) {
       setTab(incomingTab);
     }
-  }, [location.state]);
+  }, [location.state, setTab]);
 
   // Fetch statistics from backend
   const fetchStats = async () => {
@@ -455,8 +479,8 @@ const AdminDashboard = () => {
             <AssignHead />
           ) : tab === 'data-import' ? (
             <DataImport />
-          ) : tab === 'system-config' ? (
-            <SystemConfig />
+          ) : tab === 'role-permissions' ? (
+            <RolePermissions />
           ) : tab === 'account-settings' ? (
             <AdminAccount />
           ) : (

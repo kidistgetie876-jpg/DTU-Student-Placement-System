@@ -10,7 +10,7 @@ import './LoginModal.css';
 
 const noop = () => {};
 
-const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
+const LoginModal = ({ isOpen = true, onClose = noop, standalone = false, redirectTo = '' }) => {
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const closeTimer = useRef(null);
@@ -115,9 +115,17 @@ const LoginModal = ({ isOpen = true, onClose = noop, standalone = false }) => {
           'head of department': { path: '/head-dashboard', tab: 'overview' },
         };
         const destination = dashboardMap[role];
-        if (destination) localStorage.setItem('activeTab', destination.tab);
+        const studentServiceRedirect = role === 'student'
+          && (
+            redirectTo === '/placement-info'
+            || /^\/student-dashboard\?tab=(overview|preferences|result|appeal)$/.test(redirectTo)
+          );
+        const serviceTab = studentServiceRedirect
+          ? new URLSearchParams(redirectTo.split('?')[1] || '').get('tab')
+          : null;
+        if (destination) localStorage.setItem('activeTab', serviceTab || destination.tab);
         onClose({ authenticated: true });
-        navigate(destination?.path || '/', { replace: true });
+        navigate(studentServiceRedirect ? redirectTo : destination?.path || '/', { replace: true });
       } else {
         setError(getLoginError(response));
       }

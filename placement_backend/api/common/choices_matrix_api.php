@@ -18,6 +18,7 @@ declare(strict_types=1);
  * Example payload:
  * {
  *   "student_id": 12,
+ *   "semester": 2,
  *   "choices": [
  *     {"dept_id": 3, "priority": 1},
  *     {"dept_id": 7, "priority": 2}
@@ -208,7 +209,7 @@ function validateChoicePayload(array $choice): array
     return $clean;
 }
 
-function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices, int $semester = 1): array
+function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices, int $semester): array
 {
     if ($studentId <= 0) {
         throw new InvalidArgumentException('A valid student_id is required.');
@@ -218,36 +219,31 @@ function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices, int
         throw new InvalidArgumentException('At least one choice is required.');
     }
 
+    if (!in_array($semester, [1, 2], true)) {
+        throw new InvalidArgumentException('A valid placement semester is required.');
+    }
+
     $semesterColumnCheck = $db->query("SHOW COLUMNS FROM student_choices LIKE 'semester'");
-    $hasSemesterColumn = $semesterColumnCheck && $semesterColumnCheck->num_rows > 0;
-    $semester = in_array($semester, [1, 2], true) ? $semester : 1;
+    if (!$semesterColumnCheck || $semesterColumnCheck->num_rows === 0) {
+        throw new RuntimeException('The student_choices table is missing the required semester column.');
+    }
+    $semesterColumnCheck->free();
 
     $db->begin_transaction();
 
     try {
-        if ($hasSemesterColumn) {
-            $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ? AND semester = ?');
-            $deleteStmt->bind_param('ii', $studentId, $semester);
-            $deleteStmt->execute();
-            $deleteStmt->close();
-        } else {
-            $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ?');
-            $deleteStmt->bind_param('i', $studentId);
-            $deleteStmt->execute();
-            $deleteStmt->close();
-        }
+        $deleteStmt = $db->prepare('DELETE FROM student_choices WHERE student_id = ? AND semester = ?');
+        $deleteStmt->bind_param('ii', $studentId, $semester);
+        $deleteStmt->execute();
+        $deleteStmt->close();
 
-        $insertSql = $hasSemesterColumn
-            ? 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority, semester) VALUES (?, ?, ?, ?, ?, ?, ?)'
-            : 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority) VALUES (?, ?, ?, ?, ?, ?)';
+        $insertSql = 'INSERT INTO student_choices (student_id, dept_id, dept_name, college_name, stream, priority, semester) VALUES (?, ?, ?, ?, ?, ?, ?)';
         $insertStmt = $db->prepare($insertSql);
 
         $inserted = [];
         foreach ($choices as $index => $choice) {
             $normalized = validateChoicePayload(is_array($choice) ? $choice : []);
-            $semesterValue = isset($normalized['semester']) && in_array((int) $normalized['semester'], [1, 2], true)
-                ? (int) $normalized['semester']
-                : $semester;
+            $semesterValue = $semester;
             $isBroadGroup = ($normalized['type'] ?? '') === 'broad_group'
                 || !empty($normalized['broad_group'])
                 || (($normalized['dept_id'] ?? null) === null
@@ -268,11 +264,7 @@ function saveStudentChoiceMatrix(mysqli $db, int $studentId, array $choices, int
             $collegeName = trim((string) ($normalized['college_name'] ?? $deptInfo['college_name'] ?? ''));
             $stream = trim((string) ($normalized['stream'] ?? $deptInfo['stream'] ?? ''));
 
-            if ($hasSemesterColumn) {
-                $insertStmt->bind_param('iisssii', $studentId, $deptId, $deptName, $collegeName, $stream, $priority, $semesterValue);
-            } else {
-                $insertStmt->bind_param('iisssi', $studentId, $deptId, $deptName, $collegeName, $stream, $priority);
-            }
+            $insertStmt->bind_param('iisssii', $studentId, $deptId, $deptName, $collegeName, $stream, $priority, $semesterValue);
             $insertStmt->execute();
 
             $inserted[] = [
@@ -333,9 +325,11 @@ try {
             sendJson(['success' => false, 'message' => 'A valid choices array is required.'], 400);
         }
 
-        $semester = isset($payload['semester']) && is_numeric($payload['semester'])
-            ? (int) $payload['semester']
-            : 1;
+        $requestedSemester = $payload['semester'] ?? null;
+        if (!in_array($requestedSemester, [1, 2, '1', '2'], true)) {
+            sendJson(['success' => false, 'message' => 'A valid placement semester is required.'], 400);
+        }
+        $semester = (int) $requestedSemester;
         $saved = saveStudentChoiceMatrix($db, $studentId, $choices, $semester);
 
         sendJson([

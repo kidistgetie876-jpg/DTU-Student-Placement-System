@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import api from '../../services/api.js';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
-import { useAuth } from '../../contexts/AuthContext.jsx'; // AuthContext እዚህ ተጨምሯል
+import getProfilePhotoUrl from '../../utils/getProfilePhotoUrl.js';
 import './DashboardHeader.css';
 
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -10,7 +10,8 @@ const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const EditProfileModal = ({ isOpen, profile = {}, onClose, onSaved }) => {
   const { t } = useLanguage();
-  const { setUser } = useAuth(); // Global UI/Header state እንዲቀየር setUser ተወስዷል
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -23,14 +24,14 @@ const EditProfileModal = ({ isOpen, profile = {}, onClose, onSaved }) => {
   // profile prop ሲቀየር ወይም ሞዳሉ ሲከፈት Form Input እንዳይቀደድ ማስተካከያ
   useEffect(() => {
     if (isOpen) {
-      setFullName(profile.full_name || profile.username || '');
-      setEmail(profile.email || '');
+      setFullName(profileRef.current.full_name || profileRef.current.username || '');
+      setEmail(profileRef.current.email || '');
       setError('');
       setSuccess('');
       setPhoto(null);
       setPhotoPreview('');
     }
-  }, [isOpen, profile]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!photo) {
@@ -99,14 +100,6 @@ const EditProfileModal = ({ isOpen, profile = {}, onClose, onSaved }) => {
         throw new Error(response.data?.message || t('Unable to update profile.'));
       }
 
-      // 1. የ React Global Auth State ወዲያውኑ ይዘመናል (Header/Navbar እንዲቀየር)
-      if (typeof setUser === 'function') {
-        setUser(updatedUser);
-      }
-
-      // 2. LocalStorage ይዘመናል (Page reload ቢደረግ እንኳ እንዳይጠፋ)
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-
       const successMsg = response.data.message || t('Profile updated successfully.');
       setSuccess(successMsg);
 
@@ -126,9 +119,7 @@ const EditProfileModal = ({ isOpen, profile = {}, onClose, onSaved }) => {
     }
   };
 
-  const currentPhoto = profile.profile_photo
-    ? `${api.defaults.baseURL.replace(/\/+$/, '')}/${profile.profile_photo.replace(/^\/+/, '')}`
-    : '';
+  const currentPhoto = getProfilePhotoUrl(profile);
 
   if (!isOpen) return null;
 

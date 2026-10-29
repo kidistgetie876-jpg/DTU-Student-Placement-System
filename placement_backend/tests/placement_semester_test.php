@@ -771,6 +771,19 @@ $smallQuotaPools = placementQuotaCapacityPools(1, 20.0);
 if ($smallQuotaPools !== ['general' => 0, 'female_reserved' => 1]) {
     throw new RuntimeException('A one-seat reservation must remain available only through the reserved female quota.');
 }
+$healthScienceDepartments = [
+    ['name' => 'Psychiatric Nursing', 'college_name' => 'College of Health Science', 'placement_group' => 'health_science', 'stream' => 'Natural', 'capacity' => 1],
+    ['name' => 'Midwifery', 'college_name' => 'College of Health Science', 'placement_group' => 'health_science', 'stream' => 'Natural', 'capacity' => 1],
+];
+$healthScienceCapacityByScope = [];
+foreach ($healthScienceDepartments as $department) {
+    $scope = placementQuotaScopeKey($department);
+    $healthScienceCapacityByScope[$scope] = ($healthScienceCapacityByScope[$scope] ?? 0) + $department['capacity'];
+}
+if (count($healthScienceCapacityByScope) !== 1
+    || placementQuotaCapacityPools(reset($healthScienceCapacityByScope), 20.0) !== ['general' => 1, 'female_reserved' => 1]) {
+    throw new RuntimeException('Health Science female quota must be pooled across the college instead of reserving every one-seat department.');
+}
 $otherSocialDepartments = [
     ['name' => 'Economics', 'college_name' => 'Business and Economics', 'stream' => 'Social', 'capacity' => 1],
     ['name' => 'Sociology', 'college_name' => 'Social Sciences and Humanities', 'stream' => 'Social', 'capacity' => 1],

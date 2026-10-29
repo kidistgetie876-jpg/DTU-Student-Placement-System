@@ -168,6 +168,12 @@ function placementQuotaScopeKey(array $department): string
     if (in_array($group, ['other_natural_science', 'other_social_science'], true)) {
         return 'group:' . $group;
     }
+    if (in_array($group, ['health_science', 'git', 'law'], true)) {
+        $collegeKey = placementCollegeCapacityKey($department);
+        if ($collegeKey !== '') {
+            return 'college:' . $collegeKey;
+        }
+    }
 
     $departmentName = strtolower(preg_replace(
         '/[^a-z0-9]/i',
