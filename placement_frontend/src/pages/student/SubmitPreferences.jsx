@@ -4,7 +4,6 @@ import api from '../../services/api.js';
 const FETCHABLE_DEPARTMENT_GROUPS = new Set(['health_science', 'git', 'law']);
 const ACTIVE_DEPARTMENTS_ENDPOINT = 'http://localhost:8888/student-placement/placement_backend/api/student/get_active_departments.php';
 
-const normalizePlacementGroup = (value) => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 const normalizeDepartmentName = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 export const updateSemesterTwoPreference = (currentPreferences, index, selectedId, choiceCount) => {
@@ -55,48 +54,8 @@ const isSemesterOneDepartmentSelectedElsewhere = (
   });
 };
 
-const getSemesterTwoPlacementGroup = (department) => {
-  const aliases = {
-    health_sciences: 'health_science',
-    college_of_health_science: 'health_science',
-    college_of_health_sciences: 'health_science',
-    gafat_institute_of_technology: 'git',
-    other_natural_sciences: 'other_natural_science',
-    college_of_other_natural_science: 'other_natural_science',
-    college_of_other_natural_sciences: 'other_natural_science',
-    school_of_law: 'law',
-    other_social_sciences: 'other_social_science',
-    social_science: 'other_social_science',
-    social_sciences: 'other_social_science',
-    college_of_other_social_science: 'other_social_science',
-    college_of_other_social_sciences: 'other_social_science',
-    college_of_social_science: 'other_social_science',
-    college_of_social_sciences: 'other_social_science',
-  };
-  const group = normalizePlacementGroup(department.placement_group);
-  if (group && (aliases[group] || ['health_science', 'git', 'other_natural_science', 'law', 'other_social_science'].includes(group))) {
-    return aliases[group] || group;
-  }
-  const college = normalizePlacementGroup(department.college_name || department.college);
-  return aliases[college] || college;
-};
-
-const normalizeCollegeName = (collegeName) => {
-  let normalized = String(collegeName || '').trim().replace(/\s+/g, ' ').toLowerCase();
-  normalized = normalized.replace(/^(college|school) of /, '').replace(/sciences\b/g, 'science');
-  if (normalized.includes('health science')) return 'health science';
-  if (normalized.includes('gafat') || normalized.includes('technology')) return 'gafat institute of technology';
-  if (normalized.includes('law')) return 'law';
-  if (normalized.includes('other social science')) return 'other social science';
-  if (normalized.includes('other natural science')) return 'other natural science';
-  if (['social science', 'social sciences'].includes(normalized)) return 'other social science';
-  return normalized;
-};
-
-const semesterTwoChoiceGroups = (departments, allocatedPlacementGroup, allocatedCollege) => {
+const semesterTwoChoiceGroups = (departments) => {
   const groups = new Map();
-  const lockedGroupKey = normalizePlacementGroup(allocatedPlacementGroup);
-  const lockedCollegeName = String(allocatedCollege || '').trim().replace(/\s+/g, ' ').toLowerCase();
   const activeDepartments = departments.filter((department) => (
     String(department.status || (Number(department.is_active) === 1 ? 'active' : '')).trim().toLowerCase() === 'active'
     && (
@@ -108,14 +67,6 @@ const semesterTwoChoiceGroups = (departments, allocatedPlacementGroup, allocated
         Number(department.offered_semester) === 1
         && !['1', 'true', 'yes', 'on'].includes(String(department.is_first_semester_only ?? '').trim().toLowerCase())
       )
-    )
-    && (
-      !lockedGroupKey
-      || normalizePlacementGroup(getSemesterTwoPlacementGroup(department)) === lockedGroupKey
-    )
-    && (
-      !lockedCollegeName
-      || normalizeCollegeName(department.college_name || department.college) === normalizeCollegeName(allocatedCollege)
     )
   ));
   const ensureGroup = (collegeName) => {
@@ -168,16 +119,9 @@ const SubmitPreferences = ({
   const [loadingGroups, setLoadingGroups] = useState({});
   const [departmentsByGroup, setDepartmentsByGroup] = useState({});
   const semesterTwoGroups = useMemo(
-    () => semesterTwoChoiceGroups(semesterTwoDepartments, allocatedPlacementGroup, allocatedCollege),
-    [semesterTwoDepartments, allocatedPlacementGroup, allocatedCollege],
+    () => semesterTwoChoiceGroups(semesterTwoDepartments),
+    [semesterTwoDepartments],
   );
-  const allocatedGroupLabel = ({
-    health_science: 'Health Science',
-    git: 'Gafat Institute of Technology',
-    other_natural_science: 'Other Natural Science',
-    law: 'School of Law',
-    other_social_science: 'Other Social Science',
-  })[normalizePlacementGroup(allocatedPlacementGroup)] || allocatedPlacementGroup;
   const selectedDynamicGroupKey = useMemo(
     () => [...new Set(preferences.map((choice) => choice.group).filter((group) => FETCHABLE_DEPARTMENT_GROUPS.has(group)))]
       .sort()
@@ -252,12 +196,12 @@ const SubmitPreferences = ({
       </div>}
       {activePreferenceSemester === 2 && semesterTwoOpen && (allocatedPlacementGroup || allocatedCollege) && (
         <div className="alert alert-info py-2" role="status">
-          Semester 2 Preferences: Showing active departments only in your allocated college ({allocatedCollege || allocatedGroupLabel})
+          Semester 2 Preferences: Showing active departments across colleges in your assigned stream.
         </div>
       )}
       {activePreferenceSemester === 2 && (semesterTwoGroups.length === 0
         ? (semesterTwoOpen
-          ? <p className="student-preferences-empty" role="status">No active departments are currently available in your allocated college.</p>
+          ? <p className="student-preferences-empty" role="status">No active departments are currently available in your assigned stream.</p>
           : null)
         : Array.from({ length: semesterTwoChoiceCount }, (_, index) => (
           <label className="student-preferences-field student-semester-two-choice" key={`semester-two-choice-${index}`} htmlFor={`semester-two-choice-${index}`}>
@@ -290,7 +234,7 @@ const SubmitPreferences = ({
                 </optgroup>
               ))}
             </select>
-            <small>Only departments in your allocated college are available for selection.</small>
+            <small>Choices may span colleges, but must remain in your assigned stream.</small>
           </label>
         )))}
       {activePreferenceSemester === 1 && groupValues.map((group, index) => {

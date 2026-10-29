@@ -55,6 +55,7 @@ try {
     $showAll = in_array($status, ['all', 'all_status', 'all-status', 'both', 'false', '0'], true);
     $allocatedGroup = '';
     $allocatedCollege = '';
+    $assignedStream = '';
     $secondSemesterEligible = false;
     if ($semester === 2) {
         $settingsColumns = studentPlacementTableColumns($db, 'placement_settings');
@@ -77,6 +78,9 @@ try {
         $allocation = $secondSemesterPortal['allocation'] ?? ['group' => '', 'college' => ''];
         $allocatedGroup = (string) ($allocation['group'] ?? '');
         $allocatedCollege = trim((string) ($allocation['college'] ?? ''));
+        if ($secondSemesterEligible) {
+            $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
+        }
     }
 
     if (($semester === 2 || !$showAll)
@@ -122,19 +126,13 @@ try {
 
     if ($semester === 2) {
         if (!$secondSemesterEligible || $allocatedGroup === '' || $allocatedCollege === ''
+            || placementNormalizeStream($assignedStream) === ''
             || !isset($columnNames['college_name'])) {
             $whereClauses[] = '1 = 0';
         } else {
             $requestedCollege = trim(preg_replace('/\s+/', ' ', $collegeName) ?? $collegeName);
-            if (
-                $requestedCollege !== ''
-                && normalizeStudentPlacementCollegeName($requestedCollege)
-                    !== normalizeStudentPlacementCollegeName($allocatedCollege)
-            ) {
-                $whereClauses[] = '1 = 0';
-            }
-            $collegeKey = normalizeStudentPlacementCollegeName($allocatedCollege);
-            $collegeNames = [$allocatedCollege];
+            $collegeNames = $requestedCollege !== '' ? [$requestedCollege] : [];
+            $collegeKey = normalizeStudentPlacementCollegeName($requestedCollege);
             if ($collegeKey === 'other social science') {
                 $collegeNames = array_merge($collegeNames, [
                     'Other Social Science',
@@ -168,13 +166,15 @@ try {
                 $collegeNames[] = 'School of Law';
                 $collegeNames[] = 'Law';
             }
-            $collegeNames = array_values(array_unique(array_map(
-                static fn(string $name): string => strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? $name)),
-                $collegeNames
-            )));
-            $whereClauses[] = 'LOWER(TRIM(COALESCE(college_name, \'\'))) IN ('
-                . implode(', ', array_fill(0, count($collegeNames), '?')) . ')';
-            array_push($values, ...$collegeNames);
+            if ($collegeNames) {
+                $collegeNames = array_values(array_unique(array_map(
+                    static fn(string $name): string => strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? $name)),
+                    $collegeNames
+                )));
+                $whereClauses[] = 'LOWER(TRIM(COALESCE(college_name, \'\'))) IN ('
+                    . implode(', ', array_fill(0, count($collegeNames), '?')) . ')';
+                array_push($values, ...$collegeNames);
+            }
         }
     }
 
@@ -229,16 +229,8 @@ try {
             $normalizedCollegeName = 'School of Law';
         }
         if ($semester === 2) {
-            $departmentGroup = normalizeStudentPlacementGroup(
-                (string) ($row['placement_group'] ?? ''),
-                $normalizedCollegeName,
-                (string) ($row['stream'] ?? '')
-            );
-            if (
-                $departmentGroup !== $allocatedGroup
-                || normalizeStudentPlacementCollegeName($normalizedCollegeName)
-                    !== normalizeStudentPlacementCollegeName($allocatedCollege)
-            ) {
+            if (placementNormalizeStream((string) ($row['stream'] ?? ''))
+                !== placementNormalizeStream($assignedStream)) {
                 continue;
             }
         }
@@ -257,6 +249,7 @@ try {
         'departments' => $departments,
         'placementGroup' => $allocatedGroup,
         'allocated_college' => $allocatedCollege,
+        'assigned_stream' => $assignedStream,
         'secondSemesterChoiceEligible' => $secondSemesterEligible,
     ]);
 } catch (Throwable $error) {

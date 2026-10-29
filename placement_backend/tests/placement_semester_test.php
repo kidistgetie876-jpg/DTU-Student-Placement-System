@@ -26,6 +26,106 @@ assertSemesterValue(
     normalizeStudentPlacementGroup('', 'Social Science'),
     'The Social Science college naming variant maps to the allocated placement group.'
 );
+assertSemesterRule(
+    true,
+    placementFirstSemesterCandidateStatusEligible('Pending 2nd Semester', false),
+    'A student pending second-semester choices without a first-semester department assignment can retry Semester 1.'
+);
+assertSemesterRule(
+    false,
+    placementFirstSemesterCandidateStatusEligible('Pending 2nd Semester', true),
+    'A student already assigned in Semester 1 is not reintroduced as an unplaced candidate.'
+);
+assertSemesterRule(
+    true,
+    placementFirstSemesterCandidateStatusEligible('Pending 1st Semester', true),
+    'Pending first-semester students remain eligible even if a stale result exists.'
+);
+
+$healthBiology = [
+    'id' => 101,
+    'name' => 'Biology',
+    'college_id' => 10,
+    'college_name' => 'College of Health Science',
+    'stream' => 'Natural',
+];
+$naturalScienceBiology = [
+    'id' => 202,
+    'name' => 'Biology',
+    'college_id' => 20,
+    'college_name' => 'College of Other Natural Sciences',
+    'stream' => 'Natural',
+];
+assertSemesterRule(
+    true,
+    placementDepartmentMapKey($healthBiology) !== placementDepartmentMapKey($naturalScienceBiology),
+    'Departments with the same name in different colleges retain distinct placement-capacity keys.'
+);
+assertSemesterRule(
+    true,
+    placementResolveDepartmentPreference(['dept_id' => 202], [$healthBiology, $naturalScienceBiology]) === $naturalScienceBiology,
+    'A department preference ID resolves to the intended college when names are duplicated.'
+);
+assertSemesterRule(
+    true,
+    placementResolveDepartmentPreference(
+        ['department' => 'Biology', 'college_id' => 10],
+        [$healthBiology, $naturalScienceBiology]
+    ) === $healthBiology,
+    'Legacy department-name preferences resolve by college when department IDs are unavailable.'
+);
+assertSemesterRule(
+    true,
+    placementResolveDepartmentPreference(['department' => 'Biology'], [$healthBiology, $naturalScienceBiology]) === null,
+    'Ambiguous name-only preferences are not assigned to an arbitrary college.'
+);
+$duplicateNameCapacityMaps = placementPreferenceCapacityMaps(
+    [$healthBiology + ['capacity' => 3, 'offered_semester' => 1], $naturalScienceBiology + ['capacity' => 5, 'offered_semester' => 1]],
+    [
+        placementDepartmentMapKey($healthBiology) => 3,
+        placementDepartmentMapKey($naturalScienceBiology) => 5,
+    ],
+    1
+);
+assertSemesterRule(
+    true,
+    ($duplicateNameCapacityMaps['college']['id:10'] ?? 0) === 3
+        && ($duplicateNameCapacityMaps['group']['other_natural_science'] ?? 0) === 5,
+    'Duplicate department names preserve independent capacities across colleges.'
+);
+$medicineDepartment = [
+    'id' => 9,
+    'name' => 'Medicine',
+    'college_id' => 30,
+    'college_name' => 'College of Health Science',
+    'stream' => 'Natural',
+    'capacity' => 1,
+    'offered_semester' => 1,
+];
+$pharmacyDepartment = [
+    'id' => 14,
+    'name' => 'Pharmacy',
+    'college_id' => 30,
+    'college_name' => 'College of Health Science',
+    'stream' => 'Natural',
+    'capacity' => 1,
+    'offered_semester' => 1,
+];
+$healthScienceCapacityMap = placementPreferenceCapacityMaps(
+    [$medicineDepartment, $pharmacyDepartment],
+    [
+        placementDepartmentMapKey($medicineDepartment) => 1,
+        placementDepartmentMapKey($pharmacyDepartment) => 1,
+    ],
+    1
+);
+assertSemesterRule(
+    true,
+    placementResolveDepartmentPreference(['dept_id' => 9], [$medicineDepartment, $pharmacyDepartment]) === $medicineDepartment
+        && placementResolveDepartmentPreference(['dept_id' => 14], [$medicineDepartment, $pharmacyDepartment]) === $pharmacyDepartment
+        && ($healthScienceCapacityMap['college']['id:30'] ?? 0) === 2,
+    'Medicine and Pharmacy preferences resolve by department ID and preserve their combined Health Science capacity.'
+);
 
 $departments = [
     ['college_id' => 10, 'capacity' => 12, 'offered_semester' => 1, 'is_first_semester_only' => 1],
@@ -35,6 +135,16 @@ $departments = [
 
 assertSemesterRule(true, placementDepartmentOfferedInSemester($departments[0], 1), 'First-semester-only departments are offered in semester one.');
 assertSemesterRule(false, placementDepartmentOfferedInSemester($departments[0], 2), 'First-semester-only departments are excluded from semester two.');
+assertSemesterRule(
+    true,
+    studentPlacementStreamsMatch('Natural Science', 'Natural'),
+    'Semester-two departments in other colleges remain eligible when they share the student stream.'
+);
+assertSemesterRule(
+    false,
+    studentPlacementStreamsMatch('Natural Science', 'Social Science'),
+    'Semester-two choices from a different stream remain ineligible.'
+);
 assertSemesterRule(
     true,
     studentSecondSemesterChoicePortalState(
@@ -329,6 +439,54 @@ if (placementBroadChoiceGroup(['college_name' => 'Other Social Science']) !== ''
     || placementBroadChoiceGroup(['department' => 'Other Social Science']) !== 'other_social_science') {
     throw new RuntimeException('Broad choice recognition must use the persisted department/choice label, not the college metadata field.');
 }
+assertSemesterRule(
+    true,
+    placementIsFirstSemesterBroadChoice($broadSocialChoice, 1),
+    'A first-semester broad college choice defers specific department selection to the next semester.'
+);
+assertSemesterRule(
+    false,
+    placementIsFirstSemesterBroadChoice($broadSocialChoice, 2),
+    'Second-semester processing does not defer a broad choice back to the next semester.'
+);
+assertSemesterRule(
+    false,
+    placementIsFirstSemesterBroadChoice([
+        'dept_id' => 9,
+        'department' => 'Medicine',
+        'priority' => 1,
+    ], 1),
+    'Specific department choices continue through normal merit-and-capacity allocation.'
+);
+$broadNaturalChoice = [
+    'dept_id' => 0,
+    'department' => 'Other Natural Science',
+    'priority' => 1,
+    'is_broad_choice' => true,
+];
+$broadNaturalTarget = placementFirstSemesterAllocationTarget(
+    'Natural Science',
+    [$broadNaturalChoice],
+    [
+        ['id' => 16, 'name' => 'Biology', 'college_name' => 'College of Other Natural Sciences', 'stream' => 'Natural', 'offered_semester' => 2],
+        ['id' => 17, 'name' => 'Chemistry', 'college_name' => 'College of Other Natural Sciences', 'stream' => 'Natural', 'offered_semester' => 2],
+    ],
+    ['other_natural_science' => 2],
+    [],
+    [],
+    ['other_natural_science' => 2],
+    [],
+    [],
+    true
+);
+assertSemesterRule(
+    true,
+    ($broadNaturalTarget['placement_group'] ?? '') === 'other_natural_science'
+        && ($broadNaturalTarget['college_name'] ?? '') === 'College of Other Natural Sciences'
+        && ($broadNaturalTarget['choice_rank'] ?? 0) === 1
+        && !array_key_exists('dept_id', $broadNaturalTarget),
+    'A broad Natural Science choice reserves its college/group for Semester 2 without assigning an unselected major.'
+);
 $unexpandedBroadSocialChoice = placementExpandCollegePreferences(
     [$broadSocialChoice],
     [
@@ -863,6 +1021,27 @@ $target = placementFirstSemesterAllocationTarget(
 );
 if (($target['placement_group'] ?? '') !== 'law') {
     throw new RuntimeException('Law pending allocations must remain in the selected Law college.');
+}
+
+$target = placementFirstSemesterAllocationTarget(
+    'Social Science',
+    [['department' => 'Law', 'priority' => 1]],
+    [
+        ['name' => 'Law', 'college_name' => 'School of Law', 'stream' => 'Social', 'placement_group' => 'law', 'offered_semester' => 1, 'is_first_semester_only' => 0],
+        ['name' => 'Economics', 'college_name' => 'Other Social Science', 'stream' => 'Social', 'placement_group' => 'other_social_science', 'offered_semester' => 1, 'is_first_semester_only' => 0],
+    ],
+    ['law' => 0, 'other_social_science' => 2],
+    [],
+    [],
+    ['schooloflaw' => 0],
+    [],
+    [],
+    true
+);
+if (($target['placement_group'] ?? '') !== 'other_social_science'
+    || ($target['college_name'] ?? '') !== 'College of Other Social Sciences'
+    || ($target['choice_rank'] ?? null) !== 1) {
+    throw new RuntimeException('Law overflow must route pending social-science students to available Other Social Sciences capacity.');
 }
 
 $target = placementFirstSemesterAllocationTarget(

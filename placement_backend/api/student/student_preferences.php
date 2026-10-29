@@ -269,19 +269,13 @@ try {
             }
         }
 
-        $availableDepartments = array_values(array_filter($departments, static function (array $department) use ($semester, $allocation): bool {
+        $availableDepartments = array_values(array_filter($departments, static function (array $department) use ($semester, $assignedStream): bool {
             if ($semester === 1) {
                 return placementDepartmentOfferedInSemester($department, 1);
             }
             return placementDepartmentOfferedInSemester($department, 2)
-                && $allocation['group'] !== ''
-                && normalizeStudentPlacementGroup(
-                    (string) ($department['placement_group'] ?? ''),
-                    (string) ($department['college_name'] ?? ''),
-                    (string) ($department['stream'] ?? '')
-                ) === $allocation['group']
-                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
-                    === normalizeStudentPlacementCollegeName((string) ($allocation['college'] ?? ''));
+                && placementNormalizeStream((string) ($department['stream'] ?? ''))
+                    === placementNormalizeStream($assignedStream);
         }));
 
         $db->close();
@@ -409,23 +403,23 @@ try {
     $identityValues = [$admissionNumber];
     $identityTypes = 's';
 
-    $allowedPlacementGroup = normalizeStudentPlacementGroup(
-        (string) ($allocation['group'] ?? ''),
-        (string) ($allocation['college'] ?? '')
-    );
-    $allowedPlacementCollege = normalizeStudentPlacementCollegeName((string) ($allocation['college'] ?? ''));
+    $assignedStream = $semester === 2
+        ? getStudentAssignedPlacementStream($db, $studentId, $admissionNumber)
+        : '';
+    $normalizedAssignedStream = placementNormalizeStream($assignedStream);
+    if ($semester === 2 && $normalizedAssignedStream === '') {
+        sendJsonResponse([
+            'success' => false,
+            'message' => 'Unable to verify your assigned stream. Please contact the Registrar Office.',
+        ], 400);
+    }
     $activeDepartments = getActiveDepartments($db, $semester);
     if ($semester === 2) {
         $activeDepartments = array_values(array_filter(
             $activeDepartments,
             static fn(array $department): bool => placementDepartmentOfferedInSemester($department, 2)
-                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
-                    === $allowedPlacementCollege
-                && normalizeStudentPlacementGroup(
-                    (string) ($department['placement_group'] ?? ''),
-                    (string) ($department['college_name'] ?? ''),
-                    (string) ($department['stream'] ?? '')
-                ) === $allowedPlacementGroup
+                && placementNormalizeStream((string) ($department['stream'] ?? ''))
+                    === $normalizedAssignedStream
         ));
     } else {
         $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
@@ -450,18 +444,6 @@ try {
             }
             $activeColleges[strtolower($collegeName)] ??= $department;
         }
-    }
-    if ($semester === 2 && $allowedPlacementGroup !== '') {
-        $activeColleges = array_filter(
-            $activeColleges,
-            static fn(array $department): bool => normalizeStudentPlacementGroup(
-                (string) ($department['placement_group'] ?? ''),
-                (string) ($department['college_name'] ?? ''),
-                (string) ($department['stream'] ?? '')
-            ) === $allowedPlacementGroup
-                && normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
-                    === $allowedPlacementCollege
-        );
     }
     $validatedChoices = [];
     $seenDepartments = [];
@@ -576,24 +558,11 @@ try {
                 sendJsonResponse(['success' => false, 'message' => 'A selected department is not available in this semester.'], 400);
             }
             if ($semester === 2) {
-                $selectionGroup = normalizeStudentPlacementGroup(
-                    (string) ($department['placement_group'] ?? ''),
-                    (string) ($department['college_name'] ?? ''),
-                    (string) ($department['stream'] ?? '')
-                );
-                if ($selectionGroup !== $allowedPlacementGroup) {
+                if (placementNormalizeStream((string) ($department['stream'] ?? ''))
+                    !== $normalizedAssignedStream) {
                     sendJsonResponse([
                         'success' => false,
-                        'message' => 'Selected department does not belong to your allocated 1st-semester placement group.',
-                    ], 400);
-                }
-                if (
-                    normalizeStudentPlacementCollegeName((string) ($department['college_name'] ?? ''))
-                    !== $allowedPlacementCollege
-                ) {
-                    sendJsonResponse([
-                        'success' => false,
-                        'message' => 'Selected department does not belong to your allocated college.',
+                        'message' => 'Selected departments must belong to your assigned stream.',
                     ], 400);
                 }
             }

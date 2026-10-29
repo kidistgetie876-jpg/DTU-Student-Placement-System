@@ -314,7 +314,7 @@ describe('SubmitPreferences', () => {
     expect(screen.queryByRole('option', { name: 'Biology' })).not.toBeInTheDocument();
   });
 
-  it('limits Semester 2 options to the allocated placement group', () => {
+  it('renders Semester 2 departments across colleges and excludes first-semester-only departments', () => {
     render(<SubmitPreferences
       assignedStream="Social Science"
       preferenceSemester={2}
@@ -340,17 +340,17 @@ describe('SubmitPreferences', () => {
     />);
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Semester 2 Preferences: Showing active departments only in your allocated college (Other Social Science)',
+      'Semester 2 Preferences: Showing active departments across colleges in your assigned stream.',
     );
     expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(2);
     expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(2);
     expect(screen.getAllByRole('option', { name: 'Social Studies' })).toHaveLength(2);
-    expect(screen.queryByRole('option', { name: 'Law' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: 'Law' })).toHaveLength(2);
     expect(screen.queryByRole('option', { name: 'First-semester Law' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'School of Law' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('group', { name: 'School of Law' })).toHaveLength(2);
   });
 
-  it('limits Semester 2 options to the exact allocated college', () => {
+  it('renders Semester 2 options from every college provided by the assigned-stream lookup', () => {
     render(<SubmitPreferences
       assignedStream="Social Science"
       preferenceSemester={2}
@@ -377,7 +377,7 @@ describe('SubmitPreferences', () => {
     expect(screen.getByRole('option', { name: 'Economics' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Special Needs' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Sociology' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Community Development' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Community Development' })).toBeInTheDocument();
     expect(screen.queryByLabelText('College or placement group')).not.toBeInTheDocument();
   });
 });

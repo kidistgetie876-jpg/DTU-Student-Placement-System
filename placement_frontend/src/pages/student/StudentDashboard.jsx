@@ -156,26 +156,12 @@ const getPlacementGroupFromCollege = (collegeName) => {
   return '';
 };
 
-const normalizeCollegeName = (collegeName) => {
-  let normalized = String(collegeName || '').trim().replace(/\s+/g, ' ').toLowerCase();
-  normalized = normalized.replace(/^(college|school) of /, '').replace(/sciences\b/g, 'science');
-  if (normalized.includes('health science')) return 'health science';
-  if (normalized.includes('gafat') || normalized.includes('technology')) return 'gafat institute of technology';
-  if (normalized.includes('law')) return 'law';
-  if (normalized.includes('other social science')) return 'other social science';
-  if (normalized.includes('other natural science')) return 'other natural science';
-  if (['social science', 'social sciences'].includes(normalized)) return 'other social science';
-  return normalized;
-};
-
-const filterSecondSemesterDepartments = (departments, allocatedGroup, allocatedCollege) => {
-  const hasAllocatedCollege = String(allocatedGroup || '').trim() !== ''
-    && String(allocatedCollege || '').trim() !== '';
-  if (!hasAllocatedCollege) return [];
+const filterSecondSemesterDepartments = (departments, assignedStream) => {
+  const normalizedStream = normalizeStream(assignedStream);
+  if (!normalizedStream) return [];
   return departments.filter((department) => (
     isAvailableInSecondSemester(department)
-    && normalizePlacementGroup(getPreferenceGroup(department)) === normalizePlacementGroup(allocatedGroup)
-    && normalizeCollegeName(department.college_name || department.college) === normalizeCollegeName(allocatedCollege)
+    && normalizeStream(getDepartmentStream(department)) === normalizedStream
   ));
 };
 
@@ -461,32 +447,29 @@ const StudentDashboard = () => {
           ? resPrefs.data.allowedDepartments
           : null;
         if (isSecondSemesterStudent) {
-          const allocatedCollege = statusAllocatedCollege || String(resPrefs.data?.assignedCollege || '');
           const activeDepartmentsResponse = await api.get('api/student/get_active_departments.php', {
             params: {
               student_id: String(parsedUser.id ?? ''),
               admission_number: String(admissionNumber),
               semester: 2,
-              college_name: allocatedCollege,
               status: 'active',
             },
           });
           if (activeDepartmentsResponse.data?.success === false
             || !Array.isArray(activeDepartmentsResponse.data?.departments)) {
-            throw new Error(activeDepartmentsResponse.data?.message || 'Unable to load departments for your allocated college.');
+            throw new Error(activeDepartmentsResponse.data?.message || 'Unable to load departments for your assigned stream.');
           }
           const normalizedSecondSemesterDepartments = activeDepartmentsResponse.data.departments.map((department) => ({
             ...department,
             stream: getDepartmentStream(department),
-            college_name: String(department.college_name || allocatedCollege),
+            college_name: String(department.college_name || department.college || ''),
             offered_semester: department.offered_semester === null || department.offered_semester === undefined
               ? 2
               : department.offered_semester,
           }));
           serverAllowedDepartments = filterSecondSemesterDepartments(
             normalizedSecondSemesterDepartments,
-            allocatedGroup,
-            allocatedCollege,
+            studentData?.field_of_study || studentData?.stream || parsedUser?.stream || '',
           );
           setAllDepartments(serverAllowedDepartments);
         }
@@ -687,23 +670,22 @@ const StudentDashboard = () => {
       const submissionSemester = Number(preferenceSemester);
       const selectedChoices = semesterTwoPreferences.slice(0, semesterTwoChoiceCount);
       if (!selectedChoices.length || selectedChoices.some((choice) => !choice)) {
-        setPrefError('Please rank every active department in your allocated college.');
+        setPrefError('Please rank every active department available in your assigned stream.');
         return;
       }
       if (new Set(selectedChoices).size !== selectedChoices.length) {
         setPrefError(duplicateSelectionMessage);
         return;
       }
-      const selectedCrossGroupChoice = selectedChoices.some((selectedChoice) => {
+      const selectedWrongStreamChoice = selectedChoices.some((selectedChoice) => {
         if (selectedChoice.startsWith('college:')) return true;
         const departmentId = selectedChoice.slice('department:'.length);
         const department = semesterTwoDepartments.find((item) => String(item.id) === departmentId);
         return !department
-          || !assignedPlacementGroup
-          || getPreferenceGroup(department) !== assignedPlacementGroup;
+          || normalizeStream(getDepartmentStream(department)) !== assignedStream;
       });
-      if (selectedCrossGroupChoice) {
-        setPrefError('Semester 2 preferences must stay within your allocated placement group.');
+      if (selectedWrongStreamChoice) {
+        setPrefError('Semester 2 preferences must stay within your assigned stream.');
         return;
       }
       const formattedChoices = selectedChoices.map((selectedChoice, index) => {
@@ -918,7 +900,6 @@ const StudentDashboard = () => {
               student_id: String(studentId),
               admission_number: String(admissionNumber),
               semester: 2,
-              college_name: allocatedCollege,
               status: 'active',
             },
           })
@@ -938,7 +919,7 @@ const StudentDashboard = () => {
             ? 2
             : department.offered_semester,
           college_name: isSecondSemesterStudent
-            ? String(department.college_name || allocatedCollege)
+            ? String(department.college_name || department.college || '')
             : /^law$/i.test(String(department.college_name || department.college || department.faculty || '').trim())
             ? 'School of Law'
             : department.college_name || department.college || department.faculty || '',
@@ -946,8 +927,7 @@ const StudentDashboard = () => {
         const departments = isSecondSemesterStudent
           ? filterSecondSemesterDepartments(
             fetchedDepartments,
-            allocatedGroup,
-            allocatedCollege,
+            assignedStream,
           )
           : fetchedDepartments;
         setAllDepartments(departments);
@@ -1042,6 +1022,7 @@ const StudentDashboard = () => {
     profile?.id_number,
     profile?.placement_status,
     profile?.status,
+    assignedStream,
     student?.id,
     student?.id_number,
     student?.placement_status,
@@ -1139,7 +1120,6 @@ const StudentDashboard = () => {
       && preferenceSemester === 2
       && Array.isArray(allowedDepartmentIds)
       && allowedDepartmentIds.includes(Number(department.id))
-      && (!assignedPlacementGroup || getPreferenceGroup(department) === assignedPlacementGroup)
     ))
     .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')));
   const semesterTwoColleges = [...new Set(semesterTwoDepartments
@@ -1287,7 +1267,7 @@ const StudentDashboard = () => {
                 <span className="student-section-eyebrow">PLACEMENT PREFERENCES</span>
                 <h1>Rank Your Department Preferences</h1>
                 <p>{preferenceSemester === 2
-                  ? 'Rank the active departments available in your allocated college.'
+                  ? 'Rank the active departments available across colleges in your assigned stream.'
                   : 'Choose your preferred placement group, then rank the active departments available to you.'}</p>
               </header>
               {renderPreferenceAlert(placementStatusError)}

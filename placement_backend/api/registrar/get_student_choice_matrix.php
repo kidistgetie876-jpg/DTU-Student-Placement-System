@@ -179,7 +179,36 @@ try {
         . 'NULLIF(' . choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['field_of_study', 'stream']) . ", ''), "
         . choiceMatrixTextExpression($joinedUserColumns, 'u', ['stream'])
         . ')';
+    $placementStatusExpression = '';
+    if (in_array('status', $placementColumns, true)) {
+        $placementStatusIdentity = [];
+        if (in_array('student_id', $choiceColumns, true)
+            && in_array('student_id', $placementColumns, true)
+        ) {
+            $placementStatusIdentity[] = 'pr.student_id = sc.student_id';
+        }
+        if (in_array('admission_number', $placementColumns, true)) {
+            $placementStatusIdentity[] = 'TRIM(pr.admission_number) = TRIM(' . $studentIdentifier . ')';
+        }
+        if ($placementStatusIdentity) {
+            $placementStatusOrder = [];
+            if (in_array('placement_semester', $placementColumns, true)) {
+                $placementStatusOrder[] = 'pr.placement_semester DESC';
+            }
+            if (in_array('placed_at', $placementColumns, true)) {
+                $placementStatusOrder[] = 'pr.placed_at DESC';
+            }
+            if (in_array('id', $placementColumns, true)) {
+                $placementStatusOrder[] = 'pr.id DESC';
+            }
+            $placementStatusExpression = '(SELECT NULLIF(TRIM(pr.status), \'\')'
+                . ' FROM placement_results pr WHERE (' . implode(' OR ', $placementStatusIdentity) . ')'
+                . ($placementStatusOrder ? ' ORDER BY ' . implode(', ', $placementStatusOrder) : '')
+                . ' LIMIT 1)';
+        }
+    }
     $statusExpression = 'COALESCE('
+        . ($placementStatusExpression !== '' ? $placementStatusExpression . ', ' : '')
         . 'NULLIF(' . choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['placement_status', 'status']) . ", ''), "
         . choiceMatrixTextExpression($joinedUserColumns, 'u', ['status'])
         . ')';

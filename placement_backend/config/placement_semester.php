@@ -81,6 +81,75 @@ function placementDepartmentAvailability(array $department): array
     ];
 }
 
+function placementFirstSemesterCandidateStatusEligible(string $status, bool $hasFirstSemesterPlacement): bool
+{
+    $normalizedStatus = strtolower(trim($status));
+    if ($normalizedStatus === 'pending 2nd semester') {
+        return !$hasFirstSemesterPlacement;
+    }
+
+    return in_array(
+        $normalizedStatus,
+        ['', 'pending', 'pending 1st semester', 'not assigned', 'unassigned'],
+        true
+    );
+}
+
+function placementDepartmentMapKey(array $department): string
+{
+    $departmentId = (int) ($department['id'] ?? 0);
+    if ($departmentId > 0) {
+        return 'id:' . $departmentId;
+    }
+
+    $name = strtolower(trim((string) ($department['name'] ?? '')));
+    return $name === '' ? '' : 'name:' . $name;
+}
+
+function placementResolveDepartmentPreference(array $preference, array $departments): ?array
+{
+    $departmentId = (int) ($preference['dept_id'] ?? 0);
+    if ($departmentId > 0) {
+        foreach ($departments as $department) {
+            if ((int) ($department['id'] ?? 0) === $departmentId) {
+                return $department;
+            }
+        }
+        return null;
+    }
+
+    $name = strtolower(trim((string) (
+        $preference['department'] ?? $preference['dept_name'] ?? $preference['name'] ?? ''
+    )));
+    if ($name === '') {
+        return null;
+    }
+
+    $collegeId = (int) ($preference['college_id'] ?? 0);
+    $collegeName = strtolower(trim((string) (
+        $preference['college_name'] ?? $preference['college'] ?? ''
+    )));
+    $stream = strtolower(trim((string) ($preference['stream'] ?? '')));
+    $matches = [];
+    foreach ($departments as $department) {
+        if (strtolower(trim((string) ($department['name'] ?? ''))) !== $name) {
+            continue;
+        }
+        if ($collegeId > 0 && (int) ($department['college_id'] ?? 0) !== $collegeId) {
+            continue;
+        }
+        if ($collegeName !== '' && strtolower(trim((string) ($department['college_name'] ?? ''))) !== $collegeName) {
+            continue;
+        }
+        if ($stream !== '' && strtolower(trim((string) ($department['stream'] ?? ''))) !== $stream) {
+            continue;
+        }
+        $matches[] = $department;
+    }
+
+    return count($matches) === 1 ? $matches[0] : null;
+}
+
 function placementDepartmentOfferedInSemester(array $department, int $semester): bool
 {
     $availability = placementDepartmentAvailability($department);
@@ -231,8 +300,13 @@ function placementPreferenceCapacityMaps(
         if (!placementDepartmentCanReceiveFinalAssignment($department, $semester)) {
             continue;
         }
-        $departmentKey = strtolower(trim((string) ($department['name'] ?? '')));
-        $remainingCapacity = max(0, (int) ($remainingDepartmentCapacity[$departmentKey] ?? 0));
+        $departmentKey = placementDepartmentMapKey($department);
+        $legacyNameKey = strtolower(trim((string) ($department['name'] ?? '')));
+        $remainingCapacity = max(0, (int) (
+            $remainingDepartmentCapacity[$departmentKey]
+            ?? $remainingDepartmentCapacity[$legacyNameKey]
+            ?? 0
+        ));
         $group = placementDepartmentGroup($department);
         if (in_array($group, ['health_science', 'git', 'law'], true)) {
             $collegeKey = placementCollegeCapacityKey($department);
@@ -454,6 +528,11 @@ function placementBroadChoiceGroup(array $preference): string
     ));
 
     return $groupNames[$name] ?? '';
+}
+
+function placementIsFirstSemesterBroadChoice(array $preference, int $semester): bool
+{
+    return $semester === 1 && placementBroadChoiceGroup($preference) !== '';
 }
 
 function placementExpandCollegePreferences(array $preferences, array $departments, string $stream, int $semester): array
@@ -764,6 +843,31 @@ function placementFirstSemesterAllocationTarget(
                     && $semesterTwoCapacity <= 0
                 ) {
                     break;
+                }
+                if (
+                    $allowExhaustedCapacity
+                    && $targetGroup === 'law'
+                    && ($hasCollegeSemesterTwoData || $hasGroupSemesterTwoData)
+                    && $semesterTwoCapacity <= 0
+                    && (int) ($availableGroupCapacity['other_social_science'] ?? 0) > 0
+                ) {
+                    foreach ($departments as $targetDepartment) {
+                        if (
+                            placementDepartmentGroup($targetDepartment) !== 'other_social_science'
+                            || placementNormalizeStream((string) ($targetDepartment['stream'] ?? '')) !== $normalizedStream
+                            || !placementDepartmentOfferedInSemester($targetDepartment, 2)
+                        ) {
+                            continue;
+                        }
+                        return [
+                            'college_id' => null,
+                            'college_name' => placementDepartmentCapacityCollegeName($targetDepartment),
+                            'college_capacity_key' => null,
+                            'stream' => (string) ($targetDepartment['stream'] ?? $stream),
+                            'placement_group' => 'other_social_science',
+                            'choice_rank' => (int) ($preference['priority'] ?? $preference['rank'] ?? 0),
+                        ];
+                    }
                 }
                 $targetDepartments = $isCollegeSpecificGroup
                     ? [$department]

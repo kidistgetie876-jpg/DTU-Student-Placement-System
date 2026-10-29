@@ -928,7 +928,9 @@ function computeMeritScore(array $student, array $rules): float
         $departmentRows[] = $row;
     }
 
-    $selectedCollege = trim((string) ($input['selectedCollege'] ?? $college ?? ''));
+    $selectedCollege = $activeSemester === 2
+        ? 'all'
+        : trim((string) ($input['selectedCollege'] ?? $college ?? ''));
     $selectedStream = trim((string) ($input['selectedStream'] ?? $stream ?? ''));
     if ($selectedStream !== '' && !empty($input['students']) && is_array($input['students'])) {
         foreach ($input['students'] as $student) {
@@ -954,10 +956,7 @@ function computeMeritScore(array $student, array $rules): float
 
     $departmentMap = [];
     foreach ($departmentRows as $department) {
-        $key = normalizeDepartmentName($department['name'] ?? $department['department'] ?? $department['id'] ?? '');
-        if ($key === '')
-            continue;
-        $departmentMap[$key] = [
+        $departmentEntry = [
             'id' => (int) ($department['id'] ?? 0),
             'name' => (string) ($department['name'] ?? $department['department'] ?? ''),
             'college_id' => (int) ($department['college_id'] ?? 0),
@@ -968,6 +967,10 @@ function computeMeritScore(array $student, array $rules): float
             'is_first_semester_only' => (int) ($department['is_first_semester_only'] ?? 0),
             'placement_group' => (string) ($department['placement_group'] ?? ''),
         ];
+        $key = placementDepartmentMapKey($departmentEntry);
+        if ($key === '')
+            continue;
+        $departmentMap[$key] = $departmentEntry;
     }
 
     $userColumns = studentPlacementTableColumns($db, 'users');
@@ -1380,6 +1383,7 @@ function computeMeritScore(array $student, array $rules): float
         $eligibleChoiceJoin = '';
         if ($eligibleChoiceDepartmentColumn !== '' && in_array('id', $departmentColumns, true)) {
             $eligibleChoiceJoin = " LEFT JOIN departments d_eligible ON d_eligible.id = sc_eligible.`{$eligibleChoiceDepartmentColumn}`";
+            $departmentEligibilityConditions = [];
             if (in_array('name', $departmentColumns, true)) {
                 $eligibleChoiceName = "COALESCE(NULLIF(d_eligible.name, ''), {$eligibleChoiceName})";
             }
@@ -1388,19 +1392,24 @@ function computeMeritScore(array $student, array $rules): float
                     $firstSemesterOnlyCondition = in_array('is_first_semester_only', $departmentColumns, true)
                         ? "LOWER(TRIM(COALESCE(CAST(d_eligible.is_first_semester_only AS CHAR), '0'))) NOT IN ('1', 'true', 'yes', 'on')"
                         : '1 = 1';
-                    $activeChoiceConditions[] = "(d_eligible.offered_semester = 2 OR "
+                    $departmentEligibilityConditions[] = "(d_eligible.offered_semester = 2 OR "
                         . "(d_eligible.offered_semester = 1 AND {$firstSemesterOnlyCondition}))";
                 } else {
-                    $activeChoiceConditions[] = 'd_eligible.offered_semester IN (1, 2)';
+                    $departmentEligibilityConditions[] = 'd_eligible.offered_semester = 1';
                 }
             }
             $departmentActiveColumn = in_array('status', $departmentColumns, true)
                 ? 'status'
                 : (in_array('is_active', $departmentColumns, true) ? 'is_active' : '');
             if ($departmentActiveColumn === 'status') {
-                $activeChoiceConditions[] = "LOWER(TRIM(COALESCE(d_eligible.status, ''))) = 'active'";
+                $departmentEligibilityConditions[] = "LOWER(TRIM(COALESCE(d_eligible.status, ''))) = 'active'";
             } elseif ($departmentActiveColumn === 'is_active') {
-                $activeChoiceConditions[] = 'd_eligible.is_active = 1';
+                $departmentEligibilityConditions[] = 'd_eligible.is_active = 1';
+            }
+            if ($departmentEligibilityConditions) {
+                $choiceDepartmentId = "COALESCE(sc_eligible.`{$eligibleChoiceDepartmentColumn}`, 0)";
+                $activeChoiceConditions[] = '(' . $choiceDepartmentId . ' <= 0 OR ('
+                    . implode(' AND ', $departmentEligibilityConditions) . '))';
             }
         }
         $activeChoiceConditions[] = "NULLIF(TRIM(COALESCE({$eligibleChoiceName}, '')), '') IS NOT NULL";
@@ -1737,18 +1746,22 @@ function computeMeritScore(array $student, array $rules): float
             }
             $collegeAllocation = $allocationQuery->get_result()->fetch_assoc() ?: null;
             $allocationQuery->close();
-            if ($collegeAllocation) {
-                $normalizedPreferences = array_values(array_filter(
-                    $normalizedPreferences,
-                    static function (array $preference) use ($departmentMap, $collegeAllocation, $activeSemester): bool {
-                        $department = $departmentMap[normalizeDepartmentName($preference['department'])] ?? null;
-                        if (!$department || !placementDepartmentOfferedInSemester($department, $activeSemester)) {
-                            return false;
-                        }
-                        return placementDepartmentMatchesAllocation($department, $collegeAllocation);
-                    }
-                ));
+            $departmentsById = [];
+            foreach ($departmentMap as $department) {
+                $departmentsById[(int) ($department['id'] ?? 0)] = $department;
             }
+            $normalizedPreferences = array_values(array_filter(
+                $normalizedPreferences,
+                static function (array $preference) use ($departmentsById, $activeSemester, $student): bool {
+                    $department = placementResolveDepartmentPreference($preference, $departmentsById);
+                    return $department !== null
+                        && placementDepartmentOfferedInSemester($department, $activeSemester)
+                        && studentPlacementStreamsMatch(
+                            $student['stream'] ?? '',
+                            $department['stream'] ?? ''
+                        );
+                }
+            ));
             $fallbackPreferences = [];
             $normalizedPreferences = array_values($normalizedPreferences);
             if (!$normalizedPreferences) {
@@ -1880,22 +1893,20 @@ function computeMeritScore(array $student, array $rules): float
         throw new Exception('Unable to check department occupancy');
     }
     while ($occupied = $occupiedSql->fetch_assoc()) {
-        $occupiedKey = '';
-        foreach ($departmentMap as $key => $department) {
-            if ((int) $department['id'] === (int) ($occupied['dept_id'] ?? 0)) {
-                $occupiedKey = $key;
-                break;
-            }
-        }
-        if ($occupiedKey === '') {
-            $occupiedKey = normalizeDepartmentName($occupied['dept_name'] ?? '');
-        }
+        $occupiedDepartmentId = (int) ($occupied['dept_id'] ?? 0);
+        $occupiedDepartment = $occupiedDepartmentId > 0
+            ? ($allDepartmentMapById[$occupiedDepartmentId] ?? null)
+            : placementResolveDepartmentPreference(
+                ['department' => $occupied['dept_name'] ?? ''],
+                array_values($allDepartmentMap)
+            );
+        $occupiedKey = $occupiedDepartment ? placementDepartmentMapKey($occupiedDepartment) : '';
         if (isset($capacityMap[$occupiedKey])) {
             $capacityMap[$occupiedKey] = max(0, $capacityMap[$occupiedKey] - (int) $occupied['occupied']);
         }
         foreach ($allDepartmentMap as $department) {
-            $matchesDepartment = (int) $department['id'] === (int) ($occupied['dept_id'] ?? 0)
-                || normalizeDepartmentName($department['name']) === normalizeDepartmentName($occupied['dept_name'] ?? '');
+            $matchesDepartment = $occupiedDepartment !== null
+                && (int) $department['id'] === (int) $occupiedDepartment['id'];
             if ($matchesDepartment) {
                 $collegeKey = $collegeKeyForDepartment($department);
                 $occupiedByCollege[$collegeKey] = ($occupiedByCollege[$collegeKey] ?? 0)
@@ -2169,21 +2180,16 @@ function computeMeritScore(array $student, array $rules): float
 
         $placed = false;
         $pendingTarget = null;
-        $previousPreferenceDepartment = null;
         foreach ($student['preferences'] as $priorityIndex => $preference) {
-            $deptName = trim((string) $preference['department']);
-            $deptKey = normalizeDepartmentName($deptName);
             $isFallbackPreference = !empty($preference['is_fallback']);
-            $preferenceDepartmentId = (int) ($preference['dept_id'] ?? 0);
-            if ($activeSemester === 1 && !empty($preference['is_broad_choice'])) {
-                // Automatic fallback allocation is disabled. Broad-choice preferences must not
-                // create a deferred or random department assignment when the student has no explicit match.
-                $pendingTarget = null;
-                continue;
+            if (placementIsFirstSemesterBroadChoice($preference, $activeSemester)) {
+                // Honor the broad college choice by deferring department selection, not trying a lower-ranked major.
+                break;
             }
-            $preferenceDepartment = $preferenceDepartmentId > 0
-                ? ($allDepartmentMapById[$preferenceDepartmentId] ?? null)
-                : ($allDepartmentMap[$deptKey] ?? null);
+            $preferenceDepartment = placementResolveDepartmentPreference(
+                $preference,
+                array_values($allDepartmentMap)
+            );
             if (!$preferenceDepartment) {
                 continue;
             }
@@ -2191,16 +2197,6 @@ function computeMeritScore(array $student, array $rules): float
             if (!studentPlacementStreamsMatch($student['stream'] ?? '', $preferenceDepartment['stream'] ?? '')) {
                 continue;
             }
-            if ($activeSemester === 2 && $student['college_allocation']) {
-                $allocation = $student['college_allocation'];
-                if (
-                    !$isFallbackPreference
-                    && !placementDepartmentMatchesAllocation($preferenceDepartment, $allocation)
-                ) {
-                    continue;
-                }
-            }
-
             if ($selectedDepartment !== '' && $selectedDepartment !== 'all') {
                 if (normalizeDepartmentName($preferenceDepartment['name']) !== normalizeDepartmentName($selectedDepartment)) {
                     continue;
@@ -2222,32 +2218,20 @@ function computeMeritScore(array $student, array $rules): float
                 ) > 0) {
                     break;
                 }
-            } elseif (
-                $previousPreferenceDepartment !== null
-                && !placementCanAdvancePreferenceCollege(
-                    $previousPreferenceDepartment,
-                    $preferenceDepartment,
-                    $preferenceCollegeCapacityMap,
-                    $preferenceGroupCapacityMap,
-                    $activeSemester === 1 ? $semesterTwoCollegeCapacityMap : [],
-                    $activeSemester === 1 ? $semesterTwoGroupCapacityMap : []
-                )
-            ) {
-                break;
             }
-            $previousPreferenceDepartment = $preferenceDepartment;
 
             if (!placementDepartmentCanReceiveFinalAssignment($preferenceDepartment, $activeSemester)) {
                 continue;
             }
 
-            $department = $preferenceDepartmentId > 0
-                ? ($departmentMapById[$preferenceDepartmentId] ?? null)
-                : ($departmentMap[$deptKey] ?? null);
+            $department = placementResolveDepartmentPreference(
+                $preference,
+                array_values($departmentMap)
+            );
             if (!$department) {
                 continue;
             }
-            $deptKey = normalizeDepartmentName($department['name']);
+            $deptKey = placementDepartmentMapKey($department);
 
             $openCapacity = (int) ($capacityMap[$deptKey] ?? 0);
             $collegeKey = $collegeKeyForDepartment($department);
@@ -2416,11 +2400,7 @@ function computeMeritScore(array $student, array $rules): float
                         'placement_group' => $allocatedPlacementGroup,
                     ]);
                 } else {
-                    if ($isFallbackPreference) {
-                        updatePlacementCollegeAllocationTarget($db, $student, $department);
-                    } else {
-                        updatePlacementCollegeAllocationStatus($db, $student, 'placed');
-                    }
+                    updatePlacementCollegeAllocationTarget($db, $student, $department);
                 }
             }
 
@@ -2441,12 +2421,15 @@ function computeMeritScore(array $student, array $rules): float
             $matchingDepartments = [];
             $fullDepartments = [];
             foreach ($student['preferences'] as $preference) {
-                $deptKey = normalizeDepartmentName($preference['department'] ?? '');
-                if (!isset($departmentMap[$deptKey])) {
+                $department = placementResolveDepartmentPreference(
+                    $preference,
+                    array_values($departmentMap)
+                );
+                if (!$department) {
                     continue;
                 }
 
-                $department = $departmentMap[$deptKey];
+                $deptKey = placementDepartmentMapKey($department);
                 if (
                     $selectedDepartment !== '' && $selectedDepartment !== 'all'
                     && normalizeDepartmentName($department['name']) !== normalizeDepartmentName($selectedDepartment)

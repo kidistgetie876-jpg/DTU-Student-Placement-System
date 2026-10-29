@@ -634,6 +634,7 @@ export const getPlacementCandidateIneligibility = (student, semester, minimumGpa
     'pending 1st semester',
     'not assigned',
     'unassigned',
+    ...(!student?.has_first_semester_placement ? ['pending 2nd semester'] : []),
   ].includes(placementStatus)) {
     return 'Student is not eligible for first-semester placement.';
   }
@@ -767,6 +768,7 @@ const RegistrarDashboard = () => {
   const [placementMode, setPlacementMode] = useState(1);
   const [activatingSemester, setActivatingSemester] = useState(null);
   const [semesterActivationError, setSemesterActivationError] = useState('');
+  const [semesterActivationNotice, setSemesterActivationNotice] = useState('');
   const [completeSemesterRun, setCompleteSemesterRun] = useState(false);
   const [runResult, setRunResult] = useState(null);
   const [unassignedStudentsRefreshToken, setUnassignedStudentsRefreshToken] = useState(0);
@@ -2361,8 +2363,9 @@ const RegistrarDashboard = () => {
     setCompleteSemesterRun(false);
     setPlacementError('');
     setSemesterActivationError('');
+    setSemesterActivationNotice('');
 
-    if (activeSemester === semester) return;
+    if (activeSemester === semester && semester !== 2) return;
 
     setActivatingSemester(semester);
     try {
@@ -2378,6 +2381,24 @@ const RegistrarDashboard = () => {
 
       setActiveSemester(semester);
       setStudentRecordsRefreshToken((token) => token + 1);
+      if (semester === 2 && Number(result.reallocated_count) > 0) {
+        const reallocatedStudents = new Set(
+          (Array.isArray(result.reallocated_students) ? result.reallocated_students : [])
+            .map((admissionNumber) => String(admissionNumber).trim().toUpperCase()),
+        );
+        setPendingResults((current) => current.map((placementRun) => ({
+          ...placementRun,
+          placements: placementRun.placements.map((placement) => (
+            placement.status === 'pending_second_semester'
+              && reallocatedStudents.has(String(placement.id_number || '').trim().toUpperCase())
+              ? { ...placement, college: 'College of Other Social Sciences' }
+              : placement
+          )),
+        })));
+        setSemesterActivationNotice(
+          `${Number(result.reallocated_count)} pending Law student(s) were moved to College of Other Social Sciences because Law has no remaining Semester 2 capacity.`,
+        );
+      }
     } catch (error) {
       setSemesterActivationError(
         error?.response?.data?.message
@@ -4285,6 +4306,11 @@ const RegistrarDashboard = () => {
                     {semesterActivationError}
                   </div>
                 )}
+                {semesterActivationNotice && (
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                    {semesterActivationNotice}
+                  </div>
+                )}
                 <div className="mb-5 flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h4 className="mb-1 text-xl font-bold text-slate-900">Run Placement</h4>
@@ -4546,9 +4572,16 @@ const RegistrarDashboard = () => {
                                           .map((choice) => (
                                             <React.Fragment key={`${student.id}-${choice.priority}-${choice.dept_id || choice.dept_name}`}>
                                               <span
-                                                className={`badge rounded-pill ${['bg-primary-subtle text-primary-emphasis', 'bg-info-subtle text-info-emphasis', 'bg-success-subtle text-success-emphasis'][((Number(choice.priority) - 1) % 3)]}`}
+                                                className={`badge rounded-pill ${choice.choice_eligible === false
+                                                  ? 'bg-secondary-subtle text-secondary-emphasis'
+                                                  : ['bg-primary-subtle text-primary-emphasis', 'bg-info-subtle text-info-emphasis', 'bg-success-subtle text-success-emphasis'][((Number(choice.priority) - 1) % 3)]}`}
+                                                title={choice.choice_eligible === false
+                                                  ? 'Saved choice is currently inactive or not offered in this placement semester.'
+                                                  : undefined}
                                               >
                                                 Choice {choice.priority}: {choice.dept_name || choice.department}
+                                                {choice.college_name && ` (${choice.college_name})`}
+                                                {choice.choice_eligible === false && ' — Unavailable'}
                                               </span>
                                               {hasInvalidStreamChoice(student.stream, choice.stream) && (
                                                 <span
@@ -4738,6 +4771,7 @@ const RegistrarDashboard = () => {
                               const formattedPreferences = preferences
                                 .map((pref, index) => ({
                                   semester: activeSemester,
+                                  dept_id: Number(pref?.dept_id ?? pref?.department_id ?? 0) || null,
                                   priority: Number(pref?.priority ?? pref?.rank ?? index + 1),
                                   department: pref?.dept_name || pref?.department || pref?.name || pref?.college || '',
                                   college_name: pref?.college_name || pref?.collegeName || pref?.college || '',
