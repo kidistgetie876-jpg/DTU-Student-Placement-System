@@ -53,7 +53,8 @@ const AdminDashboard = () => {
     totalStudents: 0,
     totalDepartments: 0,
     activeAdmins: 0,
-    totalHeads: 0
+    totalHeads: 0,
+    totalRegistrars: 0
   });
   const [statsLoading, setStatsLoading] = useState(false);
 
@@ -109,7 +110,7 @@ const AdminDashboard = () => {
       setTab('role-permissions');
     }
   }, [tab, isOpen, setTab]);
-  const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'totalDepartments', 'activeAdmins'
+  const [cardDetailModal, setCardDetailModal] = useState(null); // 'totalStudents', 'totalDepartments', 'activeAdmins', 'totalHeads', 'totalRegistrars'
   const [cardDetailData, setCardDetailData] = useState([]);
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
@@ -147,6 +148,7 @@ const AdminDashboard = () => {
         const role = u?.role?.toLowerCase();
         return role === 'head' || role === 'coordinator';
       }).length;
+      const totalRegistrars = users.filter(u => u?.role?.toLowerCase() === 'registrar').length;
 
       const departmentsResponse = departmentsResult.status === 'fulfilled' ? departmentsResult.value.data : [];
       const depts = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse?.departments || [];
@@ -159,7 +161,8 @@ const AdminDashboard = () => {
         totalStudents,
         totalDepartments,
         activeAdmins,
-        totalHeads
+        totalHeads,
+        totalRegistrars
       });
     } catch (err) {
       console.error('Failed to fetch statistics:', err);
@@ -230,6 +233,17 @@ const AdminDashboard = () => {
             role: head.role || 'N/A',
             registeredAt: head.created_at || head.registration_date || 'N/A'
           }));
+      } else if (cardType === 'totalRegistrars') {
+        data = allUsers
+          .filter(u => u && u.role?.toLowerCase() === 'registrar')
+          .map((registrar, idx) => ({
+            id: idx + 1,
+            username: registrar.username || 'N/A',
+            email: registrar.email || 'N/A',
+            role: registrar.role || 'Registrar',
+            status: registrar.status || 'Active',
+            registeredAt: registrar.created_at || registrar.registration_date || 'N/A'
+          }));
       }
 
       setCardDetailData(data);
@@ -265,8 +279,8 @@ const AdminDashboard = () => {
 
           {tab === 'dashboard' ? (
             <>
-              <div className="row g-4">
-                <div className="col-lg-4">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
                   <div 
                     className="card summary-card shadow-sm" 
                     style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
@@ -289,7 +303,7 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="col-lg-4">
+                <div>
                   <div 
                     className="card summary-card shadow-sm" 
                     style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
@@ -312,7 +326,7 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="col-lg-4">
+                <div>
                   <div
                     className="card summary-card shadow-sm"
                     style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
@@ -332,6 +346,41 @@ const AdminDashboard = () => {
                       <span className="summary-label">{t('Total Heads')}</span>
                       <h3 className="summary-value">{statsLoading ? '...' : stats.totalHeads}</h3>
                       <div className="mt-2"><small className="text-info fw-bold">Click to view details →</small></div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div
+                    className="card summary-card shadow-sm"
+                    style={{ cursor: 'pointer', transition: 'all 0.3s ease', border: '2px solid transparent' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-5px)';
+                      e.currentTarget.style.boxShadow = '0 8px 16px rgba(0,0,0,0.1)';
+                      e.currentTarget.style.borderColor = '#8b5cf6';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '';
+                      e.currentTarget.style.borderColor = 'transparent';
+                    }}
+                    onClick={() => handleCardClick('totalRegistrars')}
+                  >
+                    <div className="card-body">
+                      <span className="summary-label">{t('Total Registrars')}</span>
+                      <h3 className="summary-value">{statsLoading ? '...' : stats.totalRegistrars}</h3>
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 text-decoration-none text-primary fw-bold"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate({ pathname: '/admin-dashboard', search: '?tab=manage&role=registrar' });
+                            setTab('manage');
+                          }}
+                        >
+                          Click to view details →
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -367,6 +416,7 @@ const AdminDashboard = () => {
                         {cardDetailModal === 'totalDepartments' && 'All Departments'}
                         {cardDetailModal === 'activeAdmins' && 'Admin Accounts'}
                         {cardDetailModal === 'totalHeads' && 'Department Heads and Coordinators'}
+                        {cardDetailModal === 'totalRegistrars' && 'Registrar Accounts'}
                       </h4>
                       <button 
                         className="btn btn-close" 
@@ -423,6 +473,16 @@ const AdminDashboard = () => {
                                   <th>Registered</th>
                                 </>
                               )}
+                              {cardDetailModal === 'totalRegistrars' && (
+                                <>
+                                  <th>#</th>
+                                  <th>Username</th>
+                                  <th>Email</th>
+                                  <th>Role</th>
+                                  <th>Status</th>
+                                  <th>Registered</th>
+                                </>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -461,6 +521,16 @@ const AdminDashboard = () => {
                                     <td><strong>{item.username}</strong></td>
                                     <td>{item.email}</td>
                                     <td><span className="badge bg-info text-dark">{item.role}</span></td>
+                                    <td>{item.registeredAt}</td>
+                                  </>
+                                )}
+                                {cardDetailModal === 'totalRegistrars' && (
+                                  <>
+                                    <td>{item.id}</td>
+                                    <td><strong>{item.username}</strong></td>
+                                    <td>{item.email}</td>
+                                    <td><span className="badge bg-primary">{item.role}</span></td>
+                                    <td><span className="badge bg-success">{item.status}</span></td>
                                     <td>{item.registeredAt}</td>
                                   </>
                                 )}

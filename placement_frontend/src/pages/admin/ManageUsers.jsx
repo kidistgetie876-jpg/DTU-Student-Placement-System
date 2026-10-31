@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import PasswordInput from '../../components/layout/PasswordInput.jsx';
 import './ManageUsers.css';
@@ -110,6 +110,7 @@ const getRoleBadgeClass = (role = '') => {
 
 const ManageUsers = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -163,6 +164,15 @@ const ManageUsers = () => {
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  useEffect(() => {
+    const requestRole = new URLSearchParams(location.search).get('role');
+    const nextRole = requestRole ? String(requestRole).trim().toLowerCase() : 'all';
+    if (['all', 'head', 'registrar', 'admin'].includes(nextRole)) {
+      setRoleFilter(nextRole);
+      setPage(1);
+    }
+  }, [location.search]);
 
   const filtered = users.filter((u) => {
     const roleKey = getRoleKey(u.role);

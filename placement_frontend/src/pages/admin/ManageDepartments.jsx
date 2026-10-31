@@ -131,6 +131,27 @@ const normalizeDepartmentsPayload = (payload) => {
   return [];
 };
 
+const getDepartmentHeadName = (department = {}) => {
+  const directHeadName = [
+    department.head_name,
+    department.headName,
+    department.assigned_head_name,
+    department.assignedHeadName,
+  ].find(value => typeof value === 'string' && value.trim());
+
+  if (directHeadName) return directHeadName.trim();
+
+  const firstName = [department.head_first_name, department.first_name].find(value => typeof value === 'string' && value.trim());
+  const lastName = [department.head_last_name, department.last_name].find(value => typeof value === 'string' && value.trim());
+  const combinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  if (combinedName) return combinedName;
+
+  const username = department.head_username || department.headUserName || department.username;
+  if (typeof username === 'string' && username.trim()) return username.trim();
+
+  return '';
+};
+
 const getDepartmentStream = (department) => {
   const rawStream = String(
     department?.stream || department?.academic_stream || department?.category || ''
@@ -341,6 +362,8 @@ const ManageDepartments = () => {
       const normalizedDepartments = normalizeDepartmentsPayload(resDepts.data ?? resDepts);
       setDepartments(normalizedDepartments.map(department => ({
         ...department,
+        head_id: department.head_id !== undefined && department.head_id !== null ? Number(department.head_id) : null,
+        head_name: getDepartmentHeadName(department),
         stream: getDepartmentStream(department),
       })));
 
@@ -475,6 +498,7 @@ const ManageDepartments = () => {
       const headName = [assignedHead?.first_name, assignedHead?.last_name].filter(Boolean).join(' ')
         || assignedHead?.username
         || assignedHead?.email
+        || result?.department?.head_name
         || '';
       setDepartments(current => current.map(department => (
         String(department.id) === String(assignmentDepartment.id)

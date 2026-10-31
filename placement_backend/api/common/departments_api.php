@@ -54,12 +54,17 @@ try {
         : (isset($columns['capacity_approved'])
             ? 'capacity_approved AS is_locked'
             : '0 AS is_locked');
+    $hasHeadIdColumn = isset($columns['head_id']);
+    $headIdSelect = $hasHeadIdColumn ? 'd.head_id' : 'NULL AS head_id';
+    $headNameSelect = $hasHeadIdColumn ? "TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS head_name" : 'NULL AS head_name';
+    $headJoin = $hasHeadIdColumn ? ' LEFT JOIN users u ON u.id = d.head_id' : '';
     $college = trim((string) ($_GET['preference_college'] ?? ''));
     $statusFilter = strtolower(trim((string) ($_GET['status'] ?? ($_GET['active_only'] ?? 'active'))));
     $showAll = in_array($statusFilter, ['all', 'all_status', 'all-status', 'both', 'false', '0'], true);
-    $sql = "SELECT id, name, college_name, stream, status, offered_semester,
-                   $capacity, $capacityApproved, $approvalStatus, $isLocked, $firstSemesterOnly
-            FROM departments";
+    $sql = "SELECT d.id, d.name, d.college_name, d.stream, d.status, d.offered_semester,
+                   $headIdSelect, $capacity, $capacityApproved, $approvalStatus, $isLocked, $firstSemesterOnly,
+                   $headNameSelect
+            FROM departments d$headJoin";
     if (!$showAll) {
         $sql .= " WHERE LOWER(TRIM(status)) = 'active'";
     }
