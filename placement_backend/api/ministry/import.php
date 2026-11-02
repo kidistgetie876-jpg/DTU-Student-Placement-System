@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/cors.php';
 sendCorsHeaders();
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/logger.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 function ministryImportRespond(array $payload, int $status = 200): void
@@ -72,6 +73,7 @@ try {
 if (!$db instanceof mysqli) {
     ministryImportRespond(['success' => false, 'message' => 'Database connection is unavailable.'], 503);
 }
+$auditActor = getAuditActor($db);
 
 try {
     // 1. Fetch Grade 12 Base Setting safely (Default to 700 to prevent strict mark rejection)
@@ -84,20 +86,38 @@ try {
         $baseResult->free();
     }
 
-    // 2. Prepare Official Student Data Statement
+    $studentColumnsResult = $db->query('SHOW COLUMNS FROM student_data');
+    if (!$studentColumnsResult) {
+        throw new RuntimeException('Unable to inspect student_data columns: ' . $db->error);
+    }
+    $studentColumns = array_column($studentColumnsResult->fetch_all(MYSQLI_ASSOC), 'Field');
+    $studentColumnsResult->free();
+    if (!in_array('admission_number', $studentColumns, true)) {
+        throw new RuntimeException('The student_data table is missing admission_number.');
+    }
+
+    $hasMoeAdmissionColumn = in_array('moe_admission_number', $studentColumns, true);
+    $identifierColumns = $hasMoeAdmissionColumn
+        ? 'admission_number, moe_admission_number, '
+        : 'admission_number, ';
+    $identifierPlaceholders = $hasMoeAdmissionColumn ? '?, ?, ' : '?, ';
+    $identifierUpdates = $hasMoeAdmissionColumn
+        ? 'admission_number = VALUES(admission_number), moe_admission_number = VALUES(moe_admission_number),'
+        : 'admission_number = VALUES(admission_number),';
     $officialStatement = $db->prepare(
         "INSERT INTO student_data
-            (admission_number, region, given_name, father_name, grandfather_name, sex,
+            ({$identifierColumns}region, given_name, father_name, grandfather_name, sex,
              total_mark, disability, minority, field_of_study, placement_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
-         ON DUPLICATE KEY UPDATE 
-            region = VALUES(region), 
+         VALUES ({$identifierPlaceholders}?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
+         ON DUPLICATE KEY UPDATE
+            {$identifierUpdates}
+            region = VALUES(region),
             given_name = VALUES(given_name),
-            father_name = VALUES(father_name), 
+            father_name = VALUES(father_name),
             grandfather_name = VALUES(grandfather_name),
-            sex = VALUES(sex), 
-            total_mark = VALUES(total_mark), 
-            disability = VALUES(disability), 
+            sex = VALUES(sex),
+            total_mark = VALUES(total_mark),
+            disability = VALUES(disability),
             minority = VALUES(minority),
             field_of_study = VALUES(field_of_study)"
     );
@@ -125,7 +145,11 @@ try {
         }
 
         // Header normalization accepts case and punctuation variations such as camelCase and snake_case.
-        $admissionNumber = trim((string) ministryRowValue($row, $normalizedHeaders, ['AdmissionNumber', 'admission_number', 'student_id']));
+        $admissionNumber = trim((string) ministryRowValue(
+            $row,
+            $normalizedHeaders,
+            ['moe_admission_number', 'AdmissionNumber', 'admission_number', 'student_id']
+        ));
         $region          = trim((string) ministryRowValue($row, $normalizedHeaders, ['Region', 'region']));
         $givenName       = trim((string) ministryRowValue($row, $normalizedHeaders, ['GivenName', 'given_name', 'first_name']));
         $fatherName      = trim((string) ministryRowValue($row, $normalizedHeaders, ['FatherName', 'father_name', 'last_name']));
@@ -166,19 +190,36 @@ try {
 
         $mark = (float) $totalMarkValue;
 
-        $officialStatement->bind_param(
-            'ssssssdsss',
-            $admissionNumber,
-            $region,
-            $givenName,
-            $fatherName,
-            $grandFatherName,
-            $sex,
-            $mark,
-            $disability,
-            $minority,
-            $fieldOfStudy
-        );
+        if ($hasMoeAdmissionColumn) {
+            $officialStatement->bind_param(
+                'sssssssdsss',
+                $admissionNumber,
+                $admissionNumber,
+                $region,
+                $givenName,
+                $fatherName,
+                $grandFatherName,
+                $sex,
+                $mark,
+                $disability,
+                $minority,
+                $fieldOfStudy
+            );
+        } else {
+            $officialStatement->bind_param(
+                'ssssssdsss',
+                $admissionNumber,
+                $region,
+                $givenName,
+                $fatherName,
+                $grandFatherName,
+                $sex,
+                $mark,
+                $disability,
+                $minority,
+                $fieldOfStudy
+            );
+        }
 
         if (!$officialStatement->execute()) {
             throw new RuntimeException('Official student import failed on row ' . ($index + 1) . ': ' . $officialStatement->error);
@@ -191,6 +232,13 @@ try {
         throw new RuntimeException('Unable to commit the MoSHE import.');
     }
 
+    logActivity(
+        $db,
+        $auditActor['id'],
+        $auditActor['name'],
+        'data.import',
+        "Imported MoSHE student data: {$imported} records processed."
+    );
     $officialStatement->close();
     $db->close();
 

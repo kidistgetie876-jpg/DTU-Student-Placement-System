@@ -58,34 +58,143 @@ function placementNormalizeStream(string $stream): string
     return $normalized;
 }
 
+function placementDepartmentStream(array $department): string
+{
+    $rawStream = strtolower(preg_replace(
+        '/[^a-z]/i',
+        '',
+        (string) ($department['stream'] ?? '')
+    ));
+    if (str_contains($rawStream, 'natural')) {
+        return 'natural';
+    }
+    if (str_contains($rawStream, 'social')) {
+        return 'social';
+    }
+    $stream = placementNormalizeStream($rawStream);
+    if (in_array($stream, ['natural', 'social'], true)) {
+        return $stream;
+    }
+    if ($stream !== '') {
+        return $stream;
+    }
+
+    $group = strtolower(preg_replace(
+        '/[^a-z]/i',
+        '',
+        (string) ($department['placement_group'] ?? '')
+    ));
+    $college = strtolower(preg_replace(
+        '/[^a-z]/i',
+        '',
+        (string) ($department['college_name'] ?? $department['college'] ?? '')
+    ));
+    if (str_contains($group, 'natural') || str_contains($college, 'natural')
+        || str_contains($college, 'health') || str_contains($college, 'gafat')
+        || str_contains($college, 'technology')) {
+        return 'natural';
+    }
+    if (str_contains($group, 'social') || str_contains($group, 'law')
+        || str_contains($college, 'social') || str_contains($college, 'law')) {
+        return 'social';
+    }
+
+    return '';
+}
+
+function placementResolveAllocatedCollegeName(
+    string $pendingAllocationCollege,
+    string $firstSemesterPlacementCollege
+): string {
+    $firstSemesterPlacementCollege = trim($firstSemesterPlacementCollege);
+    if ($firstSemesterPlacementCollege !== '') {
+        return $firstSemesterPlacementCollege;
+    }
+
+    return trim($pendingAllocationCollege);
+}
+
+function placementNormalizeStudentStatus(string $status): string
+{
+    $normalizedStatus = strtolower(trim(str_replace(['_', '-'], ' ', $status)));
+    $normalizedStatus = preg_replace('/\s+/', ' ', $normalizedStatus) ?? $normalizedStatus;
+
+    switch ($normalizedStatus) {
+        case 'pending second semester':
+        case 'pending 2 semester':
+            return 'pending 2nd semester';
+        case 'pending first semester':
+        case 'pending 1 semester':
+            return 'pending 1st semester';
+        default:
+            return $normalizedStatus;
+    }
+}
+
+function placementStudentStatusLabel(string $status): string
+{
+    switch (placementNormalizeStudentStatus($status)) {
+        case 'pending':
+            return 'Pending';
+        case 'pending 1st semester':
+            return 'Pending 1st Semester';
+        case 'pending 2nd semester':
+            return 'Pending 2nd Semester';
+        default:
+            return trim($status);
+    }
+}
+
+function placementNormalizeStudentStatusSql(string $expression): string
+{
+    $normalized = "LOWER(TRIM(REPLACE(REPLACE(COALESCE({$expression}, ''), '_', ' '), '-', ' ')))";
+
+    return "CASE
+        WHEN {$normalized} IN ('pending second semester', 'pending 2 semester') THEN 'pending 2nd semester'
+        WHEN {$normalized} IN ('pending first semester', 'pending 1 semester') THEN 'pending 1st semester'
+        ELSE {$normalized}
+    END";
+}
+
 function placementDepartmentCapacityCollegeName(array $department): string
 {
-    $labels = [
-        'health_science' => 'College of Health Science',
-        'git' => 'Gafat Institute of Technology',
-        'other_natural_science' => 'College of Other Natural Sciences',
-        'law' => 'School of Law',
-        'other_social_science' => 'College of Other Social Sciences',
-    ];
-    $group = placementDepartmentGroup($department);
-    return $labels[$group] ?? trim((string) ($department['college_name'] ?? ''));
+    return trim((string) ($department['college_name'] ?? $department['college'] ?? ''));
 }
 
 function placementDepartmentAvailability(array $department): array
 {
     $group = placementDepartmentGroup($department);
+    if (in_array($group, ['health_science', 'git', 'law'], true)) {
+        $inferredSemester = 1;
+    } elseif (in_array($group, ['other_natural_science', 'other_social_science'], true)) {
+        $inferredSemester = 2;
+    } else {
+        $inferredSemester = null;
+    }
+    $explicitSemester = isset($department['offered_semester'])
+        && in_array((int) $department['offered_semester'], [1, 2], true)
+        ? (int) $department['offered_semester']
+        : null;
+    $firstSemesterOnly = array_key_exists('is_first_semester_only', $department)
+        ? in_array(
+            strtolower(trim((string) $department['is_first_semester_only'])),
+            ['1', 'true', 'yes', 'on'],
+            true
+        )
+        : $inferredSemester === 1;
+
     return [
-        'placement_group' => $group,
-        'offered_semester' => (int) ($department['offered_semester'] ?? 1),
-        'is_first_semester_only' => (int) ($department['is_first_semester_only'] ?? 0),
+        'placement_group' => $group !== '' ? $group : (string) ($department['placement_group'] ?? ''),
+        'offered_semester' => $explicitSemester ?? $inferredSemester ?? 1,
+        'is_first_semester_only' => (int) $firstSemesterOnly,
     ];
 }
 
-function placementFirstSemesterCandidateStatusEligible(string $status, bool $hasFirstSemesterPlacement): bool
+function placementFirstSemesterCandidateStatusEligible(string $status): bool
 {
-    $normalizedStatus = strtolower(trim($status));
+    $normalizedStatus = placementNormalizeStudentStatus($status);
     if ($normalizedStatus === 'pending 2nd semester') {
-        return !$hasFirstSemesterPlacement;
+        return false;
     }
 
     return in_array(
@@ -172,31 +281,117 @@ function placementDepartmentMatchesAllocation(array $department, array $allocati
 {
     $allocationCollegeId = (int) ($allocation['college_id'] ?? 0);
     $departmentCollegeId = (int) ($department['college_id'] ?? 0);
+    if ($allocationCollegeId > 0 && $departmentCollegeId > 0
+        && $departmentCollegeId === $allocationCollegeId
+    ) {
+        return true;
+    }
+
+    $allocationCollege = (string) (
+        $allocation['college_name']
+        ?? $allocation['college']
+        ?? $allocation['allocated_college']
+        ?? ''
+    );
+    $departmentCollege = (string) (
+        $department['college_name']
+        ?? $department['college']
+        ?? $department['collegeName']
+        ?? ''
+    );
+    $allocationCollegeName = normalizeStudentPlacementCollegeName($allocationCollege);
+    $departmentCollegeName = normalizeStudentPlacementCollegeName($departmentCollege);
+    if (
+        $allocationCollegeName !== ''
+        && $departmentCollegeName !== ''
+        && $allocationCollegeName === $departmentCollegeName
+    ) {
+        return true;
+    }
     if ($allocationCollegeId > 0 && $departmentCollegeId > 0) {
-        return $departmentCollegeId === $allocationCollegeId;
+        return false;
     }
 
-    $allocationCollegeName = strtolower(preg_replace(
-        '/[^a-z0-9]/i',
-        '',
-        placementDepartmentCapacityCollegeName($allocation)
-    ));
-    $departmentCollegeName = strtolower(preg_replace(
-        '/[^a-z0-9]/i',
-        '',
-        placementDepartmentCapacityCollegeName($department)
-    ));
-    if ($allocationCollegeName !== '' && $departmentCollegeName !== '') {
-        return $allocationCollegeName === $departmentCollegeName;
+    $allocationStream = (string) ($allocation['stream'] ?? '');
+    $departmentStream = (string) ($department['stream'] ?? '');
+    $allocationGroup = normalizeStudentPlacementGroup(
+        (string) ($allocation['placement_group'] ?? $allocation['group'] ?? ''),
+        $allocationCollege,
+        $allocationStream
+    );
+    $departmentGroup = normalizeStudentPlacementGroup(
+        (string) ($department['placement_group'] ?? ''),
+        $departmentCollege,
+        $departmentStream
+    );
+    if ($allocationGroup !== '' && $departmentGroup === $allocationGroup) {
+        return true;
     }
 
-    $allocationGroup = placementDepartmentGroup($allocation);
-    if ($allocationGroup === '') {
-        $allocationGroup = strtolower(trim((string) ($allocation['placement_group'] ?? '')));
+    return false;
+}
+
+function placementDepartmentMatchesStudentPlacementScope(
+    array $department,
+    int $semester,
+    string $stream,
+    ?array $allocation = null
+): bool {
+    if (
+        !placementDepartmentCanBePreferred($department, $stream, $semester)
+        || placementDepartmentStream($department) !== placementNormalizeStream($stream)
+    ) {
+        return false;
     }
 
-    return $allocationGroup !== ''
-        && placementDepartmentGroup($department) === $allocationGroup;
+    if ($semester !== 2) {
+        return true;
+    }
+
+    return $allocation !== null
+        && (
+            trim((string) ($allocation['stream'] ?? '')) === ''
+            || placementNormalizeStream((string) $allocation['stream']) === placementNormalizeStream($stream)
+        )
+        && placementDepartmentMatchesAllocation($department, $allocation);
+}
+
+function placementSecondSemesterChoiceAllocation(
+    array $preferences,
+    array $departments,
+    string $stream
+): ?array {
+    usort($preferences, static function (array $left, array $right): int {
+        return (int) ($left['priority'] ?? 99) <=> (int) ($right['priority'] ?? 99);
+    });
+
+    foreach ($preferences as $preference) {
+        $department = placementResolveDepartmentPreference($preference, $departments);
+        if (
+            $department === null
+            || !placementDepartmentCanBePreferred($department, $stream, 2)
+            || placementDepartmentStream($department) !== placementNormalizeStream($stream)
+        ) {
+            continue;
+        }
+
+        $collegeName = placementDepartmentCapacityCollegeName($department);
+        $placementGroup = placementDepartmentGroup($department);
+        if ($collegeName === '' || $placementGroup === '') {
+            continue;
+        }
+
+        $collegeId = (int) ($department['college_id'] ?? 0);
+        return [
+            'college_id' => $collegeId > 0 ? $collegeId : null,
+            'college_name' => $collegeName,
+            'stream' => trim((string) ($department['stream'] ?? '')) ?: $stream,
+            'placement_group' => $placementGroup,
+            'choice_rank' => (int) ($preference['priority'] ?? $preference['rank'] ?? 0),
+        ];
+    }
+
+    return null;
 }
 
 function placementCollegeCapacityTotals(array $departments): array
@@ -601,7 +796,7 @@ function placementExpandCollegePreferences(array $preferences, array $department
         $expandedDepartments = [];
         $normalizedStream = placementNormalizeStream($stream);
         foreach ($departments as $department) {
-            $departmentStream = placementNormalizeStream((string) ($department['stream'] ?? ''));
+            $departmentStream = placementDepartmentStream($department);
             if (
                 placementPreferenceCollegeKey($department) !== $preferenceCollegeKey
                 || $departmentStream !== $normalizedStream
@@ -695,7 +890,7 @@ function placementBroadChoiceAllocationTarget(
     $normalizedStream = placementNormalizeStream($stream);
     foreach ($departments as $department) {
         if (placementDepartmentGroup($department) !== $group
-            || placementNormalizeStream((string) ($department['stream'] ?? '')) !== $normalizedStream) {
+            || placementDepartmentStream($department) !== $normalizedStream) {
             continue;
         }
 
@@ -756,7 +951,7 @@ function placementFirstSemesterAllocationTarget(
                 foreach ($departments as $department) {
                     if (
                         placementDepartmentGroup($department) !== $targetGroup
-                        || placementNormalizeStream((string) ($department['stream'] ?? '')) !== $normalizedStream
+                        || placementDepartmentStream($department) !== $normalizedStream
                     ) {
                         continue;
                     }
@@ -869,35 +1064,21 @@ function placementFirstSemesterAllocationTarget(
                         ];
                     }
                 }
-                $targetDepartments = $isCollegeSpecificGroup
-                    ? [$department]
-                    : $departments;
-                foreach ($targetDepartments as $targetDepartment) {
-                    if (
-                        placementDepartmentGroup($targetDepartment) !== $targetGroup
-                        || $isCollegeSpecificGroup
-                            && placementCollegeCapacityKey($targetDepartment) !== $collegeCapacityKey
-                    ) {
-                        continue;
-                    }
-                    return [
-                        'college_id' => $isCollegeSpecificGroup
-                            ? (int) ($targetDepartment['college_id'] ?? 0)
-                            : null,
-                        'college_name' => $isCollegeSpecificGroup
-                            && trim((string) ($targetDepartment['college_name'] ?? '')) !== ''
-                                ? (string) $targetDepartment['college_name']
-                                : placementDepartmentCapacityCollegeName($targetDepartment),
-                        'college_capacity_key' => $isCollegeSpecificGroup
-                            ? $collegeCapacityKey
-                            : null,
-                        'stream' => (string) ($targetDepartment['stream'] ?? $stream),
-                        'placement_group' => $targetGroup,
-                        'choice_rank' => (int) ($preference['priority'] ?? 0),
-                    ];
+                $targetCollegeName = trim((string) ($department['college_name'] ?? ''));
+                if ($targetCollegeName === '') {
+                    $targetCollegeName = placementDepartmentCapacityCollegeName($department);
                 }
-                break;
+                $targetCollegeId = (int) ($department['college_id'] ?? 0);
+                return [
+                    'college_id' => $targetCollegeId > 0 ? $targetCollegeId : null,
+                    'college_name' => $targetCollegeName,
+                    'college_capacity_key' => $collegeCapacityKey,
+                    'stream' => (string) ($department['stream'] ?? $stream),
+                    'placement_group' => $targetGroup,
+                    'choice_rank' => (int) ($preference['priority'] ?? 0),
+                ];
             }
+            break;
         }
     }
 

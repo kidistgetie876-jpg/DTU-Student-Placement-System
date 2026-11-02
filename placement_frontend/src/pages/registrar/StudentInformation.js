@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../services/api.js";
 
+const EMPTY_STUDENTS = [];
+
 const parseYesNo = (value) => {
   if (value === null || value === undefined) return false;
   if (typeof value === "boolean") return value;
@@ -31,7 +33,7 @@ const formatCumulativeScore = (value, cap = 100) => {
 };
 
 const StudentInformation = ({
-  students: initialStudents = [],
+  students: initialStudents = EMPTY_STUDENTS,
   onEditScores,
 }) => {
   const [students, setStudents] = useState(initialStudents);
@@ -41,6 +43,9 @@ const StudentInformation = ({
   const [search, setSearch] = useState("");
   const [streamFilter, setStreamFilter] = useState("all");
   const [expandedScoreStudent, setExpandedScoreStudent] = useState(null);
+  const [studentIdDrafts, setStudentIdDrafts] = useState({});
+  const [assigningStudentId, setAssigningStudentId] = useState(null);
+  const [assignmentError, setAssignmentError] = useState("");
   const itemsPerPage = 5;
 
   const loadStudents = async () => {
@@ -83,6 +88,9 @@ const StudentInformation = ({
     return students.filter((student) => {
       const fieldOfStudy = student?.field_of_study;
       const fields = [
+        student?.student_id,
+        student?.university_student_id,
+        student?.moe_admission_number,
         student?.admission_number,
         student?.given_name,
         student?.father_name,
@@ -121,6 +129,30 @@ const StudentInformation = ({
     await loadStudents();
   };
 
+  const assignUniversityStudentId = async (student) => {
+    setAssigningStudentId(student.student_data_id);
+    setAssignmentError("");
+    try {
+      const response = await api.post("api/registrar/assign_student_id.php", {
+        student_data_id: student.student_data_id,
+        student_id: studentIdDrafts[student.student_data_id] || "",
+      });
+      if (response.data?.success !== true) {
+        throw new Error(response.data?.message || "Unable to assign University Student ID.");
+      }
+      setStudentIdDrafts((current) => {
+        const next = { ...current };
+        delete next[student.student_data_id];
+        return next;
+      });
+      await loadStudents();
+    } catch (error) {
+      setAssignmentError(error.response?.data?.message || error.message || "Unable to assign University Student ID.");
+    } finally {
+      setAssigningStudentId(null);
+    }
+  };
+
   return (
     <div style={{ position: "relative" }}>
       <div
@@ -151,7 +183,7 @@ const StudentInformation = ({
             <input
               type="text"
               className="form-control form-control-sm"
-              placeholder="Search admission number, given name, or father name..."
+              placeholder="Search university ID, Ministry number, name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ minWidth: "260px" }}
@@ -169,6 +201,7 @@ const StudentInformation = ({
         </div>
 
         <div className="card-body p-0">
+          {assignmentError && <div className="alert alert-danger m-3 mb-0" role="alert">{assignmentError}</div>}
           {loadError ? (
             <div className="p-4 text-danger" role="alert">
               {loadError}
@@ -184,11 +217,12 @@ const StudentInformation = ({
               <div className="table-responsive">
                 <table
                   className="table table-hover align-middle mb-0"
-                  style={{ minWidth: "1600px" }}
+                  style={{ minWidth: "1700px" }}
                 >
                   <thead className="table-light">
                     <tr>
-                      <th>Admission Number</th>
+                      <th>University Student ID</th>
+                      <th>Ministry Admission Number</th>
                       <th>First Name</th>
                       <th>Father Name</th>
                       <th>Grandfather Name</th>
@@ -219,7 +253,10 @@ const StudentInformation = ({
                       const status = student.placement_status || "Pending";
                       const normalizedPlacementStatus = String(status).trim().toLowerCase();
                       const scoreBreakdown = student.score_breakdown;
-                      const scoreExpanded = expandedScoreStudent === student.admission_number;
+                      const universityId = student.student_id || student.university_student_id || "";
+                      const moeAdmissionNumber = student.moe_admission_number || student.admission_number || "";
+                      const rowIdentifier = universityId || moeAdmissionNumber;
+                      const scoreExpanded = expandedScoreStudent === rowIdentifier;
                       const fieldOfStudy = String(
                         student.field_of_study ||
                           student.fieldOfStudy ||
@@ -232,13 +269,16 @@ const StudentInformation = ({
                         <React.Fragment key={`${student.id ?? student.admission_number ?? student.id_number ?? "student"}-${index}`}>
                         <tr>
                           <td className="fw-bold text-primary">
-                            {student.admission_number || "—"}
+                            {universityId || "—"}
+                          </td>
+                          <td>
+                            {moeAdmissionNumber || "—"}
                           </td>
                           <td>{student.given_name ?? "—"}</td>
                           <td>{student.father_name ?? "—"}</td>
                           <td>{student.grandfather_name ?? "—"}</td>
                           <td>{student.sex || "—"}</td>
-                          <td>{student.region || "—"}</td>
+                          <td>{student.region || student.Region || "—"}</td>
                           <td>{fieldOfStudy || "—"}</td>
                           <td className="text-center">
                             {student.total_mark ?? "—"}
@@ -276,9 +316,9 @@ const StudentInformation = ({
                               type="button"
                               className="btn btn-link btn-sm d-block mx-auto p-0 mt-1"
                               aria-expanded={scoreExpanded}
-                              aria-label={`${scoreExpanded ? "Hide" : "Show"} score breakdown for ${student.admission_number}`}
+                              aria-label={`${scoreExpanded ? "Hide" : "Show"} score breakdown for ${rowIdentifier}`}
                               onClick={() => setExpandedScoreStudent(
-                                scoreExpanded ? null : student.admission_number,
+                                scoreExpanded ? null : rowIdentifier,
                               )}
                             >
                               {scoreExpanded ? "Hide breakdown" : "Score breakdown"}
@@ -299,7 +339,30 @@ const StudentInformation = ({
                             </span>
                           </td>
                           <td className="text-center">
-                            {onEditScores ? (
+                            {!universityId ? (
+                              <div className="d-flex gap-1">
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm"
+                                  aria-label={`University Student ID for ${moeAdmissionNumber || "student"}`}
+                                  placeholder="Leave blank to auto-generate"
+                                  maxLength={50}
+                                  value={studentIdDrafts[student.student_data_id] || ""}
+                                  onChange={(event) => setStudentIdDrafts((current) => ({
+                                    ...current,
+                                    [student.student_data_id]: event.target.value,
+                                  }))}
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary text-nowrap"
+                                  onClick={() => assignUniversityStudentId(student)}
+                                  disabled={assigningStudentId === student.student_data_id}
+                                >
+                                  {assigningStudentId === student.student_data_id ? "Saving..." : "Assign ID"}
+                                </button>
+                              </div>
+                            ) : onEditScores ? (
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline-secondary"
@@ -307,16 +370,14 @@ const StudentInformation = ({
                               >
                                 Update Scores
                               </button>
-                            ) : (
-                              "—"
-                            )}
+                            ) : "—"}
                           </td>
                         </tr>
                         {scoreExpanded && (
                           <tr>
-                            <td colSpan={15} className="bg-body-tertiary px-4 py-3">
+                            <td colSpan={16} className="bg-body-tertiary px-4 py-3">
                               <section
-                                aria-label={`Cumulative score breakdown for ${student.admission_number}`}
+                                aria-label={`Cumulative score breakdown for ${rowIdentifier}`}
                                 className="border rounded bg-white p-3"
                               >
                                 <h6 className="fw-bold mb-3">Cumulative Score Breakdown</h6>

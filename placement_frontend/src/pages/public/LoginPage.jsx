@@ -182,7 +182,10 @@ const LoginPage = () => {
           localStorage.setItem('user', JSON.stringify(data.user));
           localStorage.setItem('role', data.user.role);
           if (data.user.id_number) {
-            localStorage.setItem('admission_number', data.user.id_number);
+            localStorage.setItem(
+              'admission_number',
+              data.user.admission_number || data.user.moe_admission_number || data.user.id_number
+            );
           }
         }
 

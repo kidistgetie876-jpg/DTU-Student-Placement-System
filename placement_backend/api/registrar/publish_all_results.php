@@ -1,5 +1,7 @@
 <?php
 include __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../common/student_placement_schema.php';
+require_once __DIR__ . '/../common/student_placement_notifications.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -20,6 +22,23 @@ try {
     if (!in_array('status', $placementColumns, true) || !in_array('dept_name', $placementColumns, true)) {
         throw new RuntimeException('Placement results are missing required status or department columns.');
     }
+    if (!in_array('id', $placementColumns, true)) {
+        throw new RuntimeException('Placement results are missing their identifier column.');
+    }
+
+    $studentIdExpression = in_array('student_id', $placementColumns, true) ? 'student_id' : 'NULL';
+    $admissionNumberParts = [];
+    foreach (['admission_number', 'id_number'] as $column) {
+        if (in_array($column, $placementColumns, true)) {
+            $admissionNumberParts[] = "NULLIF(TRIM(`{$column}`), '')";
+        }
+    }
+    $admissionNumberExpression = $admissionNumberParts
+        ? 'COALESCE(' . implode(', ', $admissionNumberParts) . ", '')"
+        : "''";
+    $semesterExpression = in_array('placement_semester', $placementColumns, true)
+        ? 'placement_semester'
+        : '1';
 
     $updates = ["status = 'Published'"];
     if (in_array('approved_at', $placementColumns, true)) {
@@ -29,11 +48,29 @@ try {
         $updates[] = 'is_published = 1';
     }
 
+    ensureStudentPlacementNotificationSchema($db);
     $db->begin_transaction();
+
+    $eligibleResults = $db->query(
+        "SELECT id, {$studentIdExpression} AS student_id,
+                {$admissionNumberExpression} AS admission_number,
+                dept_name, {$semesterExpression} AS placement_semester
+         FROM placement_results
+          WHERE LOWER(TRIM(REPLACE(REPLACE(COALESCE(status, ''), '_', ' '), '-', ' ')))
+              IN ('pending', 'approved', 'assigned', 'pending approval')
+           AND NULLIF(TRIM(COALESCE(dept_name, '')), '') IS NOT NULL
+           AND LOWER(TRIM(dept_name)) NOT IN ('not assigned', 'unassigned')"
+    );
+    if (!$eligibleResults) {
+        throw new RuntimeException('Unable to load placement results to publish: ' . $db->error);
+    }
+    $notifications = $eligibleResults->fetch_all(MYSQLI_ASSOC);
+    $eligibleResults->free();
 
     $statement = $db->prepare(
         'UPDATE placement_results SET ' . implode(', ', $updates) . "
-         WHERE LOWER(TRIM(status)) IN ('pending', 'approved')
+          WHERE LOWER(TRIM(REPLACE(REPLACE(COALESCE(status, ''), '_', ' '), '-', ' ')))
+              IN ('pending', 'approved', 'assigned', 'pending approval')
            AND NULLIF(TRIM(COALESCE(dept_name, '')), '') IS NOT NULL
            AND LOWER(TRIM(dept_name)) NOT IN ('not assigned', 'unassigned')"
     );
@@ -44,6 +81,23 @@ try {
 
     $updated = $statement->affected_rows;
     $statement->close();
+    foreach ($notifications as $placement) {
+        $studentId = isset($placement['student_id']) && (int) $placement['student_id'] > 0
+            ? (int) $placement['student_id']
+            : null;
+        $semester = in_array((int) $placement['placement_semester'], [1, 2], true)
+            ? (int) $placement['placement_semester']
+            : 1;
+        createStudentPlacementNotification(
+            $db,
+            $studentId,
+            (string) $placement['admission_number'],
+            $semester,
+            'placement_published',
+            "Your Semester {$semester} placement in {$placement['dept_name']} has been published. Your placement is complete.",
+            (int) $placement['id']
+        );
+    }
     if (!$db->commit()) {
         throw new RuntimeException('Unable to commit published placement results: ' . $db->error);
     }

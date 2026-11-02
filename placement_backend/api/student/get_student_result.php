@@ -42,7 +42,7 @@ $studentCoalesce = static function (string ...$fields): string {
     return count($fields) === 1 ? $fields[0] : 'COALESCE(' . implode(', ', $fields) . ')';
 };
 $studentIdentifiers = array_values(array_filter(
-    ['admission_number', 'id_number', 'user_id'],
+    ['student_id', 'moe_admission_number', 'admission_number', 'id_number', 'user_id'],
     $hasStudentColumn
 ));
 if (!$studentIdentifiers) {
@@ -67,6 +67,12 @@ if ($usersColumnsResult) {
         if ($hasStudentColumn('id_number') && in_array('id_number', $usersColumns, true)) {
             $joinConditions[] = 'u.id_number = sd.id_number';
         }
+        if ($hasStudentColumn('student_id') && in_array('id_number', $usersColumns, true)) {
+            $joinConditions[] = 'u.id_number = sd.student_id';
+        }
+        if ($hasStudentColumn('moe_admission_number') && in_array('id_number', $usersColumns, true)) {
+            $joinConditions[] = 'u.id_number = sd.moe_admission_number';
+        }
         if ($joinConditions) {
             $userJoin = implode(' OR ', $joinConditions);
             $accountId = $studentCoalesce($accountId, 'u.id');
@@ -78,7 +84,8 @@ if ($usersColumnsResult) {
 
 $studentSelect = [
     $accountId . ' AS user_id',
-    $studentCoalesce($studentField('admission_number'), $studentField('id_number')) . ' AS admission_number',
+    $studentCoalesce($studentField('moe_admission_number'), $studentField('admission_number'), $studentField('id_number')) . ' AS admission_number',
+    $studentField('student_id') . ' AS student_id',
     $studentCoalesce($studentField('given_name'), $studentField('first_name')) . ' AS given_name',
     $studentCoalesce($studentField('father_name'), $studentField('last_name')) . ' AS father_name',
     $studentField('email') . ' AS email',
@@ -135,7 +142,8 @@ if (!$student) {
     ]);
 }
 
-$admissionNumber = trim((string) ($student['admission_number'] ?? '')) ?: $studentId;
+$admissionNumber = trim((string) ($student['admission_number'] ?? ''));
+$universityStudentId = trim((string) ($student['student_id'] ?? ''));
 $numericId = (int) ($student['user_id'] ?? 0);
 
 $placementColumnsResult = $db->query('SHOW COLUMNS FROM placement_results');
@@ -151,22 +159,26 @@ if ($placementColumnsResult) {
         $publishedCondition = in_array('is_published', $placementColumns, true)
             ? 'is_published = 1'
             : "LOWER(TRIM(status)) IN ('approved', 'published')";
-        $placementWhere = implode(' OR ', array_map(
-            static fn (string $column): string => "`{$column}` = ?",
-            $placementIdentifiers
-        ));
+        $placementConditions = [];
+        $placementParameters = [];
+        foreach ($placementIdentifiers as $column) {
+            $identifiersForColumn = $column === 'student_id'
+                ? [$universityStudentId, $numericId > 0 ? (string) $numericId : '']
+                : [$universityStudentId, $admissionNumber];
+            foreach (array_unique(array_filter($identifiersForColumn, static fn (string $value): bool => $value !== '')) as $identifier) {
+                $placementConditions[] = "`{$column}` = ?";
+                $placementParameters[] = $identifier;
+            }
+        }
+        $placementWhere = implode(' OR ', $placementConditions);
         $order = in_array('id', $placementColumns, true) ? ' ORDER BY `id` DESC' : '';
-        $placementStatement = $db->prepare(
-            "SELECT * FROM placement_results
-             WHERE ({$placementWhere}) AND {$publishedCondition}{$order} LIMIT 1"
-        );
+        $placementStatement = $placementWhere !== ''
+            ? $db->prepare(
+                "SELECT * FROM placement_results
+                 WHERE ({$placementWhere}) AND {$publishedCondition}{$order} LIMIT 1"
+            )
+            : false;
         if ($placementStatement) {
-            $placementParameters = array_map(
-                static fn (string $column): string => $column === 'student_id' && $numericId > 0
-                    ? (string) $numericId
-                    : $admissionNumber,
-                $placementIdentifiers
-            );
             $placementTypes = str_repeat('s', count($placementParameters));
             $placementBindArguments = [$placementTypes];
             foreach ($placementParameters as $index => $value) {
@@ -205,14 +217,16 @@ studentResultResponse([
     'assigned' => $isAssigned,
     'student' => [
         'id' => $numericId,
-        'id_number' => $admissionNumber,
+        'id_number' => $universityStudentId,
+        'student_id' => $universityStudentId,
         'name' => trim((string) ($student['given_name'] ?? '') . ' ' . (string) ($student['father_name'] ?? '')),
         'email' => $student['email'] ?? '',
         'status' => $resultStatus,
         'department' => $effectiveDepartment,
     ],
     'placement' => [
-        'id_number' => $admissionNumber,
+        'id_number' => $universityStudentId,
+        'student_id' => $universityStudentId,
         'assigned_department' => $effectiveDepartment,
         'college' => $placement['college_name'] ?? '',
         'stream' => $placement['stream'] ?? $student['stream'] ?? 'N/A',

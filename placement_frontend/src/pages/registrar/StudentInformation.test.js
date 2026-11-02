@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import StudentInformation from './StudentInformation';
 import api from '../../services/api.js';
@@ -9,12 +9,14 @@ jest.mock('../../services/api.js', () => ({
   default: {
     get: jest.fn(),
     delete: jest.fn(),
+    post: jest.fn(),
   },
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
   api.get.mockResolvedValue({ data: { success: true, students: [] } });
+  api.post.mockResolvedValue({ data: { success: true } });
 });
 
 afterEach(() => {
@@ -125,8 +127,8 @@ describe('StudentInformation', () => {
     ]);
     const studentCells = within(studentRow).getAllByRole('cell');
     expect(studentCells[11]).toHaveTextContent('No');
-    expect(studentCells[12]).toHaveTextContent('0.00');
-    expect(studentCells[13]).toHaveTextContent('Pending');
+    expect(studentCells[13]).toHaveTextContent('0.00');
+    expect(studentCells[14]).toHaveTextContent('Pending');
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
@@ -186,14 +188,15 @@ describe('StudentInformation', () => {
     expect(within(studentRow).getByText('Mekonnen')).toBeInTheDocument();
     expect(within(studentRow).getByText('Kebede')).toBeInTheDocument();
     expect(screen.getByText('Female')).toBeInTheDocument();
-    expect(screen.getByText('Natural Science')).toBeInTheDocument();
+    expect(within(studentRow).getByText('Natural Science')).toBeInTheDocument();
     expect(screen.getByText('450')).toBeInTheDocument();
     expect(screen.getByText('3.75')).toBeInTheDocument();
     expect(screen.getByText('27')).toBeInTheDocument();
-    expect(within(studentRow).getByRole('cell', { name: '98.88' })).toBeInTheDocument();
+    expect(within(studentRow).getByRole('cell', { name: /98\.88/ })).toBeInTheDocument();
     expect(screen.getByText('Yes')).toBeInTheDocument();
     [
-      'Admission Number',
+      'University Student ID',
+      'Ministry Admission Number',
       'First Name',
       'Father Name',
       'Grandfather Name',
@@ -202,7 +205,7 @@ describe('StudentInformation', () => {
       'Field of Study',
       'Total Mark (G12)',
       'CGPA',
-      'COC Score',
+      'COC',
       'Cumulative Score',
       'Disability',
       'Minority',
@@ -223,7 +226,9 @@ describe('StudentInformation', () => {
     expect(within(breakdown).getByText('Applied rule: Minority / Developing Region (Female)')).toBeInTheDocument();
     expect(within(breakdown).getByText('Scenario bonus: +10.00')).toBeInTheDocument();
     expect(within(breakdown).getByText('Total bonus: +10.00')).toBeInTheDocument();
-    expect(within(breakdown).getByText(/88\.88 \+ 10\.00 = 98\.88/)).toBeInTheDocument();
+    expect(within(breakdown).getByText((_, element) => (
+      element?.textContent?.replace(/\s+/g, ' ').trim() === '88.88 + 10.00 = 98.88'
+    ))).toBeInTheDocument();
 
     expect(api.get).toHaveBeenCalledWith('api/registrar/student_information.php', {
       withCredentials: true,
@@ -258,8 +263,8 @@ describe('StudentInformation', () => {
     );
 
     const cells = within(screen.getByRole('row', { name: /DTU-006/ })).getAllByRole('cell');
-    expect(cells[8]).toHaveTextContent('3.50');
-    expect(cells[9]).toHaveTextContent('—');
+    expect(cells[9]).toHaveTextContent('3.50');
+    expect(cells[10]).toHaveTextContent('—');
   });
 
   it('clamps cumulative scores above 100 in the student table', () => {
@@ -303,6 +308,7 @@ describe('StudentInformation', () => {
         <StudentInformation
           students={[{
             admission_number: 'DTU-003',
+            student_id: 'DTU16R2003',
             given_name: 'Hana',
             father_name: 'Abebe',
             region: 'Oromia',
@@ -325,12 +331,16 @@ describe('StudentInformation', () => {
         <StudentInformation students={[
           {
             admission_number: 'DTU-001',
+            student_id: 'DTU16R2001',
+            moe_admission_number: 'MOE-001',
             given_name: 'Aster',
             father_name: 'Mekonnen',
             grandfather_name: 'Kebede',
           },
           {
             admission_number: 'DTU-002',
+            student_id: 'DTU16R2002',
+            moe_admission_number: 'MOE-002',
             given_name: 'Sara',
             father_name: 'Tadesse',
             grandfather_name: 'Abebe',
@@ -339,14 +349,37 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const searchInput = screen.getByPlaceholderText('Search admission number, given name, or father name...');
+    const searchInput = screen.getByPlaceholderText('Search university ID, Ministry number, name...');
     fireEvent.change(searchInput, { target: { value: 'mekonnen' } });
-    expect(screen.getByRole('row', { name: /DTU-001/ })).toBeInTheDocument();
-    expect(screen.queryByRole('row', { name: /DTU-002/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /DTU16R2001/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /DTU16R2002/ })).not.toBeInTheDocument();
 
-    fireEvent.change(searchInput, { target: { value: 'DTU-002' } });
-    expect(screen.getByRole('row', { name: /DTU-002/ })).toBeInTheDocument();
-    expect(screen.queryByRole('row', { name: /DTU-001/ })).not.toBeInTheDocument();
+    fireEvent.change(searchInput, { target: { value: 'MOE-002' } });
+    expect(screen.getByRole('row', { name: /DTU16R2002/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /DTU16R2001/ })).not.toBeInTheDocument();
+  });
+
+  it('lets the registrar assign a University Student ID to an imported record', async () => {
+    render(
+      <MemoryRouter>
+        <StudentInformation students={[{
+          student_data_id: 7,
+          moe_admission_number: 'MOE-007',
+          admission_number: 'MOE-007',
+          given_name: 'Aster',
+        }]} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText('University Student ID for MOE-007'), {
+      target: { value: 'DTU16R2007' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Assign ID' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/registrar/assign_student_id.php',
+      { student_data_id: 7, student_id: 'DTU16R2007' },
+    ));
   });
 
   it('renders region and field-of-study values from alternate API casing', () => {

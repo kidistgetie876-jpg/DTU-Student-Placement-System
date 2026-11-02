@@ -147,6 +147,25 @@ function ensureStudentAdmissionNotificationReadsTable(mysqli $db): void
     }
 }
 
+
+function ensureStudentNotificationDismissalsTable(mysqli $db): void
+{
+    $created = $db->query(
+        'CREATE TABLE IF NOT EXISTS student_notification_dismissals (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            student_id INT NULL,
+            admission_number VARCHAR(100) NULL,
+            notification_id INT NOT NULL,
+            dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_student_notification_dismissal (student_id, notification_id),
+            UNIQUE KEY uq_admission_notification_dismissal (admission_number, notification_id),
+            KEY idx_student_notification_dismissals_notification (notification_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    if (!$created) {
+        throw new RuntimeException('Unable to prepare notification dismissal storage.');
+    }
+}
 function studentNotificationTableExists(mysqli $db, string $table): bool
 {
     if (!preg_match('/^[a-z_]+$/i', $table)) {

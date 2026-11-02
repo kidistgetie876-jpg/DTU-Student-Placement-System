@@ -1,9 +1,17 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ManageUsers from './ManageUsers';
 import EditUser from './EditUser';
 import api from '../../services/api.js';
+
+jest.mock('../../components/layout/Sidebar.jsx', () => () => <aside aria-label="Admin sidebar" />);
+jest.mock('../../components/layout/DashboardHeader.jsx', () => () => <header aria-label="Admin dashboard header" />);
+
+const CurrentLocation = () => {
+  const location = useLocation();
+  return <output data-testid="current-location">{`${location.pathname}${location.search}`}</output>;
+};
 
 jest.mock('../../services/api.js', () => ({
   __esModule: true,
@@ -38,8 +46,8 @@ describe('ManageUsers', () => {
       last_name: 'Smith',
       username: 'alice',
       email: 'alice@example.com',
-      role: 'student',
-      id_number: 'DTU16R1001',
+      role: 'registrar',
+      id_number: 'DTU-REG-001',
     };
     api.get
       .mockResolvedValueOnce({ data: { users: [originalUser] } })
@@ -66,9 +74,14 @@ describe('ManageUsers', () => {
     );
 
     expect(await screen.findByText('alice')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /change role/i })).not.toBeInTheDocument();
+    expect(screen.getByText('registrar')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /edit/i }));
     expect(await screen.findByRole('heading', { name: 'Edit User' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Admin sidebar' })).toBeInTheDocument();
+    expect(screen.getByRole('banner', { name: 'Admin dashboard header' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option').map((option) => option.value)).toEqual(['head', 'admin', 'registrar']);
 
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Alicia' } });
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Jones' } });
@@ -87,7 +100,7 @@ describe('ManageUsers', () => {
       expect.objectContaining({
         first_name: 'Alicia',
         last_name: 'Jones',
-        id_number: 'DTU16R1001',
+        id_number: 'DTU-REG-001',
       })
     ));
     expect(await screen.findByText('alice2')).toBeInTheDocument();
@@ -98,6 +111,85 @@ describe('ManageUsers', () => {
     expect(screen.getByText('Alicia')).toBeInTheDocument();
     expect(screen.getByText('Jones')).toBeInTheDocument();
     expect(screen.getByText('admin')).toBeInTheDocument();
+  });
+
+  it('keeps student accounts read-only in admin user management', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        users: [{ id: 86, username: 'student86', email: 'student86@gmail.com', role: 'student' }],
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ManageUsers />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('student86')).toBeInTheDocument();
+    expect(screen.getAllByText('Registrar-managed')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('option').map((option) => option.value)).toEqual(['head', 'admin', 'registrar']);
+  });
+
+  it('does not open the edit form for student accounts', async () => {
+    const student = {
+      id: 86,
+      first_name: 'Student',
+      last_name: 'Example',
+      username: 'student86',
+      email: 'student86@gmail.com',
+      role: 'student',
+    };
+
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: '/edit-user/86',
+        state: { user: student },
+      }]}>
+        <Routes>
+          <Route path="/edit-user/:id" element={<EditUser />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Student accounts are managed through the Registrar workflow and cannot be edited here.'
+    );
+    expect(screen.queryByLabelText('Role')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save Changes' })).not.toBeInTheDocument();
+  });
+
+  it('returns to the User Management tab from Edit User', async () => {
+    const user = {
+      id: 8,
+      first_name: 'Taylor',
+      last_name: 'Morgan',
+      username: 'taylor',
+      email: 'taylor@gmail.com',
+      role: 'registrar',
+    };
+
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: '/edit-user/8',
+        state: { user },
+      }]}>
+        <Routes>
+          <Route path="/edit-user/:id" element={<EditUser />} />
+          <Route
+            path="/admin-dashboard"
+            element={<><div>User Management</div><CurrentLocation /></>}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(await screen.findByText('User Management')).toBeInTheDocument();
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/admin-dashboard?tab=manage');
   });
 
   it('falls back to the database ID when id_number is missing', async () => {

@@ -45,16 +45,18 @@ if ($userId <= 0 || !in_array($role, ['registrar', 'admin'], true)) {
 
 $input = json_decode((string) file_get_contents('php://input'), true);
 $admissionNumbers = is_array($input) ? ($input['admissionNumbers'] ?? []) : [];
+$targetSemester = is_array($input) ? ($input['semester'] ?? null) : null;
 $expectedSemester = is_array($input) ? ($input['expectedSemester'] ?? null) : null;
 if (
     !is_array($input)
     || ($input['confirmed'] ?? false) !== true
     || !is_array($admissionNumbers)
+    || !in_array($targetSemester, [1, 2], true)
     || !in_array($expectedSemester, [1, 2], true)
 ) {
     deleteSelectedStudentChoicesRespond([
         'success' => false,
-        'message' => 'Confirmation, the current active semester, and selected student identifiers are required.',
+        'message' => 'Confirmation, a target semester, the current active semester, and selected student identifiers are required.',
     ], 400);
 }
 
@@ -79,6 +81,12 @@ if (!$db instanceof mysqli) {
 try {
     $settingsColumns = studentPlacementTableColumns($db, 'placement_settings');
     $choiceColumns = studentPlacementTableColumns($db, 'student_choices');
+    if (!in_array('semester', $choiceColumns, true)) {
+        deleteSelectedStudentChoicesRespond([
+            'success' => false,
+            'message' => 'Student choices are not semester-scoped. No choices were changed.',
+        ], 409);
+    }
     if (!in_array('active_semester', $settingsColumns, true)) {
         deleteSelectedStudentChoicesRespond([
             'success' => false,
@@ -161,6 +169,7 @@ try {
     }
 
     $profileColumns = studentPlacementTableColumns($db, 'student_data');
+    $placementColumns = studentPlacementTableColumns($db, 'placement_results');
     $admissionColumn = in_array('admission_number', $profileColumns, true)
         ? 'admission_number'
         : (in_array('id_number', $profileColumns, true) ? 'id_number' : '');
@@ -204,14 +213,14 @@ try {
     }
 
     $profileAssignments = [];
-    if ($activeSemester === 1 && in_array('placement_status', $profileColumns, true)) {
+    if ($targetSemester === 1 && in_array('placement_status', $profileColumns, true)) {
         $profileAssignments[] = "placement_status = 'Pending'";
     }
-    if (in_array('is_choice_editable', $profileColumns, true)) {
+    if ($targetSemester === 1 && in_array('is_choice_editable', $profileColumns, true)) {
         $profileAssignments[] = 'is_choice_editable = 1';
     }
     foreach (['is_locked', 'is_placement_locked'] as $lockColumn) {
-        if (in_array($lockColumn, $profileColumns, true)) {
+        if ($targetSemester === 1 && in_array($lockColumn, $profileColumns, true)) {
             $profileAssignments[] = "`{$lockColumn}` = 0";
         }
     }
@@ -219,39 +228,91 @@ try {
     $profileValues = [];
     $profileTypes = '';
     if ($admissionColumn !== '') {
-        $profileConditions[] = "TRIM(`{$admissionColumn}`) IN ({$placeholders})";
+        $profileConditions[] = "TRIM(sd.`{$admissionColumn}`) IN ({$placeholders})";
         foreach ($admissionNumbers as $admissionNumber) {
             $profileValues[] = $admissionNumber;
             $profileTypes .= 's';
         }
     }
     if (in_array('user_id', $profileColumns, true) && $resolvedStudentIds) {
-        $profileConditions[] = 'user_id IN (' . implode(', ', array_fill(0, count($resolvedStudentIds), '?')) . ')';
+        $profileConditions[] = 'sd.user_id IN (' . implode(', ', array_fill(0, count($resolvedStudentIds), '?')) . ')';
         foreach ($resolvedStudentIds as $id) {
             $profileValues[] = $id;
             $profileTypes .= 'i';
         }
     }
-    if (!$profileAssignments || !$profileConditions) {
-        throw new RuntimeException('Selected student profile lock fields or identifiers are unavailable.');
-    }
-    $profileUpdate = $db->prepare(
-        'UPDATE student_data SET ' . implode(', ', $profileAssignments)
-        . ' WHERE (' . implode(' OR ', $profileConditions) . ')'
-    );
-    if (!$profileUpdate) {
-        throw new RuntimeException('Unable to prepare selected student preference unlock: ' . $db->error);
-    }
-    deleteSelectedStudentChoicesBind($profileUpdate, $profileTypes, $profileValues);
-    if (!$profileUpdate->execute()) {
-        $error = $profileUpdate->error;
-        $profileUpdate->close();
-        throw new RuntimeException('Unable to unlock selected students: ' . $error);
-    }
-    $profileUpdate->close();
+    if ($targetSemester === 1) {
+        if (!$profileAssignments || !$profileConditions) {
+            throw new RuntimeException('Selected student profile lock fields or identifiers are unavailable.');
+        }
+        $profileUpdateConditions = ['(' . implode(' OR ', $profileConditions) . ')'];
+        if (in_array('placement_status', $profileColumns, true)) {
+            $profileUpdateConditions[] = "LOWER(TRIM(COALESCE(sd.placement_status, ''))) IN (
+                '', 'pending', 'pending 1st semester', 'not assigned', 'unassigned'
+            )";
+        }
 
+        $assignedPlacementIdentityConditions = [];
+        if (in_array('student_id', $placementColumns, true) && in_array('user_id', $profileColumns, true)) {
+            $assignedPlacementIdentityConditions[] = 'pr.student_id = sd.user_id';
+        }
+        foreach (['admission_number', 'id_number'] as $profileIdentityColumn) {
+            if (!in_array($profileIdentityColumn, $profileColumns, true)) {
+                continue;
+            }
+            foreach (['admission_number', 'id_number'] as $placementIdentityColumn) {
+                if (in_array($placementIdentityColumn, $placementColumns, true)) {
+                    $assignedPlacementIdentityConditions[] =
+                        "TRIM(pr.`{$placementIdentityColumn}`) = TRIM(sd.`{$profileIdentityColumn}`)";
+                }
+            }
+        }
+        $assignedPlacementDepartmentConditions = [];
+        foreach (['dept_id', 'department_id'] as $departmentIdColumn) {
+            if (in_array($departmentIdColumn, $placementColumns, true)) {
+                $assignedPlacementDepartmentConditions[] = "COALESCE(pr.`{$departmentIdColumn}`, 0) > 0";
+            }
+        }
+        foreach (['dept_name', 'department_name', 'assigned_department'] as $departmentNameColumn) {
+            if (in_array($departmentNameColumn, $placementColumns, true)) {
+                $assignedPlacementDepartmentConditions[] = "NULLIF(TRIM(COALESCE(pr.`{$departmentNameColumn}`, '')), '') IS NOT NULL
+                    AND LOWER(TRIM(pr.`{$departmentNameColumn}`)) NOT IN ('not assigned', 'unassigned')";
+            }
+        }
+        if ($assignedPlacementIdentityConditions && $assignedPlacementDepartmentConditions) {
+            $activePlacementConditions = [
+                '(' . implode(' OR ', $assignedPlacementIdentityConditions) . ')',
+                '(' . implode(' OR ', $assignedPlacementDepartmentConditions) . ')',
+            ];
+            if (in_array('status', $placementColumns, true)) {
+                $activePlacementConditions[] =
+                    "LOWER(TRIM(COALESCE(pr.status, ''))) NOT IN ('rejected', 'cancelled', 'canceled')";
+            }
+            $profileUpdateConditions[] = 'NOT EXISTS (
+                SELECT 1 FROM placement_results pr
+                WHERE ' . implode(' AND ', $activePlacementConditions) . '
+            )';
+        }
+        $profileUpdate = $db->prepare(
+            'UPDATE student_data sd SET ' . implode(', ', $profileAssignments)
+            . ' WHERE ' . implode(' AND ', $profileUpdateConditions)
+        );
+        if (!$profileUpdate) {
+            throw new RuntimeException('Unable to prepare selected student preference unlock: ' . $db->error);
+        }
+        deleteSelectedStudentChoicesBind($profileUpdate, $profileTypes, $profileValues);
+        if (!$profileUpdate->execute()) {
+            $error = $profileUpdate->error;
+            $profileUpdate->close();
+            throw new RuntimeException('Unable to unlock selected students: ' . $error);
+        }
+        $profileUpdate->close();
+    }
+
+    $values[] = $targetSemester;
+    $types .= 'i';
     $statement = $db->prepare(
-        'DELETE FROM student_choices WHERE (' . implode(' OR ', $conditions) . ')'
+        'DELETE FROM student_choices WHERE (' . implode(' OR ', $conditions) . ') AND semester = ?'
     );
     if (!$statement) {
         throw new RuntimeException('Unable to prepare selected choice deletion: ' . $db->error);
@@ -271,11 +332,12 @@ try {
     $db->close();
     deleteSelectedStudentChoicesRespond([
         'success' => true,
-        'semester' => $activeSemester,
+        'semester' => $targetSemester,
         'students_requested' => count($admissionNumbers),
         'choices_deleted' => $deletedCount,
         'message' => sprintf(
-            'Deleted choice records across all semesters for %d selected student(s) (%d record(s)). Their preferences are unlocked for resubmission.',
+            'Deleted Semester %d choices for %d selected student(s) (%d record(s)); choices for the other semester were preserved.',
+            $targetSemester,
             count($admissionNumbers),
             $deletedCount
         ),

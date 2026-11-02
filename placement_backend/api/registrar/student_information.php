@@ -62,9 +62,105 @@ try {
         'female_disability_minority_bonus_points' => (float) ($settings['female_disability_minority_bonus_points'] ?? 15),
     ];
 
-    $result = $db->query(
-        "SELECT id AS student_data_id,
-                admission_number AS admission_number,
+    $studentColumns = studentPlacementTableColumns($db, 'student_data');
+    $placementColumns = studentPlacementTableColumns($db, 'placement_results');
+    $placementIdentityConditions = [];
+    if (in_array('user_id', $studentColumns, true) && in_array('student_id', $placementColumns, true)) {
+        $placementIdentityConditions[] = 'pr.student_id = sd.user_id';
+    }
+    foreach (['admission_number', 'id_number'] as $studentIdentity) {
+        if (!in_array($studentIdentity, $studentColumns, true)) {
+            continue;
+        }
+        foreach (['admission_number', 'id_number'] as $placementIdentity) {
+            if (in_array($placementIdentity, $placementColumns, true)) {
+                $placementIdentityConditions[] = "TRIM(pr.`{$placementIdentity}`) = TRIM(sd.`{$studentIdentity}`)";
+            }
+        }
+    }
+    $assignedDepartmentConditions = [];
+    foreach (['dept_id', 'department_id'] as $departmentIdColumn) {
+        if (in_array($departmentIdColumn, $placementColumns, true)) {
+            $assignedDepartmentConditions[] = "COALESCE(pr.`{$departmentIdColumn}`, 0) > 0";
+        }
+    }
+    foreach (['dept_name', 'department_name'] as $departmentNameColumn) {
+        if (in_array($departmentNameColumn, $placementColumns, true)) {
+            $assignedDepartmentConditions[] = "NULLIF(TRIM(COALESCE(pr.`{$departmentNameColumn}`, '')), '') IS NOT NULL";
+        }
+    }
+    if (in_array('placement_status', $studentColumns, true)
+        && $placementIdentityConditions
+        && $assignedDepartmentConditions) {
+        $validPlacementConditions = [
+            '(' . implode(' OR ', $placementIdentityConditions) . ')',
+            '(' . implode(' OR ', $assignedDepartmentConditions) . ')',
+        ];
+        if (in_array('status', $placementColumns, true)) {
+            $validPlacementConditions[] = "LOWER(TRIM(COALESCE(pr.status, ''))) NOT IN ('rejected', 'cancelled', 'canceled')";
+        }
+        $placementResultMatch = 'EXISTS (
+            SELECT 1 FROM placement_results pr
+            WHERE ' . implode(' AND ', $validPlacementConditions) . '
+        )';
+        $approvedPlacementResultMatch = in_array('status', $placementColumns, true)
+            ? 'EXISTS (
+                SELECT 1 FROM placement_results pr
+                WHERE ' . implode(' AND ', $validPlacementConditions) . "
+                  AND LOWER(TRIM(COALESCE(pr.status, ''))) IN ('approved', 'published')
+            )"
+            : '0 = 1';
+        $studentStatusSql = "LOWER(TRIM(REPLACE(REPLACE(COALESCE(sd.placement_status, ''), '_', ' '), '-', ' ')))";
+        if (!$db->query(
+            "UPDATE student_data sd
+             SET sd.placement_status = CASE WHEN {$approvedPlacementResultMatch}
+                 THEN 'Approved' ELSE 'Pending Approval' END
+             WHERE {$studentStatusSql} IN ('pending 2nd semester', 'pending second semester')
+               AND {$placementResultMatch}"
+        )) {
+            throw new RuntimeException('Unable to synchronize placed student statuses: ' . $db->error);
+        }
+    }
+
+    $universityIdExpression = in_array('student_id', $studentColumns, true) ? 'student_id' : 'NULL';
+    $moeAdmissionExpression = in_array('moe_admission_number', $studentColumns, true)
+        ? 'moe_admission_number'
+        : (in_array('admission_number', $studentColumns, true) ? 'admission_number' : 'NULL');
+    $admissionExpression = in_array('admission_number', $studentColumns, true) ? 'admission_number' : 'NULL';
+    $availableIdentityExpressions = array_values(array_filter([
+        $admissionExpression !== 'NULL' ? "({$admissionExpression} IS NOT NULL AND {$admissionExpression} <> '')" : null,
+        $moeAdmissionExpression !== 'NULL' ? "({$moeAdmissionExpression} IS NOT NULL AND {$moeAdmissionExpression} <> '')" : null,
+        $universityIdExpression !== 'NULL' ? "({$universityIdExpression} IS NOT NULL AND {$universityIdExpression} <> '')" : null,
+    ]));
+    $identityFilter = $availableIdentityExpressions ? implode(' OR ', $availableIdentityExpressions) : '1 = 0';
+    $searchTerm = trim((string) ($_GET['search'] ?? ''));
+    $searchExpressions = array_values(array_filter([
+        $universityIdExpression !== 'NULL' ? $universityIdExpression : null,
+        $moeAdmissionExpression !== 'NULL' ? $moeAdmissionExpression : null,
+        $admissionExpression !== 'NULL' ? $admissionExpression : null,
+    ]));
+    $searchCondition = '';
+    $searchValues = [];
+    if ($searchTerm !== '' && $searchExpressions) {
+        $searchCondition = ' AND (' . implode(
+            ' OR ',
+            array_map(
+                static fn(string $expression): string => "LOWER(COALESCE(NULLIF(TRIM({$expression}), ''), '')) LIKE ?",
+                $searchExpressions
+            )
+        ) . ')';
+        $searchValues = array_fill(
+            0,
+            count($searchExpressions),
+            '%' . strtolower($searchTerm) . '%'
+        );
+    }
+
+    $studentQuery = "SELECT id AS student_data_id,
+                {$universityIdExpression} AS student_id,
+                {$universityIdExpression} AS university_student_id,
+                {$moeAdmissionExpression} AS moe_admission_number,
+                {$admissionExpression} AS admission_number,
                 given_name AS given_name,
                 father_name AS father_name,
                 grandfather_name AS grandfather_name,
@@ -79,9 +175,27 @@ try {
                 minority AS minority,
                 placement_status AS placement_status
          FROM student_data
-         WHERE admission_number IS NOT NULL AND admission_number <> ''
-         ORDER BY admission_number"
-    );
+         WHERE ({$identityFilter}){$searchCondition}
+         ORDER BY COALESCE(NULLIF({$universityIdExpression}, ''), {$admissionExpression})";
+    if ($searchValues) {
+        $searchStatement = $db->prepare($studentQuery);
+        if (!$searchStatement) {
+            throw new RuntimeException('Unable to prepare student search query: ' . $db->error);
+        }
+        $bindings = [str_repeat('s', count($searchValues))];
+        foreach (array_keys($searchValues) as $index) {
+            $bindings[] = &$searchValues[$index];
+        }
+        if (!call_user_func_array([$searchStatement, 'bind_param'], $bindings)) {
+            throw new RuntimeException('Unable to bind student search parameters.');
+        }
+        if (!$searchStatement->execute()) {
+            throw new RuntimeException('Unable to search student records: ' . $searchStatement->error);
+        }
+        $result = $searchStatement->get_result();
+    } else {
+        $result = $db->query($studentQuery);
+    }
     if (!$result) {
         throw new RuntimeException('Unable to query official student records: ' . $db->error);
     }
@@ -127,10 +241,12 @@ try {
                 );
             }
         }
-        unset($student['student_data_id']);
         $students[] = $student;
     }
     $result->free();
+    if (isset($searchStatement)) {
+        $searchStatement->close();
+    }
     $persistScore->close();
     $db->close();
     studentInformationRespond(['success' => true, 'students' => $students]);

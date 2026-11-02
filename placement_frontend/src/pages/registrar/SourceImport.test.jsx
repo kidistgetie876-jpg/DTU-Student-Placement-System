@@ -1,4 +1,4 @@
-import { parseSourceImportGrid } from './SourceImport.jsx';
+import { parseSourceImportCsv, parseSourceImportGrid } from './SourceImport.jsx';
 import { ministryImportColumns } from './MinistryImport.jsx';
 import { simsImportColumns } from './SIMSImport.jsx';
 
@@ -12,7 +12,7 @@ describe('source import spreadsheet formats', () => {
 
     expect(parsed.headersFound).toBe(true);
     expect(parsed.rows).toEqual([{
-      AdmissionNumber: 'DTU/001',
+      moe_admission_number: 'DTU/001',
       Region: 'Afar',
       GivenName: 'Sara',
       FatherName: 'Kebede',
@@ -33,7 +33,7 @@ describe('source import spreadsheet formats', () => {
 
     expect(parsed.headersFound).toBe(true);
     expect(parsed.rows[0]).toEqual({
-      AdmissionNumber: 'DTU/002',
+      moe_admission_number: 'DTU/002',
       Region: 'Amhara',
       GivenName: 'Abebe',
       FatherName: 'Kebede',
@@ -44,6 +44,37 @@ describe('source import spreadsheet formats', () => {
       Disability: 'Yes',
       FieldOfStudy: 'Engineering',
     });
+  });
+
+  it('detects semicolon-delimited CSV and preserves commas inside quoted values', () => {
+    const parsed = parseSourceImportCsv(
+      'moe_admission_number;Region;GivenName;FatherName;GrandFatherName;Sex;TotalMark;Minority;Disability;FieldOfStudy\r\n'
+      + 'MOE-004;Amhara;Sara;"Kebede, Jr.";Abebe;Female;88;Yes;No;Medicine',
+      ministryImportColumns,
+    );
+
+    expect(parsed.headersFound).toBe(true);
+    expect(parsed.rows[0]).toEqual({
+      moe_admission_number: 'MOE-004',
+      Region: 'Amhara',
+      GivenName: 'Sara',
+      FatherName: 'Kebede, Jr.',
+      GrandFatherName: 'Abebe',
+      Sex: 'Female',
+      TotalMark: '88',
+      Minority: 'Yes',
+      Disability: 'No',
+      FieldOfStudy: 'Medicine',
+    });
+  });
+
+  it('reports the source row number when values do not match the header column count', () => {
+    expect(() => parseSourceImportGrid([
+      ministryImportColumns.map(({ header }) => header),
+      ['MOE-005', 'Amhara', 'Sara', 'Kebede', 'Abebe', 'Female', '88', 'Yes', 'No'],
+    ], ministryImportColumns)).toThrow(
+      'Row 2 has 9 columns; the header has 10. Check for missing or extra delimiters.',
+    );
   });
 
   it('does not accept the deprecated BenefitGroup column in place of Minority and Disability', () => {

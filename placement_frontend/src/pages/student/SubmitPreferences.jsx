@@ -18,6 +18,11 @@ export const hasDuplicateDepartmentChoices = (
   firstSemesterPreferences,
   semesterTwoPreferences,
 ) => {
+  if (Number(preferenceSemester) !== 2) {
+    const selectedGroups = firstSemesterPreferences.map((choice) => choice.group).filter(Boolean);
+    if (new Set(selectedGroups).size !== selectedGroups.length) return true;
+  }
+
   const selectedDepartments = Number(preferenceSemester) === 2
     ? semesterTwoPreferences.filter(Boolean).map(String)
     : firstSemesterPreferences.flatMap((choice) => (
@@ -265,7 +270,13 @@ const SubmitPreferences = ({
             >
               <option value="">-- Select preference --</option>
               {groupValues.map((option) => (
-                <option key={option} value={option}>
+                <option
+                  key={option}
+                  value={option}
+                  disabled={option !== choice.group && preferences.some((otherChoice, otherIndex) => (
+                    otherIndex !== index && otherChoice.group === option
+                  ))}
+                >
                   {groupLabel(option)}
                 </option>
               ))}
@@ -358,8 +369,6 @@ const SubmitPreferences = ({
                 </select>
               </label>
             )}
-            {['other_natural_science', 'other_social_science'].includes(choice.group)
-              && <p className="student-preferences-broad-note">This broad group is submitted as one preference; it is not expanded into individual departments.</p>}
           </section>
         );
       })}

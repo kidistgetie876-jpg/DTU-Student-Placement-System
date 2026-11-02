@@ -2,8 +2,10 @@
 require_once __DIR__ . '/../../config/cors.php';
 sendCorsHeaders();
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_semester.php';
 require_once __DIR__ . '/../common/student_placement_schema.php';
 require_once __DIR__ . '/../common/student_placement_allocation.php';
+require_once __DIR__ . '/../common/student_request_identity.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 function placementStatusRespond(array $payload, int $statusCode = 200): void
@@ -25,16 +27,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 try {
     $studentId = trim((string) ($_GET['student_id'] ?? ''));
     $admissionNumber = trim((string) ($_GET['admission_number'] ?? ''));
-    if ($admissionNumber === '' && $studentId !== '' && !ctype_digit($studentId)) {
-        $admissionNumber = $studentId;
-    }
-    if ($studentId === '' && $admissionNumber === '') {
-        placementStatusRespond(['success' => false, 'message' => 'A student ID or admission number is required.'], 400);
-    }
-
     $db = getDbConnection();
     if (!$db instanceof mysqli) {
         throw new RuntimeException('Database connection is unavailable.');
+    }
+    [$studentId, $admissionNumber] = resolveStudentRequestIdentity($db, $studentId, $admissionNumber);
+    if ($studentId === '' && $admissionNumber === '') {
+        placementStatusRespond(['success' => false, 'message' => 'A student ID or admission number is required.'], 400);
     }
 
     $studentColumns = studentPlacementTableColumns($db, 'student_data');
@@ -85,6 +84,7 @@ try {
         $statement->close();
     }
 
+    $status = placementStudentStatusLabel($status);
     $allocation = getStudentAllocatedPlacementGroup($db, $studentId, $admissionNumber);
     $secondSemesterPortal = getStudentSecondSemesterChoicePortalState(
         $db,
@@ -105,7 +105,7 @@ try {
             ? (int) $settings['active_semester']
             : 1;
     }
-    $secondSemesterStage = in_array(strtolower($status), [
+    $secondSemesterStage = in_array(placementNormalizeStudentStatus($status), [
         'pending 2nd semester',
         'placed in semester 1',
         'allocated',
@@ -121,19 +121,107 @@ try {
     $isLocked = $secondSemesterEligible
         ? $secondSemesterPortal['isFinalized']
         : (!$choiceEditable && isStudentChoiceEditingLocked($db, $studentId, $admissionNumber));
+    $latestPlacement = null;
+    $placementColumns = studentPlacementTableColumns($db, 'placement_results');
+    $placementIdentityConditions = [];
+    $placementIdentityValues = [];
+    $placementIdentityTypes = '';
+    if ($studentId !== '' && ctype_digit($studentId) && in_array('student_id', $placementColumns, true)) {
+        $placementIdentityConditions[] = 'pr.student_id = ?';
+        $placementIdentityValues[] = (int) $studentId;
+        $placementIdentityTypes .= 'i';
+    }
+    foreach (['admission_number', 'id_number'] as $identifierColumn) {
+        if ($admissionNumber !== '' && in_array($identifierColumn, $placementColumns, true)) {
+            $placementIdentityConditions[] = "TRIM(pr.`{$identifierColumn}`) = TRIM(?)";
+            $placementIdentityValues[] = $admissionNumber;
+            $placementIdentityTypes .= 's';
+        }
+    }
+    if ($placementIdentityConditions && in_array('status', $placementColumns, true)) {
+        $placementStatusExpression = studentPlacementTextExpression($placementColumns, 'pr', ['status'], "''");
+        $placementSemesterExpression = studentPlacementColumnExpression(
+            $placementColumns,
+            'pr',
+            ['placement_semester'],
+            '1'
+        );
+        $placementDepartmentExpression = studentPlacementTextExpression(
+            $placementColumns,
+            'pr',
+            ['dept_name', 'department_name']
+        );
+        $placementOrder = in_array('id', $placementColumns, true) ? ' ORDER BY pr.id DESC' : '';
+        $placementStatement = $db->prepare(
+            "SELECT {$placementStatusExpression} AS status,
+                    {$placementSemesterExpression} AS semester,
+                    {$placementDepartmentExpression} AS department
+             FROM placement_results pr
+             WHERE (" . implode(' OR ', $placementIdentityConditions) . "){$placementOrder}
+             LIMIT 1"
+        );
+        if (!$placementStatement) {
+            throw new RuntimeException('Unable to prepare the latest placement lookup: ' . $db->error);
+        }
+        $placementArguments = [$placementIdentityTypes];
+        foreach ($placementIdentityValues as $index => $value) {
+            $placementArguments[] = &$placementIdentityValues[$index];
+        }
+        if (!call_user_func_array([$placementStatement, 'bind_param'], $placementArguments)
+            || !$placementStatement->execute()) {
+            $error = $placementStatement->error;
+            $placementStatement->close();
+            throw new RuntimeException('Unable to load the latest placement: ' . $error);
+        }
+        $latestPlacement = $placementStatement->get_result()->fetch_assoc() ?: null;
+        $placementStatement->close();
+        if ($latestPlacement) {
+            $latestPlacement = [
+                'status' => placementStudentStatusLabel((string) $latestPlacement['status']),
+                'semester' => in_array((int) $latestPlacement['semester'], [1, 2], true)
+                    ? (int) $latestPlacement['semester']
+                    : 1,
+                'department' => trim((string) $latestPlacement['department']),
+            ];
+        }
+    }
+    $studentStatusIsPendingSecondSemester = placementNormalizeStudentStatus($status) === 'pending 2nd semester';
+    $latestPlacementStatus = trim((string) ($latestPlacement['status'] ?? ''));
+    $hasActiveAssignedPlacement = !empty($secondSemesterPortal['has_active_assigned_placement'])
+        || ($latestPlacement !== null && trim((string) ($latestPlacement['department'] ?? '')) !== '');
+    $placementStatus = $studentStatusIsPendingSecondSemester && !$hasActiveAssignedPlacement
+        ? $status
+        : ($latestPlacementStatus !== '' ? placementStudentStatusLabel($latestPlacementStatus) : $status);
+    if ($hasActiveAssignedPlacement && strtolower($placementStatus) === 'pending') {
+        $placementStatus = 'Pending Approval';
+    }
+    if ($hasActiveAssignedPlacement) {
+        $status = $placementStatus;
+    }
+    $assignedSemester = $studentStatusIsPendingSecondSemester
+        && !$hasActiveAssignedPlacement
+        ? 2
+        : (int) ($latestPlacement['semester'] ?? $activeSemester);
+    $assignedDepartment = trim((string) ($latestPlacement['department'] ?? ''));
     $db->close();
     placementStatusRespond([
         'success' => true,
         'status' => $status,
+        'placement_status' => $placementStatus,
+        'assigned_semester' => $assignedSemester,
+        'assigned_department' => $assignedDepartment,
         'isLocked' => $isLocked,
         'is_choice_editable' => $choiceEditable,
         'active_semester' => $activeSemester,
         'second_sem_choice_eligible' => $secondSemesterEligible,
         'is_second_sem_choice_open' => $secondSemesterOpen,
         'second_semester_choice_finalized' => $secondSemesterPortal['isFinalized'],
+        'has_active_assigned_placement' => $hasActiveAssignedPlacement,
         'message' => $secondSemesterPortal['message'],
         'allocated_college' => trim((string) ($allocation['college'] ?? '')),
+        'allocated_college_id' => (int) ($allocation['college_id'] ?? 0),
         'allocated_group' => (string) ($allocation['group'] ?? ''),
+        'latest_placement' => $latestPlacement,
     ]);
 } catch (Throwable $error) {
     error_log('Student placement status lookup failed: ' . $error->getMessage());

@@ -44,18 +44,45 @@ try {
         $result = $database->query(
             "SELECT MIN(colleges.id) AS id,
                     CASE
-                        WHEN LOWER(TRIM(colleges.name)) IN (
+                        WHEN LOWER(TRIM(streams.name)) IN ('natural', 'natural science')
+                         AND LOWER(TRIM(colleges.name)) IN (
                             'technology',
+                            'gafat tech',
                             'gafat institute of technology',
-                            'gefat institute of technology'
-                        ) THEN 'Gafat Institute of Technology'
+                            'gefat institute of technology',
+                            'gafat institute of technology (git)'
+                        ) THEN 'Gafat Institute of Technology (GIT)'
+                        WHEN LOWER(TRIM(streams.name)) IN ('natural', 'natural science')
+                         AND LOWER(TRIM(colleges.name)) IN ('health science', 'college of health science')
+                            THEN 'Health Science'
+                        WHEN LOWER(TRIM(streams.name)) IN ('natural', 'natural science')
+                         AND LOWER(TRIM(colleges.name)) IN (
+                            'other natural science',
+                            'college of natural and computational sciences',
+                            'college of agriculture and environmental sciences',
+                            'agriculture and environmental sciences',
+                            'freshman faculty'
+                        )
+                            THEN 'Other Natural Science'
+                        WHEN LOWER(TRIM(streams.name)) IN ('social', 'social science')
+                         AND LOWER(TRIM(colleges.name)) IN ('law', 'school of law', 'college of law')
+                            THEN 'School of Law'
+                        WHEN LOWER(TRIM(streams.name)) IN ('social', 'social science')
+                         AND LOWER(TRIM(colleges.name)) IN (
+                            'other social science',
+                            'college of social sciences and humanities',
+                            'social sciences and humanities',
+                            'college of business and economics',
+                            'business and economics'
+                        )
+                            THEN 'Other Social Science'
                         ELSE TRIM(colleges.name)
                     END AS name,
                     colleges.stream_id,
                     streams.name AS stream_name
              FROM colleges
              INNER JOIN streams ON streams.id = colleges.stream_id
-             GROUP BY colleges.stream_id, streams.name, colleges.name
+             GROUP BY colleges.stream_id, streams.name, name
              ORDER BY streams.name ASC, name ASC"
         );
         if (!$result) {
@@ -108,9 +135,35 @@ try {
     }
 
     $result = $database->query(
-        "SELECT DISTINCT TRIM(college_name) AS name, TRIM(stream) AS stream_name
+        "SELECT DISTINCT
+                CASE
+                    WHEN LOWER(TRIM(college_name)) IN (
+                        'technology', 'gafat tech', 'gafat institute of technology', 'gefat institute of technology',
+                        'gafat institute of technology (git)'
+                    ) THEN 'Gafat Institute of Technology (GIT)'
+                    WHEN LOWER(TRIM(college_name)) IN ('health science', 'college of health science') THEN 'Health Science'
+                    WHEN LOWER(TRIM(stream)) IN ('natural', 'natural science') THEN 'Other Natural Science'
+                    WHEN LOWER(TRIM(college_name)) IN ('law', 'school of law', 'college of law') THEN 'School of Law'
+                    ELSE 'Other Social Science'
+                END AS name,
+                TRIM(stream) AS stream_name
          FROM departments
          WHERE college_name IS NOT NULL AND TRIM(college_name) <> ''
+           AND (
+                (LOWER(TRIM(stream)) IN ('natural', 'natural science') AND LOWER(TRIM(college_name)) IN (
+                    'technology', 'gafat tech', 'gafat institute of technology', 'gefat institute of technology',
+                    'gafat institute of technology (git)',
+                    'health science', 'college of health science', 'other natural science',
+                    'college of natural and computational sciences', 'college of agriculture and environmental sciences',
+                    'agriculture and environmental sciences', 'freshman faculty'
+                ))
+                OR
+                (LOWER(TRIM(stream)) IN ('social', 'social science') AND LOWER(TRIM(college_name)) IN (
+                    'law', 'school of law', 'college of law', 'other social science',
+                    'college of social sciences and humanities', 'social sciences and humanities',
+                    'college of business and economics', 'business and economics'
+                ))
+           )
          ORDER BY stream_name ASC, name ASC"
     );
     if (!$result) {

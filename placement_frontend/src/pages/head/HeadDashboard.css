@@ -10,7 +10,7 @@
   overflow-x:hidden;
   border:0;
   border-radius:0;
-  background:linear-gradient(90deg, #1e3a8a 0%, #312e81 52%, #1e40af 100%);
+  background:var(--dtu-deep-blue);
   color:#ffffff;
   box-shadow:none;
   z-index:1020;

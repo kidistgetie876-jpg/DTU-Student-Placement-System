@@ -25,7 +25,8 @@ describe('StudentRegistration', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('Admission Number'), { target: { value: 'DTU16R2006' } });
+    fireEvent.change(screen.getByLabelText('Ministry Admission Number'), { target: { value: 'MOE-2026-2006' } });
+    fireEvent.change(screen.getByLabelText('University Student ID'), { target: { value: 'DTU16R2006' } });
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Aster' } });
     fireEvent.change(screen.getByLabelText('Father Name'), { target: { value: 'Mekonnen' } });
     fireEvent.change(screen.getByLabelText('Grandfather Name'), { target: { value: 'Kebede' } });
@@ -40,7 +41,8 @@ describe('StudentRegistration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Register Student' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/registrar/register_student.php', {
-      admission_number: 'DTU16R2006',
+      moe_admission_number: 'MOE-2026-2006',
+      student_id: 'DTU16R2006',
       given_name: 'Aster',
       father_name: 'Mekonnen',
       grandfather_name: 'Kebede',

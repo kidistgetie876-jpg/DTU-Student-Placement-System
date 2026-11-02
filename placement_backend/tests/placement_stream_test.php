@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../api/common/student_placement_schema.php';
+require_once __DIR__ . '/../config/placement_semester.php';
 
 function assertPlacementStreamMatch(bool $expected, bool $actual, string $scenario): void
 {
@@ -12,6 +13,11 @@ assertPlacementStreamMatch(
     true,
     studentPlacementStreamsMatch('Social Science', 'Social'),
     'Equivalent Social Science labels match'
+);
+assertPlacementStreamMatch(
+    true,
+    placementNormalizeStream('Social Science') === placementDepartmentStream(['stream' => 'Social']),
+    'Backend preference validation accepts the Social label for Social Science students'
 );
 assertPlacementStreamMatch(
     true,

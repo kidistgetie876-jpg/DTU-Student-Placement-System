@@ -1,15 +1,18 @@
 .admin-dashboard {
+  --admin-sidebar-width: 17rem;
   min-height: 100vh;
   background-color: #f8fafc;
   padding-top: 0;
 }
 
 .admin-dashboard .sidebar {
-  background: linear-gradient(180deg, #1e1b4b 0%, #172554 100%) !important;
+  background: var(--dtu-deep-blue) !important;
   position: fixed;
   left: 0;
   top: 76px;
-  width: 16.666667%;
+  flex: 0 0 var(--admin-sidebar-width);
+  width: var(--admin-sidebar-width);
+  max-width: var(--admin-sidebar-width);
   height: calc(100vh - 76px);
   min-height: 0;
   overflow-y: auto;
@@ -21,8 +24,10 @@
 }
 
 .admin-dashboard .main-content {
-  margin-left: 16.666667%;
-  width: calc(100% - 16.666667%);
+  flex: 0 0 calc(100% - var(--admin-sidebar-width));
+  width: calc(100% - var(--admin-sidebar-width));
+  max-width: calc(100% - var(--admin-sidebar-width));
+  margin-left: var(--admin-sidebar-width);
   min-height: calc(100vh - 76px);
 }
 
@@ -312,7 +317,7 @@
 }
 
 .dark-mode .admin-dashboard .sidebar {
-  background: #0f172a !important;
+  background: var(--dtu-deep-blue) !important;
   border-color: rgba(148, 163, 184, 0.12);
 }
 

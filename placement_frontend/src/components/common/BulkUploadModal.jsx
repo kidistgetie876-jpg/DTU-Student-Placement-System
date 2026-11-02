@@ -199,6 +199,11 @@ const BulkUploadModal = ({ isOpen, onClose, onSuccess, departments = [] }) => {
         const userPayload = {
           username: student.username,
           email: student.email,
+          first_name: student.first_name,
+          last_name: student.last_name,
+          phone_number: student.phone,
+          gender: student.gender,
+          stream: student.stream,
           password: Math.random().toString(36).slice(-8), // Generate temp password
           role: 'student',
         };

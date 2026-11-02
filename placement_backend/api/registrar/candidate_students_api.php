@@ -93,6 +93,7 @@ try {
     $userColumns = studentPlacementTableColumns($db, 'users');
     $choiceColumns = studentPlacementTableColumns($db, 'student_choices');
     $departmentColumns = studentPlacementTableColumns($db, 'departments');
+    $collegeCatalogColumns = studentPlacementTableColumns($db, 'colleges');
     $mosheColumns = studentPlacementTableColumns($db, 'moshe_students');
     $simsColumns = studentPlacementTableColumns($db, 'sims_students');
     $placementColumns = studentPlacementTableColumns($db, 'placement_results');
@@ -103,18 +104,18 @@ try {
         throw new RuntimeException('Student profile tables are missing the required account identifier columns.');
     }
 
-    $admissionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['admission_number', 'id_number']);
+    $admissionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['moe_admission_number', 'admission_number', 'id_number']);
+    $universityStudentIdExpression = studentPlacementTextExpression($studentColumns, 'sd', ['student_id']);
     if (in_array('id_number', $userColumns, true)) {
         $admissionExpression = "COALESCE(NULLIF({$admissionExpression}, ''), NULLIF(u.id_number, ''), '')";
     }
     if (in_array('user_id', $studentColumns, true)) {
         $userIdentityMatches = ['u.id = sd.user_id'];
         if (in_array('id_number', $userColumns, true)) {
-            $profileAdmissionColumn = in_array('admission_number', $studentColumns, true)
-                ? 'admission_number'
-                : (in_array('id_number', $studentColumns, true) ? 'id_number' : '');
-            if ($profileAdmissionColumn !== '') {
-                $userIdentityMatches[] = "TRIM(u.id_number) = TRIM(sd.`{$profileAdmissionColumn}`)";
+            foreach (['student_id', 'moe_admission_number', 'admission_number', 'id_number'] as $profileIdentifierColumn) {
+                if (in_array($profileIdentifierColumn, $studentColumns, true)) {
+                    $userIdentityMatches[] = "TRIM(u.id_number) = TRIM(sd.`{$profileIdentifierColumn}`)";
+                }
             }
         }
         $userJoin = 'LEFT JOIN users u ON (' . implode(' OR ', $userIdentityMatches)
@@ -139,8 +140,15 @@ try {
     }
     $simsJoin = '';
     if ($simsColumns && in_array('student_id', $simsColumns, true)) {
-        $simsJoin = " LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM({$admissionExpression})";
+        $simsJoin = " LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM({$admissionExpression})"
+            . ($universityStudentIdExpression !== 'NULL'
+                ? " OR TRIM(s.student_id) = TRIM({$universityStudentIdExpression})"
+                : '');
     }
+    $simsStudentIdExpression = $simsJoin !== ''
+        ? studentPlacementTextExpression($simsColumns, 's', ['student_id'])
+        : 'NULL';
+    $primaryStudentIdExpression = "COALESCE(NULLIF({$universityStudentIdExpression}, ''), NULLIF({$simsStudentIdExpression}, ''), '')";
     $choicesJoin = '';
     $choiceConditions = [];
     if (in_array('student_id', $choiceColumns, true)) {
@@ -176,6 +184,13 @@ try {
         && in_array('id', $departmentColumns, true) && $choiceDepartmentIdColumn !== ''
     ) {
         $departmentJoin = " LEFT JOIN departments d ON d.id = sc.`{$choiceDepartmentIdColumn}`";
+        if (
+            in_array('college_id', $departmentColumns, true)
+            && in_array('id', $collegeCatalogColumns, true)
+            && in_array('name', $collegeCatalogColumns, true)
+        ) {
+            $departmentJoin .= ' LEFT JOIN colleges c ON c.id = d.college_id';
+        }
     }
 
     $nameParts = [];
@@ -258,7 +273,19 @@ try {
             $choiceNameExpression = "COALESCE(NULLIF({$choiceNameExpression}, ''), d.name)";
         }
         if (in_array('college_name', $departmentColumns, true)) {
-            $choiceCollegeExpression = "COALESCE(NULLIF(d.college_name, ''), {$choiceCollegeExpression}, '')";
+            $choiceCollegeExpression = "COALESCE(NULLIF(d.college_name, ''), "
+                . (in_array('college_id', $departmentColumns, true)
+                    && in_array('id', $collegeCatalogColumns, true)
+                    && in_array('name', $collegeCatalogColumns, true)
+                    ? "NULLIF(c.name, ''), "
+                    : '')
+                . "{$choiceCollegeExpression}, '')";
+        } elseif (
+            in_array('college_id', $departmentColumns, true)
+            && in_array('id', $collegeCatalogColumns, true)
+            && in_array('name', $collegeCatalogColumns, true)
+        ) {
+            $choiceCollegeExpression = "COALESCE(NULLIF(c.name, ''), {$choiceCollegeExpression}, '')";
         }
         if (in_array('stream', $departmentColumns, true)) {
             $choiceStreamExpression = "COALESCE(NULLIF(d.stream, ''), {$choiceStreamExpression}, '')";
@@ -270,13 +297,81 @@ try {
         ['placement_status', 'status']
     );
     
-    $allocatedCollegeExpression = "''";
+    $pendingAllocationCollegeExpression = "''";
+    $firstSemesterDepartmentCollegeExpression = "''";
     $hasSecondSemesterAllocationExpression = '1';
     $allocationCollegeColumn = in_array('college_name', $collegeAllocationColumns, true)
         ? 'college_name'
         : (in_array('allocated_college', $collegeAllocationColumns, true) ? 'allocated_college' : '');
     $secondSemesterAllocationIdentities = [];
     if ($activeSemester === 2) {
+        $firstSemesterPlacementIdentityConditions = [];
+        if (in_array('student_id', $placementColumns, true)) {
+            $firstSemesterPlacementIdentityConditions[] = "pr.student_id = {$studentAccountId}";
+        }
+        foreach (['admission_number', 'id_number'] as $placementIdentityColumn) {
+            if (in_array($placementIdentityColumn, $placementColumns, true)) {
+                $firstSemesterPlacementIdentityConditions[] =
+                    "TRIM(pr.`{$placementIdentityColumn}`) = TRIM({$admissionExpression})";
+            }
+        }
+        $placementDepartmentColumn = in_array('dept_id', $placementColumns, true)
+            ? 'dept_id'
+            : (in_array('department_id', $placementColumns, true) ? 'department_id' : '');
+        $placementResultCollegeExpression = in_array('college_name', $placementColumns, true)
+            ? "NULLIF(TRIM(COALESCE(pr.college_name, '')), '')"
+            : "''";
+        $firstSemesterDepartmentJoin = '';
+        if ($placementDepartmentColumn !== '' && in_array('id', $departmentColumns, true)) {
+            $firstSemesterDepartmentJoin = " LEFT JOIN departments d_first"
+                . " ON d_first.id = pr.`{$placementDepartmentColumn}`";
+            $firstSemesterDepartmentCollegeExpression = "''";
+            if (in_array('college_name', $departmentColumns, true)) {
+                $firstSemesterDepartmentCollegeExpression = "NULLIF(TRIM(COALESCE(d_first.college_name, '')), '')";
+            }
+            if (
+                in_array('college_id', $departmentColumns, true)
+                && in_array('id', $collegeCatalogColumns, true)
+                && in_array('name', $collegeCatalogColumns, true)
+            ) {
+                $firstSemesterDepartmentJoin .= ' LEFT JOIN colleges c_first ON c_first.id = d_first.college_id';
+                $firstSemesterDepartmentCollegeExpression = $firstSemesterDepartmentCollegeExpression === "''"
+                    ? "NULLIF(TRIM(COALESCE(c_first.name, '')), '')"
+                    : "COALESCE({$firstSemesterDepartmentCollegeExpression}, "
+                        . "NULLIF(TRIM(COALESCE(c_first.name, '')), ''))";
+            }
+            if ($firstSemesterDepartmentCollegeExpression !== "''") {
+                $placementResultCollegeExpression = in_array('college_name', $placementColumns, true)
+                    ? "COALESCE({$placementResultCollegeExpression}, {$firstSemesterDepartmentCollegeExpression})"
+                    : $firstSemesterDepartmentCollegeExpression;
+            }
+        }
+        if (
+            $firstSemesterPlacementIdentityConditions
+            && $placementResultCollegeExpression !== "''"
+        ) {
+            $firstSemesterPlacementConditions = [
+                '(' . implode(' OR ', $firstSemesterPlacementIdentityConditions) . ')',
+                "{$placementResultCollegeExpression} IS NOT NULL",
+            ];
+            if (in_array('placement_semester', $placementColumns, true)) {
+                $firstSemesterPlacementConditions[] = 'pr.placement_semester = 1';
+            }
+            if (in_array('status', $placementColumns, true)) {
+                $firstSemesterPlacementConditions[] =
+                    "LOWER(TRIM(COALESCE(pr.status, ''))) NOT IN ('rejected', 'cancelled', 'canceled')";
+            }
+            $firstSemesterPlacementOrder = in_array('id', $placementColumns, true)
+                ? ' ORDER BY pr.id DESC'
+                : '';
+            $firstSemesterDepartmentCollegeExpression = '(SELECT '
+                . $placementResultCollegeExpression . '
+                FROM placement_results pr
+                ' . $firstSemesterDepartmentJoin . '
+                WHERE ' . implode(' AND ', $firstSemesterPlacementConditions) . '
+                ' . $firstSemesterPlacementOrder . '
+                LIMIT 1)';
+        }
         if (in_array('student_id', $collegeAllocationColumns, true)) {
             $secondSemesterAllocationIdentities[] = "pca.student_id = {$studentAccountId}";
         }
@@ -295,11 +390,15 @@ try {
                   AND LOWER(TRIM(pca.status)) = 'pending'
             )";
             if ($allocationCollegeColumn !== '') {
-                $allocatedCollegeExpression = '(SELECT pca.' . $allocationCollegeColumn . '
+                $pendingAllocationOrder = in_array('id', $collegeAllocationColumns, true)
+                    ? ' ORDER BY pca.id DESC'
+                    : '';
+                $pendingAllocationCollegeExpression = '(SELECT pca.' . $allocationCollegeColumn . '
                     FROM placement_college_allocations pca
                     WHERE (' . implode(' OR ', $secondSemesterAllocationIdentities) . ")
                       AND pca.target_semester = 2
                       AND LOWER(TRIM(pca.status)) = 'pending'
+                    " . $pendingAllocationOrder . "
                     LIMIT 1)";
             }
         } else {
@@ -318,20 +417,16 @@ try {
     
     $eligibleStatusConditions = [];
     if ($studentColumns) {
-        $normalizedPlacementStatus = "LOWER(TRIM(COALESCE({$studentPlacementStatusExpression}, '')))";
+        $normalizedPlacementStatus = placementNormalizeStudentStatusSql($studentPlacementStatusExpression);
         if ($activeSemester === 1) {
             $eligibleStatusConditions[] = "(
                 {$normalizedPlacementStatus} IN (
-                    'pending', 'pending 1st semester', 'pending 2nd semester',
+                    'pending', 'pending 1st semester',
                     '', 'not assigned', 'unassigned'
                 )
             )";
         } else {
-            $eligibleStatusConditions[] = "{$normalizedPlacementStatus} IN (
-                '', 'pending', 'pending 1st semester', 'pending 2nd semester',
-                'not assigned', 'unassigned', 'placed in semester 1',
-                'allocated', 'eligible', 'unplaced'
-            )";
+            $eligibleStatusConditions[] = "{$normalizedPlacementStatus} = 'pending 2nd semester'";
         }
     }
     $eligibleStatusCondition = $eligibleStatusConditions
@@ -403,7 +498,8 @@ try {
     }
 
     $hasFirstSemesterPlacementExpression = '0';
-    if ($activeSemester === 1) {
+    $hasAssignedFirstSemesterPlacementExpression = '0';
+    {
         $placementIdentityConditions = [];
         if (in_array('student_id', $placementColumns, true)) {
             $placementIdentityConditions[] = "pr.student_id = {$studentAccountId}";
@@ -415,7 +511,7 @@ try {
         }
         if ($placementIdentityConditions) {
             $placementConditions = ['(' . implode(' OR ', $placementIdentityConditions) . ')'];
-            if (in_array('placement_semester', $placementColumns, true)) {
+            if ($activeSemester === 1 && in_array('placement_semester', $placementColumns, true)) {
                 $placementConditions[] = 'pr.placement_semester = 1';
             }
             if (in_array('status', $placementColumns, true)) {
@@ -425,15 +521,42 @@ try {
                 SELECT 1 FROM placement_results pr
                 WHERE ' . implode(' AND ', $placementConditions) . '
             )';
+
+            $assignedPlacementConditions = $placementConditions;
+            $assignedDepartmentConditions = [];
+            foreach (['dept_id', 'department_id'] as $departmentIdColumn) {
+                if (in_array($departmentIdColumn, $placementColumns, true)) {
+                    $assignedDepartmentConditions[] = "COALESCE(pr.`{$departmentIdColumn}`, 0) > 0";
+                }
+            }
+            if (in_array('dept_name', $placementColumns, true)) {
+                $assignedDepartmentConditions[] = "NULLIF(TRIM(COALESCE(pr.dept_name, '')), '') IS NOT NULL";
+            }
+            if (in_array('department_name', $placementColumns, true)) {
+                $assignedDepartmentConditions[] = "NULLIF(TRIM(COALESCE(pr.department_name, '')), '') IS NOT NULL";
+            }
+            $assignedPlacementConditions[] = $assignedDepartmentConditions
+                ? '(' . implode(' OR ', $assignedDepartmentConditions) . ')'
+                : '1 = 0';
+            $hasAssignedFirstSemesterPlacementExpression = 'EXISTS (
+                SELECT 1 FROM placement_results pr
+                WHERE ' . implode(' AND ', $assignedPlacementConditions) . '
+            )';
         }
     }
 
     $sql = "SELECT {$candidateIdExpression} AS id, u.id AS account_id,
-                {$admissionExpression} AS id_number, {$nameExpression} AS name,
+                {$primaryStudentIdExpression} AS id_number,
+                {$admissionExpression} AS admission_number,
+                {$admissionExpression} AS moe_admission_number,
+                {$primaryStudentIdExpression} AS student_id,
+                {$primaryStudentIdExpression} AS university_student_id,
+                {$nameExpression} AS name,
                 {$emailExpression} AS email, {$genderExpression} AS gender,
                 {$studentStreamExpression} AS student_stream, {$regionExpression} AS region,
                 {$studentPlacementStatusExpression} AS placement_status,
-                {$allocatedCollegeExpression} AS allocated_college,
+                {$pendingAllocationCollegeExpression} AS pending_allocated_college,
+                {$firstSemesterDepartmentCollegeExpression} AS first_semester_department_college,
                 {$hasSecondSemesterAllocationExpression} AS has_pending_college_allocation,
                 {$benefitExpression} AS benefit_group, {$cgpaExpression} AS cgpa,
                 {$grade12Expression} AS grade12, {$cocExpression} AS coc,
@@ -447,7 +570,8 @@ try {
             {$userJoin}
             {$mosheJoin}{$simsJoin}{$choicesJoin}{$departmentJoin}
             WHERE 1 = 1{$statusCondition} AND {$eligibleStatusCondition}
-              AND {$candidateHasEligibleChoiceCondition}";
+              AND {$candidateHasEligibleChoiceCondition}
+              AND NOT ({$hasAssignedFirstSemesterPlacementExpression})";
 
     $types = '';
     $values = [];
@@ -482,11 +606,16 @@ try {
     $result = $statement->get_result();
     $students = [];
     while ($row = $result->fetch_assoc()) {
+        $row['allocated_college'] = $activeSemester === 2
+            ? placementResolveAllocatedCollegeName(
+                (string) ($row['pending_allocated_college'] ?? ''),
+                (string) ($row['first_semester_department_college'] ?? '')
+            )
+            : '';
         if (
             $activeSemester === 1
             && !placementFirstSemesterCandidateStatusEligible(
-                (string) ($row['placement_status'] ?? ''),
-                (bool) ($row['has_first_semester_placement'] ?? false)
+                (string) ($row['placement_status'] ?? '')
             )
         ) {
             continue;
@@ -504,7 +633,10 @@ try {
                 'id' => $row['id'],
                 'account_linked' => !empty($row['account_id']),
                 'id_number' => $row['id_number'] ?? '',
-                'admission_number' => $row['id_number'] ?? '',
+                'student_id' => $row['student_id'] ?? '',
+                'university_student_id' => $row['university_student_id'] ?? '',
+                'admission_number' => $row['admission_number'] ?? '',
+                'moe_admission_number' => $row['moe_admission_number'] ?? '',
                 'name' => trim((string) ($row['name'] ?? '')),
                 'email' => $row['email'] ?? '',
                 'gender' => $row['gender'] ?? '',
@@ -518,8 +650,8 @@ try {
                 'g12' => $row['grade12'] ?? 0,
                 'coc' => $row['coc'] ?? 0,
                 'cumulative_score' => $row['cumulative_score'] ?? 0,
-                'status' => 'Pending',
-                'placement_status' => trim((string) ($row['placement_status'] ?? '')),
+                'status' => placementStudentStatusLabel((string) ($row['placement_status'] ?? '')) ?: 'Pending',
+                'placement_status' => placementStudentStatusLabel((string) ($row['placement_status'] ?? '')),
                 'has_first_semester_placement' => (bool) ($row['has_first_semester_placement'] ?? false),
                 'allocated_college' => trim((string) ($row['allocated_college'] ?? '')),
                 'has_pending_college_allocation' => (bool) ($row['has_pending_college_allocation'] ?? false),

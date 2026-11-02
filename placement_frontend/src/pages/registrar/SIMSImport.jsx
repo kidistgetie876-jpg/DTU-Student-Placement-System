@@ -2,7 +2,7 @@ import React from 'react';
 import SourceImport from './SourceImport.jsx';
 
 export const simsImportColumns = [
-  { header: 'Student ID', aliases: ['admission_number', 'student_id', 'AdmissionNumber'] },
+  { header: 'Student ID', aliases: ['university_student_id', 'student_id', 'moe_admission_number', 'admission_number', 'AdmissionNumber'] },
   { header: 'CGPA' },
   { header: 'COC Score' },
 ];

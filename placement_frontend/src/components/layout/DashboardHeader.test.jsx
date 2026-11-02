@@ -35,13 +35,14 @@ const renderDashboardHeader = (props = {}) => render(
   </MemoryRouter>
 );
 
-const renderGlobalDashboardHeader = () => render(
-  <MemoryRouter initialEntries={['/registrar-dashboard/overview']}>
+const renderGlobalDashboardHeader = (route = '/registrar-dashboard/overview') => render(
+  <MemoryRouter initialEntries={[route]}>
     <ThemeProvider>
       <LanguageProvider>
         <AuthProvider>
           <Routes>
             <Route path="/registrar-dashboard/overview" element={<Header />} />
+            <Route path="/admin-dashboard" element={<Header />} />
           </Routes>
         </AuthProvider>
       </LanguageProvider>
@@ -397,6 +398,15 @@ describe('DashboardHeader', () => {
     expect(container.querySelector('.navigation-tier')).toBeNull();
     expect(screen.getByRole('button', { name: 'Select language' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch to dark mode' })).toBeInTheDocument();
+  });
+
+  it('uses the unified admin header color only for the admin dashboard', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'Admin', role: 'admin' }));
+    const { container } = renderGlobalDashboardHeader('/admin-dashboard');
+
+    await waitFor(() => expect(
+      container.querySelector('.top-branding-tier.has-dashboard-utilities.admin-dashboard-header')
+    ).toBeInTheDocument());
   });
 
   it('submits current, new, and confirmed passwords to the password API', async () => {

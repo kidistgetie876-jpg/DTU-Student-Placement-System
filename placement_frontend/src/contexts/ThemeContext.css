@@ -149,7 +149,7 @@
 }
 
 .dark-mode .role-sidebar {
-  background: #0f172a;
+  background: var(--dtu-deep-blue);
   border-color: #1e293b;
 }
 

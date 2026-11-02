@@ -8,7 +8,7 @@ require_once __DIR__ . '/../student/student_notification_reads.php';
 
 function notificationsResponse(array $payload, int $status = 200): void
 {
-    http_response_code(200);
+    http_response_code($status);
     echo json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
@@ -69,19 +69,19 @@ try {
         if (!isStudentNotificationSession($db, $studentSession)) {
             $db->close();
             $db = null;
-            notificationsResponse(['success' => false, 'message' => 'Authentication is required.']);
+            notificationsResponse(['success' => false, 'message' => 'Authentication is required.'], 401);
         }
         if ($requestStudentId !== '' && $userId > 0 && ctype_digit($requestStudentId)
             && (int) $requestStudentId !== $userId) {
             $db->close();
             $db = null;
-            notificationsResponse(['success' => false, 'message' => 'You can only view your own notifications.']);
+            notificationsResponse(['success' => false, 'message' => 'You can only view your own notifications.'], 403);
         }
         if ($requestAdmissionNumber !== '' && $admissionNumber !== ''
             && strcasecmp($requestAdmissionNumber, $admissionNumber) !== 0) {
             $db->close();
             $db = null;
-            notificationsResponse(['success' => false, 'message' => 'You can only view your own notifications.']);
+            notificationsResponse(['success' => false, 'message' => 'You can only view your own notifications.'], 403);
         }
     } else {
         $userId = ctype_digit($sessionUserId) ? (int) $sessionUserId : 0;
@@ -90,7 +90,7 @@ try {
     if (($userId <= 0 && !$hasStudentSession) || !in_array($role, ['admin', 'registrar', 'head', 'hod', 'coordinator', 'student'], true)) {
         $db->close();
         $db = null;
-        notificationsResponse(['success' => false, 'message' => 'Authentication is required.']);
+        notificationsResponse(['success' => false, 'message' => 'Authentication is required.'], 401);
     }
 
     $departmentId = 0;
@@ -213,5 +213,5 @@ try {
     if ($db instanceof mysqli) {
         $db->close();
     }
-    notificationsResponse(['success' => false, 'message' => 'Unable to load notifications.']);
+    notificationsResponse(['success' => false, 'message' => 'Unable to load notifications.'], 503);
 }

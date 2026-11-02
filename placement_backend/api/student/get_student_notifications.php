@@ -13,6 +13,8 @@ sendCorsHeaders();
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../common/student_placement_schema.php';
+require_once __DIR__ . '/../common/student_placement_notifications.php';
 require_once __DIR__ . '/student_notification_reads.php';
 
 function studentNotificationsResponse(array $payload, int $status = 200): void
@@ -81,6 +83,7 @@ try {
     }
 
     $notifications = [];
+    ensureStudentNotificationDismissalsTable($db);
 
     if ($studentId > 0) {
         ensureStudentNotificationReadsTable($db);
@@ -92,14 +95,18 @@ try {
              FROM notifications n
              LEFT JOIN student_notification_reads notification_reads
                ON notification_reads.notification_id = n.id AND notification_reads.student_id = ?
-             WHERE (n.recipient_id = ? AND n.recipient_role = 'student')
-                OR (n.recipient_role = 'student' AND n.recipient_id IS NULL)
+                         LEFT JOIN student_notification_dismissals dismissed_notifications
+                             ON dismissed_notifications.notification_id = n.id
+                            AND (dismissed_notifications.student_id = ? OR dismissed_notifications.admission_number = ?)
+                         WHERE ((n.recipient_id = ? AND n.recipient_role = 'student')
+                                OR (n.recipient_role = 'student' AND n.recipient_id IS NULL))
+                             AND dismissed_notifications.id IS NULL
              ORDER BY n.created_at DESC"
         );
         if (!$stmt) {
             throw new RuntimeException('Unable to prepare student notification query.');
         }
-        if (!$stmt->bind_param('ii', $studentId, $studentId) || !$stmt->execute()) {
+        if (!$stmt->bind_param('iisi', $studentId, $studentId, $admissionNumber, $studentId) || !$stmt->execute()) {
             $stmt->close();
             throw new RuntimeException('Unable to load student notifications.');
         }
@@ -122,13 +129,17 @@ try {
              FROM notifications n
              LEFT JOIN student_admission_notification_reads AS admission_reads
                ON admission_reads.notification_id = n.id AND admission_reads.admission_number = ?
-             WHERE n.recipient_role = 'student' AND n.recipient_id IS NULL
+                         LEFT JOIN student_notification_dismissals dismissed_notifications
+                             ON dismissed_notifications.notification_id = n.id
+                            AND dismissed_notifications.admission_number = ?
+                         WHERE n.recipient_role = 'student' AND n.recipient_id IS NULL
+                             AND dismissed_notifications.id IS NULL
              ORDER BY n.created_at DESC"
         );
         if (!$stmt) {
             throw new RuntimeException('Unable to prepare admission-based student notification query.');
         }
-        if (!$stmt->bind_param('s', $admissionNumber) || !$stmt->execute()) {
+        if (!$stmt->bind_param('ss', $admissionNumber, $admissionNumber) || !$stmt->execute()) {
             $stmt->close();
             throw new RuntimeException('Unable to load admission-based student notifications.');
         }
@@ -144,10 +155,20 @@ try {
     }
 
     if (($studentId > 0 || $admissionNumber !== '') && studentNotificationTableExists($db, 'student_notifications')) {
+        ensureStudentPlacementNotificationSchema($db);
         ensureStudentMeetingNotificationSchema($db);
+        $meetingColumns = studentPlacementTableColumns($db, 'student_notifications');
+        $notificationTypeExpression = in_array('notification_type', $meetingColumns, true)
+            ? "COALESCE(notification_type, 'meeting')"
+            : "'meeting'";
+        $placementSemesterExpression = in_array('placement_semester', $meetingColumns, true)
+            ? 'placement_semester'
+            : 'NULL';
 
         $meetingStatement = $db->prepare(
             "SELECT id, 'registrar' AS sender_role, title, message, is_read, created_at,
+                    {$notificationTypeExpression} AS notification_type,
+                    {$placementSemesterExpression} AS placement_semester,
                     meeting_date, meeting_time, location
              FROM student_notifications
              WHERE student_id = ? OR admission_number = ?
@@ -163,7 +184,6 @@ try {
         }
         $meetingResult = $meetingStatement->get_result();
         while ($row = $meetingResult->fetch_assoc()) {
-            $row['notification_type'] = 'meeting';
             $row['file_path'] = null;
             $notifications[] = $row;
         }

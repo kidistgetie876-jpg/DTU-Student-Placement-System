@@ -26,20 +26,303 @@ assertSemesterValue(
     normalizeStudentPlacementGroup('', 'Social Science'),
     'The Social Science college naming variant maps to the allocated placement group.'
 );
+assertSemesterValue(
+    'natural',
+    placementDepartmentStream([
+        'college_name' => 'College of Health Science',
+        'placement_group' => 'health_science',
+    ]),
+    'Department stream can be inferred from its placement group and assigned college when the stream field is empty.'
+);
+assertSemesterValue(
+    'social',
+    placementDepartmentStream([
+        'college_name' => 'School of Law',
+        'placement_group' => 'law',
+    ]),
+    'Law departments are mapped to the social science stream when their stream field is empty.'
+);
+assertSemesterValue(
+    'College of Other Natural Sciences',
+    placementResolveAllocatedCollegeName(
+        'College of Health Science',
+        'College of Other Natural Sciences'
+    ),
+    'The actual first-semester placement college takes precedence over a stale pending allocation college.'
+);
+assertSemesterValue(
+    'College of Other Natural Sciences',
+    placementResolveAllocatedCollegeName('College of Other Natural Sciences', ''),
+    'The pending allocation college is used when no first-semester placement result exists.'
+);
+$mappedSemesterTwoColleges = [
+    placementResolveAllocatedCollegeName(
+        'College of Other Natural Sciences',
+        'College of Health Science'
+    ),
+    placementResolveAllocatedCollegeName(
+        'College of Other Natural Sciences',
+        'Gafat Institute of Technology'
+    ),
+    placementResolveAllocatedCollegeName(
+        'College of Other Natural Sciences',
+        'College of Other Natural Sciences'
+    ),
+];
 assertSemesterRule(
+    $mappedSemesterTwoColleges === [
+        'College of Health Science',
+        'Gafat Institute of Technology',
+        'College of Other Natural Sciences',
+    ],
     true,
-    placementFirstSemesterCandidateStatusEligible('Pending 2nd Semester', false),
-    'A student pending second-semester choices without a first-semester department assignment can retry Semester 1.'
+    'Different first-semester college placements remain distinct in second-semester candidate data.'
 );
 assertSemesterRule(
     false,
-    placementFirstSemesterCandidateStatusEligible('Pending 2nd Semester', true),
-    'A student already assigned in Semester 1 is not reintroduced as an unplaced candidate.'
+    placementFirstSemesterCandidateStatusEligible('Pending 2nd Semester'),
+    'Students pending second-semester placement are excluded from the first-semester candidate pool.'
 );
 assertSemesterRule(
     true,
-    placementFirstSemesterCandidateStatusEligible('Pending 1st Semester', true),
+    placementFirstSemesterCandidateStatusEligible('Pending 1st Semester'),
     'Pending first-semester students remain eligible even if a stale result exists.'
+);
+assertSemesterRule(
+    false,
+    placementFirstSemesterCandidateStatusEligible('Pending Approval'),
+    'Students awaiting approval after placement are excluded from later first-semester candidate pools.'
+);
+assertSemesterRule(
+    false,
+    placementFirstSemesterCandidateStatusEligible('Assigned'),
+    'Already-assigned students are excluded from later first-semester candidate pools.'
+);
+assertSemesterRule(
+    false,
+    placementFirstSemesterCandidateStatusEligible('Approved'),
+    'Approved students are excluded from subsequent placement candidate pools.'
+);
+assertSemesterRule(
+    true,
+    placementDepartmentOfferedInSemester([
+        'name' => 'Medicine',
+        'college_name' => 'College of Health Science',
+        'stream' => 'Natural Science',
+        'offered_semester' => 2,
+    ], 2),
+    'An explicit second-semester offering takes precedence over the college-group default.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentOfferedInSemester([
+        'name' => 'Economics',
+        'college_name' => 'Other Social Science',
+        'stream' => 'Social Science',
+        'offered_semester' => 1,
+    ], 2),
+    'An explicit first-semester offering takes precedence over the college-group default.'
+);
+assertSemesterRule(
+    true,
+    placementDepartmentOfferedInSemester([
+        'name' => 'College Department',
+        'college_name' => 'College of Health Science',
+        'stream' => 'Natural Science',
+        'offered_semester' => 1,
+        'is_first_semester_only' => 0,
+    ], 2),
+    'A non-first-semester-only department remains available in semester two even in a first-stage college.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentOfferedInSemester([
+        'name' => 'Medicine',
+        'college_name' => 'College of Health Science',
+        'stream' => 'Natural Science',
+        'offered_semester' => 1,
+        'is_first_semester_only' => 1,
+    ], 2),
+    'Departments explicitly marked first-semester-only stay excluded from semester two.'
+);
+assertSemesterValue(
+    'pending 2nd semester',
+    placementNormalizeStudentStatus('pending_second_semester'),
+    'Stored underscore status variants normalize to the canonical second-semester state.'
+);
+assertSemesterValue(
+    'Pending 1st Semester',
+    placementStudentStatusLabel('pending-first-semester'),
+    'Status labels render consistently for first-semester pending variants.'
+);
+$semesterTwoAllocation = [
+    'college_id' => 20,
+    'college_name' => 'College of Other Natural Sciences',
+    'stream' => 'Natural',
+    'placement_group' => 'other_natural_science',
+];
+$semesterTwoDepartment = [
+    'id' => 32,
+    'name' => 'Biology',
+    'college_id' => 20,
+    'college_name' => 'College of Other Natural Sciences',
+    'stream' => 'Natural',
+    'offered_semester' => 2,
+];
+assertSemesterRule(
+    true,
+    placementDepartmentMatchesStudentPlacementScope(
+        $semesterTwoDepartment,
+        2,
+        'Natural Science',
+        $semesterTwoAllocation
+    ),
+    'Semester-two choices are eligible when semester, stream, and allocated college match.'
+);
+$actualSemesterTwoAllocation = [
+    'group' => 'other_natural_science',
+    'college' => 'College of Other Natural Sciences',
+];
+assertSemesterRule(
+    true,
+    placementDepartmentMatchesStudentPlacementScope(
+        $semesterTwoDepartment,
+        2,
+        'Natural Science',
+        $actualSemesterTwoAllocation
+    ),
+    'Semester-two choices match the allocation shape returned by the allocation lookup.'
+);
+$sameCollegeWithDifferentCatalogIds = array_merge($semesterTwoDepartment, ['college_id' => 202]);
+assertSemesterRule(
+    true,
+    placementDepartmentMatchesStudentPlacementScope(
+        $sameCollegeWithDifferentCatalogIds,
+        2,
+        'Natural Science',
+        array_merge($actualSemesterTwoAllocation, ['college_id' => 20])
+    ),
+    'Matching normalized college names take precedence when allocation and department catalog IDs differ.'
+);
+$secondSemesterChoiceAllocation = placementSecondSemesterChoiceAllocation(
+    [
+        ['dept_id' => 47, 'department' => 'Veterinary Science', 'priority' => 1],
+        ['dept_id' => 7, 'department' => 'Chemical Engineering', 'priority' => 2],
+    ],
+    [
+        [
+            'id' => 47,
+            'name' => 'Veterinary Science',
+            'college_id' => 0,
+            'college_name' => 'College of Other Natural Sciences',
+            'stream' => 'Natural',
+            'offered_semester' => 2,
+        ],
+        [
+            'id' => 7,
+            'name' => 'Chemical Engineering',
+            'college_id' => 30,
+            'college_name' => 'Gafat Institute of Technology',
+            'stream' => 'Natural',
+            'offered_semester' => 2,
+        ],
+    ],
+    'Natural Science'
+);
+assertSemesterRule(
+    true,
+    ($secondSemesterChoiceAllocation['college_name'] ?? '') === 'College of Other Natural Sciences'
+        && ($secondSemesterChoiceAllocation['placement_group'] ?? '') === 'other_natural_science'
+        && ($secondSemesterChoiceAllocation['choice_rank'] ?? 0) === 1,
+    'A stale first-semester allocation is reconciled to the highest-priority valid Semester 2 choice.'
+);
+$departmentWithinAllocatedGroup = [
+    'id' => 54,
+    'name' => 'Economics',
+    'college_id' => 54,
+    'college_name' => 'Business and Economics',
+    'stream' => 'Social',
+    'offered_semester' => 2,
+];
+assertSemesterRule(
+    true,
+    placementDepartmentMatchesStudentPlacementScope(
+        $departmentWithinAllocatedGroup,
+        2,
+        'Social',
+        [
+            'college_id' => 0,
+            'college_name' => 'College of Other Social Sciences',
+            'stream' => 'Social',
+            'placement_group' => 'other_social_science',
+        ]
+    ),
+    'A department in the allocated Semester 2 college group remains eligible when catalog college labels differ.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentMatchesStudentPlacementScope(
+        [
+            'id' => 64,
+            'name' => 'Biology',
+            'college_id' => 64,
+            'college_name' => 'College of Other Natural Sciences',
+            'stream' => 'Natural',
+            'offered_semester' => 2,
+        ],
+        2,
+        'Natural Science',
+        [
+            'college_id' => 10,
+            'college_name' => 'College of Health Science',
+            'stream' => 'Natural',
+            'placement_group' => 'health_science',
+        ]
+    ),
+    "A Semester 2 choice from another college cannot match the student's locked first-semester college allocation."
+);
+assertSemesterRule(
+    false,
+    placementDepartmentMatchesStudentPlacementScope(
+        $semesterTwoDepartment,
+        1,
+        'Natural Science',
+        $semesterTwoAllocation
+    ),
+    'A semester-two department is excluded from a semester-one placement run.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentMatchesStudentPlacementScope(
+        $semesterTwoDepartment,
+        2,
+        'Social Science',
+        $semesterTwoAllocation
+    ),
+    'A choice from another stream is excluded from the student placement pool.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentMatchesStudentPlacementScope(
+        array_merge($semesterTwoDepartment, [
+            'college_id' => 21,
+            'college_name' => 'Gafat Institute of Technology',
+        ]),
+        2,
+        'Natural Science',
+        $semesterTwoAllocation
+    ),
+    'A semester-two choice from another college is excluded from the allocated pool.'
+);
+assertSemesterRule(
+    false,
+    placementDepartmentMatchesStudentPlacementScope(
+        $semesterTwoDepartment,
+        2,
+        'Natural Science',
+        array_merge($semesterTwoAllocation, ['stream' => 'Social'])
+    ),
+    'A semester-two allocation from another stream is excluded from the student placement pool.'
 );
 
 $healthBiology = [
@@ -266,6 +549,30 @@ assertSemesterRule(
         true
     )['eligible'],
     'Pending second-semester status with an allocation remains eligible when the stage-one result row is unavailable.'
+);
+assertSemesterRule(
+    false,
+    studentSecondSemesterChoicePortalState(
+        'Pending Approval',
+        ['group' => 'health_science', 'college' => 'Health Science'],
+        true,
+        true,
+        false,
+        true
+    )['eligible'],
+    'A Semester 1 student with an assigned department cannot enter the second-semester choice portal.'
+);
+assertSemesterRule(
+    false,
+    studentSecondSemesterChoicePortalState(
+        'Pending Approval',
+        ['group' => 'health_science', 'college' => 'Health Science'],
+        true,
+        true,
+        false,
+        true
+    )['isOpen'],
+    'An open registrar portal cannot override an existing assigned Semester 1 department.'
 );
 assertSemesterRule(true, placementDepartmentOfferedInSemester($departments[1], 2), 'Semester-two departments are offered in semester two.');
 assertSemesterRule(
@@ -628,32 +935,40 @@ assertSemesterRule(
     'Saved standardized group labels match their dynamically derived departments.'
 );
 assertSemesterValue(
-    'College of Other Natural Sciences',
+    'Agriculture',
     placementDepartmentCapacityCollegeName([
         'name' => 'Agriculture',
         'college_name' => 'Agriculture',
         'stream' => 'Natural',
     ]),
-    'Unmatched Natural Science departments use the standardized capacity college name.'
+    'Allocated college names preserve the department catalog value.'
 );
 assertSemesterValue(
-    'School of Law',
+    'Faculty of Social Sciences',
     placementDepartmentCapacityCollegeName([
         'name' => 'Law',
         'college_name' => 'Faculty of Social Sciences',
         'stream' => 'Social',
     ]),
-    'Law departments use the standardized capacity college name.'
+    'Allocated college names are not replaced with placement-group labels.'
+);
+assertSemesterValue(
+    '',
+    placementDepartmentCapacityCollegeName([
+        'name' => 'Biology',
+        'placement_group' => 'other_natural_science',
+    ]),
+    'A missing catalog college name stays missing instead of using a hardcoded group label.'
 );
 assertSemesterRule(
-    false,
+    true,
     placementDepartmentOfferedInSemester([
         'name' => 'Medicine',
         'college_name' => 'Health Science',
         'stream' => 'Natural',
         'offered_semester' => 2,
     ], 1),
-    'Health Science departments respect the configured offered semester.'
+    'Health Science departments are inferred to be offered in semester one.'
 );
 assertSemesterRule(
     true,
@@ -666,14 +981,14 @@ assertSemesterRule(
     'Any active Health Science department offered in semester one is available.'
 );
 assertSemesterRule(
-    true,
+    false,
     placementDepartmentOfferedInSemester([
         'name' => 'Public Health',
         'college_name' => 'Health Science',
         'stream' => 'Natural',
         'offered_semester' => 1,
     ], 2),
-    'Other Health Science departments are available in semester two.'
+    'Health Science departments are inferred to be first-semester-only.'
 );
 assertSemesterRule(
     false,
@@ -696,7 +1011,7 @@ assertSemesterRule(
     'Other Social Science departments respect the configured offered semester.'
 );
 assertSemesterRule(
-    false,
+    true,
     placementDepartmentOfferedInSemester([
         'name' => 'Computer Science',
         'college_name' => 'Gafat Institute of Technology',
@@ -704,7 +1019,7 @@ assertSemesterRule(
         'offered_semester' => 2,
         'placement_group' => 'legacy_group',
     ], 1),
-    'GIT departments respect the configured offered semester.'
+    'GIT departments are inferred to be offered in semester one regardless of stale metadata.'
 );
 assertSemesterRule(
     true,
@@ -992,10 +1307,10 @@ $target = placementFirstSemesterAllocationTarget(
         ['name' => 'Biology', 'college_id' => 30, 'college_name' => 'Other Natural Science', 'stream' => 'Natural', 'placement_group' => 'other_natural_science'],
     ]
 );
-if (($target['college_id'] ?? null) !== null
-    || ($target['college_name'] ?? '') !== 'College of Other Natural Sciences'
+if (($target['college_id'] ?? null) !== 30
+    || ($target['college_name'] ?? '') !== 'Other Natural Science'
     || ($target['placement_group'] ?? '') !== 'other_natural_science') {
-    throw new RuntimeException('Other Natural Science preferences must be allocated to their own college group.');
+    throw new RuntimeException('An explicit Other Natural Science preference must retain its matched department college.');
 }
 
 $target = placementFirstSemesterAllocationTarget(
@@ -1006,9 +1321,32 @@ $target = placementFirstSemesterAllocationTarget(
         ['name' => 'Biology', 'college_id' => 32, 'college_name' => 'Agriculture', 'stream' => 'Natural'],
     ]
 );
-if (($target['college_id'] ?? null) !== null
+if (($target['college_id'] ?? null) !== 32
+    || ($target['college_name'] ?? '') !== 'Agriculture'
     || ($target['placement_group'] ?? '') !== 'other_natural_science') {
-    throw new RuntimeException('Other Natural Science preferences should allocate across the dynamic group.');
+    throw new RuntimeException('An explicit preference must not inherit the first college in its placement group.');
+}
+
+$agricultureTarget = placementFirstSemesterAllocationTarget(
+    'Natural Science',
+    [['department' => 'Biology', 'college_name' => 'Agriculture']],
+    [
+        ['name' => 'Physics', 'college_id' => 21, 'college_name' => 'Natural and Computational Sciences', 'stream' => 'Natural'],
+        ['name' => 'Biology', 'college_id' => 32, 'college_name' => 'Agriculture', 'stream' => 'Natural'],
+    ]
+);
+$computationalSciencesTarget = placementFirstSemesterAllocationTarget(
+    'Natural Science',
+    [['department' => 'Physics', 'college_name' => 'Natural and Computational Sciences']],
+    [
+        ['name' => 'Physics', 'college_id' => 21, 'college_name' => 'Natural and Computational Sciences', 'stream' => 'Natural'],
+        ['name' => 'Biology', 'college_id' => 32, 'college_name' => 'Agriculture', 'stream' => 'Natural'],
+    ]
+);
+if (($agricultureTarget['college_id'] ?? null) !== 32
+    || ($computationalSciencesTarget['college_id'] ?? null) !== 21
+    || ($agricultureTarget['college_name'] ?? '') === ($computationalSciencesTarget['college_name'] ?? '')) {
+    throw new RuntimeException('Separate explicit preferences must remain allocated to their respective colleges.');
 }
 
 $target = placementFirstSemesterAllocationTarget(

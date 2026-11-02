@@ -26,7 +26,10 @@ function logActivity($db, ?int $userId, ?string $fullName, string $action, strin
     $action = trim($action);
     $details = trim($details);
     $fullName = $fullName !== null ? trim($fullName) : null;
-    if ($action === '' || strlen($action) > 100 || strlen($details) > 4000) return false;
+    if ($action === '' || strlen($action) > 100 || strlen($details) > 4000) {
+        error_log('Audit log insert skipped because the action or details are invalid.');
+        return false;
+    }
 
     try {
         $ipAddress = $_SERVER['REMOTE_ADDR'] ?? null;
@@ -46,9 +49,13 @@ function logActivity($db, ?int $userId, ?string $fullName, string $action, strin
             if (!$stmt) throw new RuntimeException($db->error);
             $stmt->bind_param('issss', $userId, $fullName, $action, $details, $ipAddress);
             $success = $stmt->execute();
+            if (!$success) {
+                error_log('Audit log insert failed: ' . $stmt->error);
+            }
             $stmt->close();
             return $success;
         }
+        error_log('Audit log insert skipped because the database connection type is unsupported.');
     } catch (Throwable $error) {
         error_log('Audit log insert failed: ' . $error->getMessage());
     }

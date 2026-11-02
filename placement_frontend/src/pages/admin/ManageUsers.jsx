@@ -320,7 +320,6 @@ const ManageUsers = () => {
           {error}
         </div>
       )}
-
       <div className="d-flex flex-wrap gap-2 mb-3">
         {[
           { key: 'all', label: 'All Users' },
@@ -493,7 +492,7 @@ const ManageUsers = () => {
               <th>Username</th>
               <th>Email</th>
               <th>Phone Number</th>
-              <th>Role</th>
+              <th className="min-w-[150px] px-4 py-3">Role</th>
               <th>Edit</th>
               <th>Delete</th>
             </tr>
@@ -508,8 +507,10 @@ const ManageUsers = () => {
                 <td colSpan={9} className="text-center py-4 text-muted">No users found.</td>
               </tr>
             ) : (
-              paged.map((u, idx) => (
-                <tr key={u.id}>
+              paged.map((u) => {
+                const isStudent = getRoleKey(u.role) === 'student';
+                return (
+                  <tr key={u.id}>
                   <td>
                     <span className="badge px-3 py-2 fw-bold" style={{ backgroundColor: '#e2edff', color: '#0d6efd', borderRadius: '8px' }}>
                       {u.id_number || u.id}
@@ -520,37 +521,46 @@ const ManageUsers = () => {
                   <td>{u.username || u.name}</td>
                   <td>{u.email}</td>
                   <td>{u.phone_number || '-'}</td>
-                  <td>
+                  <td className="min-w-[150px] px-4 py-3">
                     <span className={`badge rounded-pill ${getRoleBadgeClass(u.role)} fw-semibold`}>
                       {getRoleLabel(u.role)}
                     </span>
                   </td>
                   <td className="text-center">
-                    <button
-                      type="button"
-                      className="manage-users-edit-button btn btn-sm"
-                      onClick={() => navigate(`/edit-user/${encodeURIComponent(u.id)}`, {
-                        state: {
-                          user: u,
-                          returnTo: '/admin-dashboard',
-                          returnTab: 'manage',
-                        },
-                      })}
-                    >
-                      Edit
-                    </button>
+                    {isStudent ? (
+                      <span className="text-muted" title="Managed through the Registrar workflow">Registrar-managed</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="manage-users-edit-button btn btn-sm"
+                        onClick={() => navigate(`/edit-user/${encodeURIComponent(u.id)}`, {
+                          state: {
+                            user: u,
+                            returnTo: '/admin-dashboard',
+                            returnTab: 'manage',
+                          },
+                        })}
+                      >
+                        Edit
+                      </button>
+                    )}
                   </td>
                   <td className="text-center">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDelete(u.id)}
-                    >
-                      Delete
-                    </button>
+                    {isStudent ? (
+                      <span className="text-muted" title="Managed through the Registrar workflow">Registrar-managed</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => handleDelete(u.id)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
-                </tr>
-              ))
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -7,8 +7,8 @@ $res1 = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $students = $res1->fetch_assoc()['count'];
 
 // 2. ጠቅላላ ዲፓርትመንቶችን ቁጠር
-$res2 = $db->query("SELECT COUNT(*) as count FROM departments");
-$depts = $res2->fetch_assoc()['count'];
+$res2 = $db->query("SELECT COUNT(*) AS total FROM departments");
+$depts = $res2->fetch_assoc()['total'];
 
 // 3. ንቁ አድሚኖችን ቁጠር
 $res3 = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");

@@ -196,8 +196,10 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
                 $where[] = 'target_semester = 2';
             }
             $collegeColumn = in_array('college_name', $allocationColumns, true) ? 'college_name' : "''";
+            $collegeIdColumn = in_array('college_id', $allocationColumns, true) ? 'college_id' : 'NULL';
             $statement = $db->prepare(
-                'SELECT placement_group, ' . $collegeColumn . ' AS college_name
+                'SELECT placement_group, ' . $collegeColumn . ' AS college_name,
+                        ' . $collegeIdColumn . ' AS college_id
                  FROM placement_college_allocations WHERE ' . implode(' AND ', $where)
                  . (in_array('id', $allocationColumns, true) ? ' ORDER BY id DESC' : '')
                  . ' LIMIT 1'
@@ -215,7 +217,11 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
                         );
                         if ($group !== '') {
                             $statement->close();
-                            return ['group' => $group, 'college' => $collegeName];
+                            return [
+                                'group' => $group,
+                                'college' => $collegeName,
+                                'college_id' => (int) ($row['college_id'] ?? 0),
+                            ];
                         }
                     }
                 }
@@ -233,7 +239,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
         !$departmentIdColumn || !in_array('id', $departmentColumns, true)
         || !in_array('placement_group', $departmentColumns, true)
     ) {
-        return ['group' => '', 'college' => ''];
+        return ['group' => '', 'college' => '', 'college_id' => 0];
     }
 
     [$conditions, $values] = studentPlacementAllocationIdentity(
@@ -243,25 +249,27 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
         'pr'
     );
     if (!$conditions) {
-        return ['group' => '', 'college' => ''];
+        return ['group' => '', 'college' => '', 'college_id' => 0];
     }
     $semesterCondition = in_array('placement_semester', $resultColumns, true)
         ? ' AND pr.placement_semester = 1'
         : '';
     $collegeColumn = in_array('college_name', $departmentColumns) ? 'd.college_name' : "''";
     $streamColumn = in_array('stream', $departmentColumns) ? 'd.stream' : "''";
+    $collegeIdColumn = in_array('college_id', $departmentColumns) ? 'd.college_id' : '0';
     $statement = $db->prepare(
-        'SELECT d.placement_group, ' . $collegeColumn . ' AS college_name, ' . $streamColumn . ' AS stream
+        'SELECT d.placement_group, ' . $collegeColumn . ' AS college_name,
+                ' . $streamColumn . ' AS stream, ' . $collegeIdColumn . ' AS college_id
          FROM placement_results pr
          INNER JOIN departments d ON d.id = pr.`' . $departmentIdColumn . '`
          WHERE (' . implode(' OR ', $conditions) . ')' . $semesterCondition . '
          ' . (in_array('id', $resultColumns, true) ? 'ORDER BY pr.id DESC ' : '') . 'LIMIT 1'
     );
     if (!$statement) {
-        return ['group' => '', 'college' => ''];
+        return ['group' => '', 'college' => '', 'college_id' => 0];
     }
     studentPlacementAllocationBind($statement, $values);
-    $allocation = ['group' => '', 'college' => ''];
+    $allocation = ['group' => '', 'college' => '', 'college_id' => 0];
     if ($statement->execute()) {
         $result = $statement->get_result();
         $row = $result ? $result->fetch_assoc() : null;
@@ -274,6 +282,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
                     (string) ($row['stream'] ?? '')
                 ),
                 'college' => $collegeName,
+                'college_id' => (int) ($row['college_id'] ?? 0),
             ];
         }
     }
@@ -378,6 +387,74 @@ function hasStudentPlacementForSemester(mysqli $db, string $studentId, string $a
         }
     }
     return false;
+}
+
+function hasAssignedStudentPlacementForSemester(
+    mysqli $db,
+    string $studentId,
+    string $admissionNumber,
+    int $semester
+): bool {
+    $columns = studentPlacementTableColumns($db, 'placement_results');
+    $semesterColumn = in_array('placement_semester', $columns, true)
+        ? 'placement_semester'
+        : (in_array('semester', $columns, true) ? 'semester' : '');
+    if ($semesterColumn === '') {
+        return false;
+    }
+
+    [$identityConditions, $values] = studentPlacementAllocationIdentity(
+        $columns,
+        $studentId,
+        $admissionNumber,
+        'pr'
+    );
+    if (!$identityConditions) {
+        return false;
+    }
+
+    $departmentConditions = [];
+    foreach (['dept_id', 'department_id'] as $departmentIdColumn) {
+        if (in_array($departmentIdColumn, $columns, true)) {
+            $departmentConditions[] = "COALESCE(pr.`{$departmentIdColumn}`, 0) > 0";
+        }
+    }
+    foreach (['dept_name', 'department_name', 'assigned_department'] as $departmentNameColumn) {
+        if (in_array($departmentNameColumn, $columns, true)) {
+            $departmentConditions[] = "NULLIF(TRIM(COALESCE(pr.`{$departmentNameColumn}`, '')), '') IS NOT NULL
+                AND LOWER(TRIM(pr.`{$departmentNameColumn}`)) NOT IN ('not assigned', 'unassigned')";
+        }
+    }
+    if (!$departmentConditions) {
+        return false;
+    }
+
+    $values[] = (string) $semester;
+    $statusCondition = in_array('status', $columns, true)
+        ? " AND LOWER(TRIM(COALESCE(pr.status, ''))) NOT IN ('rejected', 'cancelled', 'canceled')"
+        : '';
+    $statement = $db->prepare(
+        'SELECT 1 FROM placement_results pr
+         WHERE (' . implode(' OR ', $identityConditions) . ')
+           AND pr.`' . $semesterColumn . '` = ?
+           AND (' . implode(' OR ', $departmentConditions) . ')'
+        . $statusCondition . '
+         LIMIT 1'
+    );
+    if (!$statement) {
+        throw new RuntimeException('Unable to verify an assigned placement result: ' . $db->error);
+    }
+    studentPlacementAllocationBind($statement, $values);
+    if (!$statement->execute()) {
+        $error = $statement->error;
+        $statement->close();
+        throw new RuntimeException('Unable to verify an assigned placement result: ' . $error);
+    }
+    $result = $statement->get_result();
+    $exists = $result && $result->num_rows > 0;
+    $statement->close();
+
+    return $exists;
 }
 
 function hasApprovedStudentPlacementForSemester(mysqli $db, string $studentId, string $admissionNumber, int $semester): bool
@@ -494,7 +571,8 @@ function getStudentStoredPlacementStatus(mysqli $db, string $studentId, string $
 
 function isStudentChoiceExplicitlyEditable(mysqli $db, string $studentId, string $admissionNumber): bool
 {
-    if (hasApprovedStudentPlacementForSemester($db, $studentId, $admissionNumber, 2)) {
+    if (hasAssignedStudentPlacementForSemester($db, $studentId, $admissionNumber, 1)
+        || hasApprovedStudentPlacementForSemester($db, $studentId, $admissionNumber, 2)) {
         return false;
     }
 
@@ -591,7 +669,8 @@ function studentSecondSemesterChoicePortalState(
     array $allocation,
     bool $hasFirstSemesterPlacement,
     bool $portalOpen,
-    bool $hasApprovedSecondSemesterPlacement = false
+    bool $hasApprovedSecondSemesterPlacement = false,
+    bool $hasAssignedFirstSemesterPlacement = false
 ): array {
     $normalizedStatus = strtolower(trim($studentStatus));
     $hasAllocatedCollege = trim((string) ($allocation['group'] ?? '')) !== ''
@@ -608,7 +687,8 @@ function studentSecondSemesterChoicePortalState(
     );
     $isEligible = $isEligibleStatus
         && $hasAllocatedCollege
-        && ($hasFirstSemesterPlacement || $hasCompletedFirstStageStatus);
+        && ($hasFirstSemesterPlacement || $hasCompletedFirstStageStatus)
+        && !$hasAssignedFirstSemesterPlacement;
     $isOpen = $isEligible
         && $portalOpen
         && !$hasApprovedSecondSemesterPlacement;
@@ -616,8 +696,10 @@ function studentSecondSemesterChoicePortalState(
     return [
         'eligible' => $isEligible,
         'isOpen' => $isOpen,
-        'isLocked' => $isEligible ? $hasApprovedSecondSemesterPlacement : null,
+        'isLocked' => $hasAssignedFirstSemesterPlacement
+            || ($isEligible && $hasApprovedSecondSemesterPlacement),
         'isFinalized' => $hasApprovedSecondSemesterPlacement,
+        'has_active_assigned_placement' => $hasAssignedFirstSemesterPlacement,
         'message' => !$isEligible
             ? ''
             : ($isOpen
@@ -633,12 +715,19 @@ function getStudentSecondSemesterChoicePortalState(
 ): array {
     $allocation = getStudentAllocatedPlacementGroup($db, $studentId, $admissionNumber);
     $status = getStudentStoredPlacementStatus($db, $studentId, $admissionNumber);
+    $hasAssignedFirstSemesterPlacement = hasAssignedStudentPlacementForSemester(
+        $db,
+        $studentId,
+        $admissionNumber,
+        1
+    );
     return studentSecondSemesterChoicePortalState(
         $status,
         $allocation,
         hasStudentPlacementForSemester($db, $studentId, $admissionNumber, 1),
         isSecondSemesterChoicePortalOpen($db),
-        hasApprovedStudentPlacementForSemester($db, $studentId, $admissionNumber, 2)
+        hasApprovedStudentPlacementForSemester($db, $studentId, $admissionNumber, 2),
+        $hasAssignedFirstSemesterPlacement
     ) + ['allocation' => $allocation];
 }
 

@@ -46,11 +46,15 @@ function Header() {
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
-  const isAdminRoute = location.pathname.startsWith('/admin') || 
-                       location.pathname.startsWith('/registrar') || 
-                       location.pathname.startsWith('/head');
+  const isAdminRoute = location.pathname.startsWith('/admin')
+                       || location.pathname.startsWith('/edit-user')
+                       || location.pathname.startsWith('/edit-department')
+                       || location.pathname.startsWith('/registrar')
+                       || location.pathname.startsWith('/head');
   const isDashboardRoute = isAdminRoute || location.pathname.startsWith('/student-dashboard');
-  const hasDashboardHeader = /^\/(admin-dashboard|registrar-dashboard|head-dashboard|student-dashboard)(\/|$)/.test(location.pathname);
+  const hasDashboardHeader = /^\/(admin-dashboard|edit-user|edit-department|registrar-dashboard|head-dashboard|student-dashboard)(\/|$)/.test(location.pathname);
+  const hasAdminDashboardHeader = hasDashboardHeader
+    && String(user?.role || '').trim().toLowerCase() === 'admin';
 
   useEffect(() => {
     setUser(getStoredUser());
@@ -104,7 +108,7 @@ function Header() {
   return (
     <header className="main-header-container">
       {/* TIER 1: University Branding (Sefa yalena Blue) */}
-      <div className={`top-branding-tier${hasDashboardHeader ? ' has-dashboard-utilities' : ''}`}>
+      <div className={`top-branding-tier${hasDashboardHeader ? ' has-dashboard-utilities' : ''}${hasAdminDashboardHeader ? ' admin-dashboard-header' : ''}`}>
         <div className="container top-branding-content">
           <Link to="/" className="d-flex align-items-center text-decoration-none">
             <img src={dtuLogo} alt="DTU Logo" className="university-logo" />

@@ -126,6 +126,15 @@ try {
     $scoreExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['final_score', 'cumulative_score']);
     $choiceExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['choice_rank', 'priority'], '0');
     $statusExpression = studentPlacementTextExpression($placementColumns, 'pr', ['status'], "'Placed'");
+    $semesterExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['placement_semester'], '1');
+    $storedSemesterExpression = "CAST(
+        COALESCE(NULLIF(TRIM(CAST({$semesterExpression} AS CHAR)), ''), '1')
+        AS UNSIGNED
+    )";
+    $normalizedSemesterExpression = "CASE
+        WHEN LOWER(TRIM(COALESCE({$statusExpression}, ''))) = 'pending 2nd semester' THEN 2
+        ELSE {$storedSemesterExpression}
+    END";
     $orderParts = [];
     if (in_array('placed_at', $placementColumns, true)) {
         $orderParts[] = 'pr.placed_at DESC';
@@ -148,12 +157,14 @@ try {
                 {$departmentExpression} AS department,
                 {$scoreExpression} AS final_score,
                 {$choiceExpression} AS choice_rank,
-                {$statusExpression} AS status
+                {$statusExpression} AS status,
+                {$normalizedSemesterExpression} AS placement_semester
          FROM placement_results pr
          LEFT JOIN student_data sd ON {$studentJoin}
          LEFT JOIN users u ON {$userJoin}{$departmentJoin}
          WHERE NULLIF(TRIM({$departmentExpression}), '') IS NOT NULL
            AND LOWER(TRIM(COALESCE({$statusExpression}, ''))) NOT IN ('rejected', 'unassigned', 'cancelled', 'canceled')
+           AND ({$normalizedSemesterExpression}) IN (1, 2)
          ORDER BY {$placementOrder}"
     );
     if (!$result) {
@@ -175,10 +186,163 @@ try {
             'final_score' => $row['final_score'] !== null ? (float) $row['final_score'] : null,
             'cumulativeScore' => $row['final_score'] !== null ? (float) $row['final_score'] : null,
             'choice_rank' => (int) ($row['choice_rank'] ?? 0),
+            'placement_semester' => (int) ($row['placement_semester'] ?? 1),
         ];
     }
 
     $result->free();
+
+    $allocationColumns = studentPlacementTableColumns($db, 'placement_college_allocations');
+    if (in_array('target_semester', $allocationColumns, true)
+        && in_array('status', $allocationColumns, true)
+        && in_array('admission_number', $allocationColumns, true)) {
+        $allocationStudentJoinConditions = [];
+        if (in_array('student_id', $allocationColumns, true)
+            && in_array('user_id', $studentColumns, true)) {
+            $allocationStudentJoinConditions[] = 'sd.user_id = pca.student_id';
+        }
+        foreach (['admission_number', 'id_number'] as $studentIdentifier) {
+            if (!in_array($studentIdentifier, $studentColumns, true)) continue;
+            $allocationStudentJoinConditions[] = "TRIM(sd.`{$studentIdentifier}`) = TRIM(pca.admission_number)";
+        }
+
+        $existingResultConditions = [];
+        if (in_array('student_id', $allocationColumns, true)
+            && in_array('student_id', $placementColumns, true)) {
+            $existingResultConditions[] = 'pr2.student_id = pca.student_id';
+        }
+        foreach (['admission_number', 'id_number'] as $placementIdentifier) {
+            if (!in_array($placementIdentifier, $placementColumns, true)) continue;
+            $existingResultConditions[] = "TRIM(pr2.`{$placementIdentifier}`) = TRIM(pca.admission_number)";
+        }
+
+        if ($allocationStudentJoinConditions && $existingResultConditions) {
+            $allocationUserJoinConditions = [];
+            if (in_array('id', $userColumns, true) && in_array('student_id', $allocationColumns, true)) {
+                $allocationUserJoinConditions[] = 'u.id = pca.student_id';
+            }
+            if (in_array('id', $userColumns, true) && in_array('user_id', $studentColumns, true)) {
+                $allocationUserJoinConditions[] = 'u.id = sd.user_id';
+            }
+            if (in_array('id_number', $userColumns, true)) {
+                $allocationUserJoinConditions[] = 'TRIM(u.id_number) = TRIM(pca.admission_number)';
+            }
+            $allocationUserJoin = $allocationUserJoinConditions
+                ? implode(' OR ', array_unique($allocationUserJoinConditions))
+                : '1 = 0';
+            if (in_array('role', $userColumns, true)) {
+                $allocationUserJoin = "({$allocationUserJoin}) AND LOWER(TRIM(u.role)) = 'student'";
+            }
+
+            $allocationNameParts = [];
+            foreach ([
+                ['sd', $studentColumns, ['given_name', 'first_name']],
+                ['sd', $studentColumns, ['father_name', 'last_name']],
+                ['sd', $studentColumns, ['grandfather_name', 'grand_father_name']],
+                ['u', $userColumns, ['first_name']],
+                ['u', $userColumns, ['last_name']],
+            ] as [$alias, $columns, $candidates]) {
+                foreach ($candidates as $column) {
+                    if (in_array($column, $columns, true)) {
+                        $allocationNameParts[] = "NULLIF(TRIM(`{$alias}`.`{$column}`), '')";
+                        break;
+                    }
+                }
+            }
+            $allocationNameExpression = $allocationNameParts
+                ? "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', " . implode(', ', $allocationNameParts) . ")), ''), 'Student')"
+                : "'Student'";
+            $allocationEmailParts = [];
+            foreach ([['sd', $studentColumns], ['u', $userColumns]] as [$alias, $columns]) {
+                if (in_array('email', $columns, true)) {
+                    $allocationEmailParts[] = "NULLIF(TRIM(`{$alias}`.email), '')";
+                }
+            }
+            $allocationEmailExpression = $allocationEmailParts
+                ? 'COALESCE(' . implode(', ', $allocationEmailParts) . ", '')"
+                : "''";
+            $allocationStudentId = in_array('student_id', $allocationColumns, true)
+                ? 'pca.student_id'
+                : 'NULL';
+            $allocationStream = studentPlacementTextExpression($allocationColumns, 'pca', ['stream']);
+            $allocationCollege = studentPlacementTextExpression($allocationColumns, 'pca', ['college_name']);
+            $allocationScore = studentPlacementColumnExpression(
+                $studentColumns,
+                'sd',
+                ['cumulative_score', 'final_score', 'gpa'],
+                'NULL'
+            );
+            $pendingAllocationResult = $db->query(
+                "SELECT {$allocationStudentId} AS student_id,
+                        TRIM(pca.admission_number) AS id_number,
+                        {$allocationNameExpression} AS name,
+                        {$allocationEmailExpression} AS email,
+                        {$allocationStream} AS stream,
+                        {$allocationCollege} AS college,
+                        '' AS department,
+                        {$allocationScore} AS final_score,
+                        0 AS choice_rank,
+                        'Pending 2nd Semester' AS status,
+                        2 AS placement_semester
+                 FROM placement_college_allocations pca
+                 LEFT JOIN student_data sd ON " . implode(' OR ', array_unique($allocationStudentJoinConditions)) . "
+                 LEFT JOIN users u ON {$allocationUserJoin}
+                 WHERE pca.target_semester = 2
+                   AND LOWER(TRIM(COALESCE(pca.status, ''))) = 'pending'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM placement_results pr2
+                       WHERE (" . implode(' OR ', array_unique($existingResultConditions)) . ")
+                   )"
+            );
+            if (!$pendingAllocationResult) {
+                throw new RuntimeException('Unable to query pending semester-two allocations: ' . $db->error);
+            }
+            while ($row = $pendingAllocationResult->fetch_assoc()) {
+                $studentId = $row['student_id'] !== null ? (int) $row['student_id'] : (string) $row['id_number'];
+                $score = $row['final_score'] !== null && is_numeric($row['final_score'])
+                    ? (float) $row['final_score']
+                    : null;
+                $students[] = [
+                    'id' => $studentId,
+                    'student_id' => $studentId,
+                    'id_number' => (string) ($row['id_number'] ?? ''),
+                    'name' => (string) $row['name'],
+                    'email' => (string) ($row['email'] ?? ''),
+                    'status' => (string) $row['status'],
+                    'stream' => (string) ($row['stream'] ?? ''),
+                    'college' => (string) ($row['college'] ?? ''),
+                    'department' => '',
+                    'final_score' => $score,
+                    'cumulativeScore' => $score,
+                    'choice_rank' => 0,
+                    'placement_semester' => 2,
+                ];
+            }
+            $pendingAllocationResult->free();
+        }
+    }
+
+    $studentsByIdentity = [];
+    foreach ($students as $student) {
+        $identity = trim((string) ($student['id_number'] ?? ''));
+        if ($identity === '') {
+            $identity = trim((string) ($student['student_id'] ?? $student['id'] ?? ''));
+        }
+        if ($identity === '') {
+            $studentsByIdentity[] = $student;
+            continue;
+        }
+        $identity = strtolower($identity);
+        if (!isset($studentsByIdentity[$identity])
+            || (
+                (int) ($student['placement_semester'] ?? 1) === 2
+                && (int) ($studentsByIdentity[$identity]['placement_semester'] ?? 1) !== 2
+            )) {
+            $studentsByIdentity[$identity] = $student;
+        }
+    }
+    $students = array_values($studentsByIdentity);
+
     $db->close();
     placedStudentsResponse([
         'success' => true,

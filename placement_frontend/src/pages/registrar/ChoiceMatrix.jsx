@@ -1,11 +1,39 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import api from '../../services/api.js';
 
 const normalizeChoiceText = (value) => String(value ?? '').trim();
 
+const normalizeStatus = (value) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ');
+  if (['pending second semester', 'pending 2 semester'].includes(normalized)) return 'pending 2nd semester';
+  if (['pending first semester', 'pending 1 semester'].includes(normalized)) return 'pending 1st semester';
+  return normalized;
+};
+
+const statusLabel = (value) => {
+  const normalized = normalizeStatus(value);
+  if (normalized === 'pending') return 'Pending';
+  if (normalized === 'pending 1st semester') return 'Pending 1st Semester';
+  if (normalized === 'pending 2nd semester') return 'Pending 2nd Semester';
+  return String(value ?? '').trim() || 'Pending';
+};
+
 const departmentName = (choice) => normalizeChoiceText(
   choice?.dept_name ?? choice?.department_name ?? choice?.department ?? choice?.name,
 );
+
+const getStudentDisplayId = (student) => String(
+  student?.student_id || student?.id_number || student?.id || '',
+).trim();
+
+const getStudentChoiceIdentity = (student) => String(
+  student?.admission_number || student?.id_number || student?.id || '',
+).trim();
 
 const collegeName = (choice) => normalizeChoiceText(
   choice?.college_name ?? choice?.college ?? choice?.collegeName,
@@ -240,14 +268,14 @@ export default function ChoiceMatrix({
 }) {
   const [detailsStudent, setDetailsStudent] = useState(null);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(null);
   const [deletingChoices, setDeletingChoices] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [deleteFeedback, setDeleteFeedback] = useState('');
   const selectAllRef = useRef(null);
   const selectableStudentIds = useMemo(
     () => allStudents
-      .map((student) => String(student.id_number || student.id || '').trim())
+      .map(getStudentChoiceIdentity)
       .filter(Boolean),
     [allStudents],
   );
@@ -284,8 +312,16 @@ export default function ChoiceMatrix({
     setDeleteFeedback('');
   };
 
+  const requestChoiceDeletion = (semester, admissionNumbers = selectedStudentIds, individual = false) => {
+    const selectedIds = [...new Set(admissionNumbers.map((id) => String(id).trim()).filter(Boolean))];
+    if (!selectedIds.length || deletingChoices) return;
+    setDeleteError('');
+    setDeleteFeedback('');
+    setConfirmingDelete({ semester, admissionNumbers: selectedIds, individual });
+  };
+
   const deleteSelectedChoices = async () => {
-    if (!selectedStudentIds.length || deletingChoices) return;
+    if (!confirmingDelete?.admissionNumbers.length || deletingChoices) return;
     setDeletingChoices(true);
     setDeleteError('');
     setDeleteFeedback('');
@@ -293,7 +329,8 @@ export default function ChoiceMatrix({
       const response = await api.post(
         'api/registrar/delete_selected_student_choices.php',
         {
-          admissionNumbers: selectedStudentIds,
+          admissionNumbers: confirmingDelete.admissionNumbers,
+          semester: confirmingDelete.semester,
           expectedSemester: Number(activeSemester),
           confirmed: true,
         },
@@ -302,9 +339,10 @@ export default function ChoiceMatrix({
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to delete selected student choices.');
       }
-      setDeleteFeedback(response.data.message || `Deleted choice records across all semesters for ${selectedStudentIds.length} selected student(s).`);
-      setSelectedStudentIds([]);
-      setConfirmingDelete(false);
+      setDeleteFeedback(response.data.message || `Deleted Semester ${confirmingDelete.semester} choices for ${confirmingDelete.admissionNumbers.length} selected student(s).`);
+      const deletedStudentIds = new Set(confirmingDelete.admissionNumbers);
+      setSelectedStudentIds((current) => current.filter((studentId) => !deletedStudentIds.has(studentId)));
+      setConfirmingDelete(null);
       onChoicesDeleted?.();
     } catch (error) {
       setDeleteError(
@@ -326,7 +364,7 @@ export default function ChoiceMatrix({
     }, 0);
     return Math.max(1, choiceCount);
   });
-  const tableColumnCount = 5 + semesterChoiceCounts[0] + semesterChoiceCounts[1];
+  const tableColumnCount = 6 + semesterChoiceCounts[0] + semesterChoiceCounts[1];
 
   return (
     <>
@@ -334,14 +372,17 @@ export default function ChoiceMatrix({
         <span className="text-sm text-slate-600 dark:text-slate-300" aria-live="polite">
           {selectedStudentIds.length} student{selectedStudentIds.length === 1 ? '' : 's'} selected
         </span>
-        <button
-          type="button"
-          className="btn btn-outline-danger"
-          onClick={() => setConfirmingDelete(true)}
-          disabled={!selectedStudentIds.length || deletingChoices || loading}
-        >
-          Delete Selected Choices{selectedStudentIds.length ? ` (${selectedStudentIds.length})` : ''}
-        </button>
+        {[1, 2].map((semester) => (
+          <button
+            key={semester}
+            type="button"
+            className="btn btn-outline-danger"
+            onClick={() => requestChoiceDeletion(semester)}
+            disabled={!selectedStudentIds.length || deletingChoices || loading}
+          >
+            Delete Selected Semester {semester} Choices{selectedStudentIds.length ? ` (${selectedStudentIds.length})` : ''}
+          </button>
+        ))}
       </div>
       {deleteFeedback && <div className="alert alert-success py-2" role="status">{deleteFeedback}</div>}
       {deleteError && <div className="alert alert-danger py-2" role="alert">{deleteError}</div>}
@@ -366,6 +407,7 @@ export default function ChoiceMatrix({
               <th colSpan={semesterChoiceCounts[0]} className="!border-b-2 !border-r-4 !border-r-slate-300 !bg-indigo-700 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 1 PREFERENCES</th>
               <th colSpan={semesterChoiceCounts[1]} className="!border-b-2 !border-indigo-800 !bg-indigo-600 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 2 PREFERENCES</th>
               <th rowSpan="2" className="!bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">DETAILS</th>
+              <th rowSpan="2" className="!bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">ACTIONS</th>
             </tr>
             <tr>
               {[1, 2].flatMap((semester) => Array.from(
@@ -407,31 +449,31 @@ export default function ChoiceMatrix({
               <td className="border-b border-r border-slate-200 p-3.5 text-center">
                 <input
                   type="checkbox"
-                  aria-label={`Select ${student.name || student.id_number || student.id} choices`}
-                  checked={selectedStudentIds.includes(String(student.id_number || student.id || '').trim())}
+                  aria-label={`Select ${student.name || getStudentDisplayId(student)} choices`}
+                  checked={selectedStudentIds.includes(getStudentChoiceIdentity(student))}
                   onChange={(event) => toggleStudent(
-                    String(student.id_number || student.id || '').trim(),
+                    getStudentChoiceIdentity(student),
                     event.target.checked,
                   )}
-                  disabled={!String(student.id_number || student.id || '').trim() || deletingChoices}
+                  disabled={!getStudentChoiceIdentity(student) || deletingChoices}
                 />
               </td>
               <td className="border-b border-r border-slate-200 p-3.5">
                   <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-slate-800">
-                    {student.id_number || student.id}
+                    {getStudentDisplayId(student) || '—'}
                   </span>
                 </td>
                 <td className="border-b border-r border-slate-200 p-3.5 fw-semibold">{student.name}</td>
                 <td className="border-b border-r border-slate-200 p-3.5">{student.stream || 'N/A'}</td>
                 <td className="border-b border-r border-slate-200 p-3.5">
                   {(() => {
-                    const status = String(student.status || student.placement_status || '').trim() || 'Pending';
-                    const normalizedStatus = status.toLowerCase();
+                    const status = statusLabel(student.status || student.placement_status);
+                    const normalizedStatus = normalizeStatus(status);
                     const statusClass = normalizedStatus === 'approved'
                       ? 'bg-emerald-100 text-emerald-800'
                       : normalizedStatus === 'rejected'
                         ? 'bg-rose-100 text-rose-800'
-                        : normalizedStatus === 'pending'
+                        : ['pending', 'pending 1st semester', 'pending 2nd semester'].includes(normalizedStatus)
                             ? 'border border-amber-300 bg-amber-100 text-amber-800'
                           : 'bg-slate-100 text-slate-700';
                     return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${statusClass}`}>{status}</span>;
@@ -478,6 +520,28 @@ export default function ChoiceMatrix({
                     Details
                   </button>
                 </td>
+                <td className="border-b border-slate-200 p-3.5">
+                  <div className="flex flex-wrap gap-1">
+                    {[1, 2].map((semester) => (
+                      <button
+                        key={semester}
+                        type="button"
+                        className="btn btn-sm btn-outline-danger inline-flex items-center gap-1"
+                        aria-label={`Delete ${student.name || getStudentDisplayId(student)} Semester ${semester} choices`}
+                        title={`Delete this student's Semester ${semester} choices only`}
+                        onClick={() => requestChoiceDeletion(
+                          semester,
+                          [getStudentChoiceIdentity(student)],
+                          true,
+                        )}
+                        disabled={!getStudentChoiceIdentity(student) || deletingChoices || loading}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                        S{semester}
+                      </button>
+                    ))}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -496,16 +560,19 @@ export default function ChoiceMatrix({
             aria-labelledby="delete-selected-choices-title"
           >
             <h5 id="delete-selected-choices-title" className="mb-2 font-bold">
-              Delete selected students’ choices across all semesters?
+              {confirmingDelete.individual
+                ? `Delete this student's Semester ${confirmingDelete.semester} choices?`
+                : `Delete selected students' Semester ${confirmingDelete.semester} choices?`}
             </h5>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-              This permanently removes all saved choice records for the selected students, including both Semester 1 and Semester 2. Student accounts, personal profiles, placement results, and department capacities will remain unchanged.
+              Only Semester {confirmingDelete.semester} choice records for {confirmingDelete.admissionNumbers.length === 1 ? 'the selected student' : 'the selected students'} will be removed. Choices for the other semester, placement results, and department capacities will remain unchanged.
+              {confirmingDelete.semester === 1 && ' Eligible unplaced students will have their preference editing reset for resubmission.'}
             </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 className="btn btn-outline-secondary"
-                onClick={() => setConfirmingDelete(false)}
+                onClick={() => setConfirmingDelete(null)}
                 disabled={deletingChoices}
               >
                 Cancel
@@ -516,7 +583,7 @@ export default function ChoiceMatrix({
                 onClick={deleteSelectedChoices}
                 disabled={deletingChoices}
               >
-                {deletingChoices ? 'Deleting choices...' : 'Delete Selected Choices'}
+                {deletingChoices ? 'Deleting choices...' : `Delete Semester ${confirmingDelete.semester} Choices`}
               </button>
             </div>
           </section>

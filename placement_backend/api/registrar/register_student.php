@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/../../config/placement_scoring.php';
+require_once __DIR__ . '/../../config/id_number.php';
 
 function registerStudentRespond(array $payload, int $status = 200): void
 {
@@ -36,7 +37,8 @@ if (!is_array($input)) {
     registerStudentRespond(['success' => false, 'message' => 'A valid JSON request body is required.'], 400);
 }
 
-$admissionNumber = trim((string) ($input['admission_number'] ?? ''));
+$moeAdmissionNumber = trim((string) ($input['moe_admission_number'] ?? $input['admission_number'] ?? ''));
+$universityStudentId = trim((string) ($input['student_id'] ?? $input['university_student_id'] ?? ''));
 $firstName = trim((string) ($input['given_name'] ?? $input['first_name'] ?? ''));
 $fatherName = trim((string) ($input['father_name'] ?? ''));
 $grandfatherName = trim((string) ($input['grandfather_name'] ?? ''));
@@ -46,11 +48,17 @@ $fieldOfStudy = trim((string) ($input['field_of_study'] ?? ''));
 $disability = trim((string) ($input['disability'] ?? 'No'));
 $minority = trim((string) ($input['minority'] ?? 'No'));
 
-if ($admissionNumber === '' || $firstName === '' || $fatherName === '' || $grandfatherName === '') {
+if ($moeAdmissionNumber === '' || $firstName === '' || $fatherName === '' || $grandfatherName === '') {
     registerStudentRespond([
         'success' => false,
-        'message' => 'Admission number, first name, father name, and grandfather name are required.',
+        'message' => 'Ministry admission number, first name, father name, and grandfather name are required.',
     ], 400);
+}
+if (strlen($moeAdmissionNumber) > 50 || strlen($universityStudentId) > 50) {
+    registerStudentRespond(['success' => false, 'message' => 'Student identifiers must be 50 characters or fewer.'], 400);
+}
+if ($universityStudentId !== '' && strcasecmp($universityStudentId, $moeAdmissionNumber) === 0) {
+    registerStudentRespond(['success' => false, 'message' => 'University Student ID must differ from the Ministry admission number.'], 400);
 }
 
 $regions = [
@@ -96,15 +104,32 @@ try {
         throw new RuntimeException('Database connection is unavailable.');
     }
 
+    if ($universityStudentId === '') {
+        $universityStudentId = getNextUniversityStudentIdNumber($db);
+    }
+
     $duplicate = $db->prepare(
-        'SELECT admission_number FROM student_data
+        'SELECT id FROM student_data
          WHERE UPPER(TRIM(admission_number)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(moe_admission_number)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(student_id)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(admission_number)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(moe_admission_number)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(student_id)) = UPPER(TRIM(?))
          LIMIT 1'
     );
     if (!$duplicate) {
         throw new RuntimeException('Unable to prepare duplicate student check: ' . $db->error);
     }
-    $duplicate->bind_param('s', $admissionNumber);
+    $duplicate->bind_param(
+        'ssssss',
+        $moeAdmissionNumber,
+        $moeAdmissionNumber,
+        $moeAdmissionNumber,
+        $universityStudentId,
+        $universityStudentId,
+        $universityStudentId
+    );
     if (!$duplicate->execute()) {
         throw new RuntimeException('Unable to check admission number: ' . $duplicate->error);
     }
@@ -112,7 +137,7 @@ try {
     $duplicate->close();
     if ($exists) {
         $db->close();
-        registerStudentRespond(['success' => false, 'message' => 'A student with this admission number is already registered.'], 409);
+        registerStudentRespond(['success' => false, 'message' => 'A student with one of these identifiers is already registered.'], 409);
     }
 
     $scoreRulesResult = $db->query(
@@ -151,9 +176,9 @@ try {
 
     $insert = $db->prepare(
         "INSERT INTO student_data
-            (admission_number, region, given_name, father_name, grandfather_name, sex,
+            (admission_number, moe_admission_number, student_id, region, given_name, father_name, grandfather_name, sex,
              field_of_study, total_mark, cgpa, coc_score, cumulative_score, disability, minority, placement_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')"
     );
     if (!$insert) {
         throw new RuntimeException('Unable to prepare student registration: ' . $db->error);
@@ -162,8 +187,10 @@ try {
     $cgpa = $scoreInputs['cgpa'];
     $cocScore = $scoreInputs['coc_score'];
     if (!$insert->bind_param(
-        'ssssssssssdss',
-        $admissionNumber,
+        str_repeat('s', 12) . 'dss',
+        $moeAdmissionNumber,
+        $moeAdmissionNumber,
+        $universityStudentId,
         $region,
         $firstName,
         $fatherName,
@@ -183,7 +210,7 @@ try {
         if ($insert->errno === 1062) {
             $insert->close();
             $db->close();
-            registerStudentRespond(['success' => false, 'message' => 'A student with this admission number is already registered.'], 409);
+            registerStudentRespond(['success' => false, 'message' => 'A student with one of these identifiers is already registered.'], 409);
         }
         throw new RuntimeException('Unable to save student record: ' . $insert->error);
     }
@@ -194,7 +221,10 @@ try {
         'success' => true,
         'message' => 'Student registered successfully.',
         'student' => [
-            'admission_number' => $admissionNumber,
+            'admission_number' => $moeAdmissionNumber,
+            'moe_admission_number' => $moeAdmissionNumber,
+            'student_id' => $universityStudentId,
+            'university_student_id' => $universityStudentId,
             'given_name' => $firstName,
             'father_name' => $fatherName,
             'grandfather_name' => $grandfatherName,

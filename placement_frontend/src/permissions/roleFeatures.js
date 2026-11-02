@@ -48,7 +48,6 @@ export const roleFeatures = {
       { id: 'admin.departments', label: 'Manage Departments', navigationKey: 'departments' },
       { id: 'admin.reports', label: 'Reports', navigationKey: 'reports' },
       { id: 'admin.contact-messages', label: 'Contact Messages', navigationKey: 'contact-messages' },
-      { id: 'admin.assign-head', label: 'Assign Department Head', navigationKey: 'assign-head' },
       { id: 'admin.data-import', label: 'Data Import', navigationKey: 'data-import' },
       { id: 'admin.audit-logs', label: 'Audit Logs / System Health', navigationKey: 'audit-logs' },
       { id: 'admin.system-settings', label: 'System Settings', navigationKey: 'system-config', alwaysOpen: true },

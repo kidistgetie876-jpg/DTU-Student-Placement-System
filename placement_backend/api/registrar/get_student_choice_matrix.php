@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/cors.php';
 sendCorsHeaders();
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/placement_semester.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 function choiceMatrixRespond(array $payload, int $status = 200): void
@@ -79,10 +80,30 @@ if (!$db instanceof mysqli) {
 }
 
 try {
+    $activeSemester = 1;
+    $settingsColumns = choiceMatrixColumns($db, 'placement_settings');
+    if (in_array('active_semester', $settingsColumns, true)) {
+        $settingsResult = $db->query('SELECT active_semester FROM placement_settings WHERE id = 1 LIMIT 1');
+        if (!$settingsResult) {
+            throw new RuntimeException('Unable to load the active placement semester.');
+        }
+        $activeSemester = (int) ($settingsResult->fetch_assoc()['active_semester'] ?? 1);
+        $settingsResult->free();
+        if (!in_array($activeSemester, [1, 2], true)) {
+            $activeSemester = 1;
+        }
+    }
+
     $choiceColumns = choiceMatrixColumns($db, 'student_choices');
     if (!$choiceColumns) {
         $db->close();
-        choiceMatrixRespond(['success' => true, 'count' => 0, 'data' => [], 'students' => []]);
+        choiceMatrixRespond([
+            'success' => true,
+            'count' => 0,
+            'active_semester' => $activeSemester,
+            'data' => [],
+            'students' => [],
+        ]);
     }
     if (!in_array('priority', $choiceColumns, true)) {
         throw new RuntimeException('The student_choices table is missing priority.');
@@ -149,16 +170,18 @@ try {
 
     $admissionExpressions = [
         choiceMatrixTextExpression($choiceColumns, 'sc', ['admission_number']),
-        choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['admission_number', 'id_number']),
+        choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['moe_admission_number', 'admission_number', 'id_number']),
         choiceMatrixTextExpression($joinedUserColumns, 'u', ['id_number']),
     ];
     $studentIdExpression = in_array('student_id', $choiceColumns, true)
         ? 'CAST(sc.student_id AS CHAR)'
         : "''";
-    $studentIdentifier = 'COALESCE(' . implode(', ', array_map(
+    $admissionIdentifier = 'COALESCE(' . implode(', ', array_map(
         static fn($expression) => "NULLIF({$expression}, '')",
         $admissionExpressions
     )) . ", NULLIF({$studentIdExpression}, ''), '')";
+    $universityStudentIdentifier = choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['student_id']);
+    $studentIdentifier = "COALESCE(NULLIF({$universityStudentIdentifier}, ''), NULLIF({$admissionIdentifier}, ''), '')";
 
     $nameParts = [];
     foreach (['given_name', 'father_name', 'grandfather_name'] as $column) {
@@ -207,11 +230,26 @@ try {
                 . ' LIMIT 1)';
         }
     }
-    $statusExpression = 'COALESCE('
-        . ($placementStatusExpression !== '' ? $placementStatusExpression . ', ' : '')
-        . 'NULLIF(' . choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['placement_status', 'status']) . ", ''), "
-        . choiceMatrixTextExpression($joinedUserColumns, 'u', ['status'])
-        . ')';
+    $profileStatusExpression = choiceMatrixTextExpression(
+        $joinedProfileColumns,
+        'sd',
+        ['placement_status', 'status']
+    );
+    $statusExpressions = $activeSemester === 2
+        ? [$profileStatusExpression]
+        : [];
+    if ($placementStatusExpression !== '') {
+        $statusExpressions[] = $placementStatusExpression;
+    }
+    if ($activeSemester !== 2) {
+        $statusExpressions[] = $profileStatusExpression;
+    }
+    $statusExpressions[] = choiceMatrixTextExpression($joinedUserColumns, 'u', ['status']);
+    $statusExpression = 'COALESCE(' . implode(', ', array_map(
+        static fn(string $expression): string => "NULLIF({$expression}, '')",
+        $statusExpressions
+    )) . ", '')";
+    $normalizedStatusExpression = placementNormalizeStudentStatusSql($statusExpression);
     $departmentExpression = 'COALESCE('
         . 'NULLIF(' . choiceMatrixTextExpression($choiceColumns, 'sc', ['dept_name', 'department_name']) . ", ''), "
         . choiceMatrixTextExpression($joinedDepartmentColumns, 'd', ['name'])
@@ -244,7 +282,7 @@ try {
             : '0 = 1';
         $semesterExpression = "(CASE
             WHEN {$storedSemesterExpression} = 2
-              OR ((LOWER(TRIM({$statusExpression})) = 'pending 2nd semester'
+              OR (({$normalizedStatusExpression} = 'pending 2nd semester'
                    OR {$hasStageOnePlacement})
                   AND d.offered_semester = 2)
             THEN 2
@@ -253,6 +291,7 @@ try {
     }
 
     $sql = "SELECT {$studentIdentifier} AS student_id,
+                   {$admissionIdentifier} AS admission_number,
                    {$nameExpression} AS student_name,
                    " . choiceMatrixTextExpression($joinedUserColumns, 'u', ['email']) . " AS email,
                    {$streamExpression} AS stream,
@@ -262,8 +301,12 @@ try {
                    {$collegeExpression} AS college_name,
                    {$semesterExpression} AS semester,
                    " . choiceMatrixColumn($choiceColumns, 'sc', 'dept_id', 'NULL') . " AS department_id
-            FROM student_choices sc{$joins}
-            ORDER BY 1 ASC, sc.priority ASC";
+            FROM student_choices sc{$joins}";
+    if ($activeSemester === 2) {
+        $sql .= " WHERE ({$semesterExpression}) = 2
+                   OR {$normalizedStatusExpression} = 'pending 2nd semester'";
+    }
+    $sql .= ' ORDER BY 1 ASC, sc.priority ASC';
     $result = $db->query($sql);
     if (!$result) {
         throw new RuntimeException('Unable to query submitted student preferences: ' . $db->error);
@@ -275,14 +318,24 @@ try {
         if ($studentId === '') {
             continue;
         }
+        $semester = (int) ($row['semester'] ?? 1);
+        $status = placementStudentStatusLabel((string) ($row['status'] ?? ''));
+        $normalizedStatus = placementNormalizeStudentStatus($status);
+        if ($activeSemester === 2
+            && $semester !== 2
+            && $normalizedStatus !== 'pending 2nd semester') {
+            continue;
+        }
+
         $key = strtolower($studentId);
         if (!isset($matrix[$key])) {
             $matrix[$key] = [
                 'student_id' => $studentId,
+                'admission_number' => trim((string) ($row['admission_number'] ?? '')),
                 'student_name' => trim((string) ($row['student_name'] ?? '')) ?: 'Unknown Student',
                 'email' => trim((string) ($row['email'] ?? '')),
                 'stream' => trim((string) ($row['stream'] ?? '')),
-                'status' => trim((string) ($row['status'] ?? '')),
+                'status' => $status,
                 'choices' => [],
                 'choice_1' => '',
                 'choice_2' => '',
@@ -299,12 +352,14 @@ try {
         if ($priority < 1 || $departmentName === '') {
             continue;
         }
+        if ($activeSemester === 2 && $semester !== 2) {
+            continue;
+        }
         $choiceKey = 'choice_' . $priority;
         if (!isset($matrix[$key][$choiceKey]) || $matrix[$key][$choiceKey] === '') {
             $matrix[$key][$choiceKey] = $departmentName;
         }
         $collegeName = trim((string) ($row['college_name'] ?? ''));
-        $semester = (int) ($row['semester'] ?? 1);
         $departmentId = isset($row['department_id']) && (int) $row['department_id'] > 0
             ? (int) $row['department_id']
             : null;
@@ -334,6 +389,7 @@ try {
     choiceMatrixRespond([
         'success' => true,
         'count' => count($students),
+        'active_semester' => $activeSemester,
         'data' => $students,
         'students' => $students,
     ]);

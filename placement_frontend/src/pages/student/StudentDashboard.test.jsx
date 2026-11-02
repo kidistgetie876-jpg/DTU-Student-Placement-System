@@ -24,6 +24,7 @@ jest.mock('../../services/api.js', () => ({
     defaults: { baseURL: 'http://localhost:8888/student-placement/placement_backend/' },
     get: jest.fn(),
     post: jest.fn(),
+    delete: jest.fn(),
   },
 }));
 
@@ -63,7 +64,15 @@ describe('StudentDashboard', () => {
     expect(screen.getByText('Current placement status')).toBeInTheDocument();
     expect(screen.getByText('Student placement overview')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Disability' })).not.toBeInTheDocument();
-    expect(screen.getByText(/ID:/)).toHaveTextContent('1');
+    expect(screen.getByText(/ID:/)).toHaveTextContent('Not available');
+    expect(api.get).toHaveBeenCalledWith(
+      'api/student/placement_status.php',
+      { params: { student_id: '1' } },
+    );
+    expect(api.get).toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { params: { student_id: '1' } },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /submit preferences/i }));
 
@@ -72,6 +81,50 @@ describe('StudentDashboard', () => {
       pathname: '/student-dashboard',
       search: '?tab=preferences',
     });
+  });
+
+  it('omits empty student identifiers when client profile data is unavailable', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'Alice', role: 'student' }));
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: false, message: 'No client identity provided.' } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      if (url.includes('get_placement_settings.php')) return Promise.resolve({ data: { min_gpa: 1.75 } });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('api/student/placement_status.php', { params: {} });
+      expect(api.get).toHaveBeenCalledWith('api/student/student_preferences.php', { params: {} });
+    });
+    expect(api.get).not.toHaveBeenCalledWith(
+      'api/student/placement_status.php',
+      { params: { student_id: '', admission_number: '' } },
+    );
+    expect(api.get).not.toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      { params: { student_id: '', admission_number: '' } },
+    );
+  });
+
+  it('does not request student preferences without a stored student session', async () => {
+    localStorage.clear();
+
+    render(<StudentDashboard />);
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    expect(api.get).not.toHaveBeenCalledWith(
+      'api/student/student_preferences.php',
+      expect.anything(),
+    );
+    expect(api.get).not.toHaveBeenCalledWith(
+      'api/student/placement_status.php',
+      expect.anything(),
+    );
   });
 
   it('restores the selected tab from the dashboard URL after a refresh', async () => {
@@ -96,6 +149,65 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'View placement status' }));
 
     expect(await screen.findByRole('heading', { name: 'Placement Result' })).toBeInTheDocument();
+  });
+
+  it('shows the current semester lifecycle in the status banner and placement notifications', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('placement_status.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            status: 'Pending 2nd Semester',
+            placement_status: 'Pending 2nd Semester',
+            active_semester: 2,
+            assigned_semester: 2,
+            assigned_department: 'Biology',
+            latest_placement: { status: 'Pending', semester: 1, department: 'Old Department' },
+          },
+        });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{
+              id: 21,
+              title: 'Placement run completed',
+              message: 'Your Semester 2 placement in Biology is Pending Approval.',
+              notification_type: 'placement_run',
+              placement_semester: 2,
+              is_read: 0,
+            }],
+          },
+        });
+      }
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) return Promise.resolve({ data: { success: true, choices: [] } });
+      if (url.includes('get_placement_settings.php')) return Promise.resolve({ data: { min_gpa: 1.75 } });
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValue({ data: { success: true, message: 'Notification marked as read.' } });
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findAllByText('Deferred to 2nd Semester - Pending Placement')).toHaveLength(3);
+    expect(screen.queryByText('Assigned to Semester 1 - Pending Approval')).not.toBeInTheDocument();
+    expect(screen.getByTestId('placement-status-banner')).toHaveTextContent(
+      'Your department placement process will take place during the 2nd Semester placement run.',
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
+    expect(await screen.findByText('Placement run completed')).toBeInTheDocument();
+    expect(screen.getByText('Semester 2')).toBeInTheDocument();
+    expect(screen.getByText('Placement update')).toHaveClass('rounded-full', 'bg-cyan-100');
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/student/mark_notification_read.php',
+      { notification_id: 21, notification_type: 'placement_run' },
+    ));
   });
 
   it('moves a selected college choice to another rank and clears its previous rank', async () => {
@@ -203,6 +315,64 @@ describe('StudentDashboard', () => {
         semester: 2,
       }),
     }));
+  });
+
+  it('locks the second-semester form when a Semester 1 department is already assigned', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: { success: true, student: { id: '1', id_number: 'DTU16R2004', username: 'Alice', status: 'Pending Approval', gpa: 3, cgpa: 3 } },
+        });
+      }
+      if (url.includes('placement_status.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            status: 'Pending Approval',
+            placement_status: 'Pending Approval',
+            assigned_semester: 1,
+            assigned_department: 'Medicine',
+            has_active_assigned_placement: true,
+            active_semester: 2,
+            is_second_sem_choice_open: true,
+            second_sem_choice_eligible: true,
+            allocated_college: 'Health Science',
+            allocated_group: 'health_science',
+          },
+        });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            semester: 2,
+            activeSemester: 2,
+            secondSemesterChoiceEligible: true,
+            isSecondSemesterChoiceOpen: true,
+            hasActiveAssignedPlacement: true,
+            choices: [],
+          },
+        });
+      }
+      if (url.includes('get_student_result.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            student: { id: '1', id_number: 'DTU16R2004', status: 'Pending Approval' },
+            placement: { assigned_department: 'Medicine', placement_status: 'Pending', published: false },
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
+
+    expect(await screen.findByTestId('assigned-placement-choice-lock')).toHaveTextContent('Medicine');
+    expect(screen.queryByRole('combobox', { name: 'Choice #1' })).not.toBeInTheDocument();
+    expect(screen.queryByText('The Semester 2 choice portal is open.')).not.toBeInTheDocument();
   });
 
   it('uses the active first semester form for editable students and shows no duplicate lock warnings', async () => {
@@ -805,7 +975,7 @@ describe('StudentDashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/student/mark_all_notifications_read.php'));
-    expect(await screen.findByText('All notifications marked as read.')).toBeInTheDocument();
+    expect(screen.queryByText('All notifications marked as read.')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark all as read' })).not.toBeInTheDocument();
   });
 
@@ -837,8 +1007,46 @@ describe('StudentDashboard', () => {
       'api/student/mark_notification_read.php',
       { notification_id: 11 }
     ));
-    expect(await screen.findByText('Notification marked as read.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Notification marked as read.')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument());
+  });
+
+  it('deletes an individual notification and updates the list without reloading', async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', username: 'Alice', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('get_student_notifications.php')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            notifications: [{
+              id: 12,
+              notification_type: 'placement_run',
+              title: 'Dismissible update',
+              message: 'This notice can be removed.',
+              is_read: 1,
+            }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.delete.mockResolvedValue({ data: { success: true, message: 'Notification deleted.' } });
+
+    render(<StudentDashboard />);
+    fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
+
+    expect(await screen.findByText('Dismissible update')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete notification: Dismissible update' }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(
+      'api/student/delete_student_notification.php',
+      { params: { notification_id: '12', notification_type: 'placement_run' } },
+    ));
+    await waitFor(() => expect(screen.queryByText('Dismissible update')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('You have no notifications.');
   });
 
   it('shows registrar meeting notifications with their date, time, and location', async () => {
@@ -903,6 +1111,7 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
 
     const attachment = await screen.findByRole('link', { name: 'Open attachment' });
+    expect(attachment).toHaveClass('inline-flex', 'items-center', 'gap-2', 'text-blue-700');
     expect(attachment).toHaveAttribute(
       'href',
       'http://localhost:8888/student-placement/placement_backend/api/common/download_report.php?notification_id=23',
@@ -978,13 +1187,29 @@ describe('StudentDashboard', () => {
   });
 
   it('uses the latest placement result when the loaded profile still says unassigned', async () => {
+    localStorage.setItem('user', JSON.stringify({
+      id: '1',
+      id_number: 'DTU16R2001',
+      admission_number: 'MOE10001',
+      username: 'Alice',
+      role: 'student',
+    }));
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
       if (url.includes('student_data_api.php')) {
         return Promise.resolve({
           data: {
             success: true,
-            student: { id: '1', username: 'Alice', gpa: 3, status: 'Not assigned', department: 'Not assigned' },
+            student: {
+              id: '1',
+              id_number: 'DTU16R2001',
+              student_id: 'DTU16R2001',
+              admission_number: 'MOE10001',
+              username: 'Alice',
+              gpa: 3,
+              status: 'Not assigned',
+              department: 'Not assigned',
+            },
           },
         });
       }
@@ -993,7 +1218,13 @@ describe('StudentDashboard', () => {
           data: {
             success: true,
             published: true,
-            student: { id: 1, status: 'Assigned', department: 'Computer Science' },
+            student: {
+              id: 1,
+              id_number: 'MOE10001',
+              student_id: 'DTU16R2001',
+              status: 'Assigned',
+              department: 'Computer Science',
+            },
             placement: {
               assigned_department: 'Computer Science',
               stream: 'Natural',
@@ -1013,7 +1244,8 @@ describe('StudentDashboard', () => {
     expect(screen.getByText('Computer Science')).toBeInTheDocument();
     expect(screen.getByText('Assigned')).toBeInTheDocument();
     expect(screen.getByText('Full Name').closest('article')).toHaveTextContent('Alice');
-    expect(screen.getByText('Student ID').closest('article')).toHaveTextContent('1');
+    expect(screen.getByText('Student ID').closest('article')).toHaveTextContent('DTU16R2001');
+    expect(document.body).not.toHaveTextContent('MOE10001');
     expect(screen.getByText('Merit Score').closest('article')).toHaveTextContent('88.50');
     expect(screen.queryByText(/currently unassigned/i)).not.toBeInTheDocument();
   });
@@ -1119,6 +1351,30 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
 
     expect(await screen.findByText('ID: DTU16R1002')).toBeInTheDocument();
+  });
+
+  it('does not render a Ministry admission number when no University ID is available', async () => {
+    localStorage.setItem('user', JSON.stringify({
+      id: '1',
+      id_number: 'MOE10001',
+      admission_number: 'MOE10001',
+      username: 'Alice',
+      role: 'student',
+    }));
+    api.get.mockImplementation((url) => {
+      if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({
+          data: { success: true, student: { id_number: 'MOE10001', username: 'Alice' } },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findByText('ID: Not available')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('MOE10001');
   });
 
   it('locks the stream dropdown to the student registered stream', async () => {
@@ -1273,7 +1529,7 @@ describe('StudentDashboard', () => {
     fireEvent.change(screen.getByLabelText('Choice #2b Department'), { target: { value: '' } });
     expect(screen.getByLabelText('Choice #2a Department').querySelector('option[value="Information Technology"]')).toBeEnabled();
     fireEvent.change(screen.getByLabelText('Choice #3'), { target: { value: 'other_natural_science' } });
-    expect(screen.getByText(/broad group is submitted as one preference/i)).toBeInTheDocument();
+    expect(screen.queryByText(/broad group is submitted as one preference/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Biology' })).not.toBeInTheDocument();
   });
 
@@ -1426,7 +1682,7 @@ describe('StudentDashboard', () => {
     fireEvent.change(screen.getByLabelText('Choice #1 Department'), { target: { value: 'Law' } });
     expect(screen.queryByRole('option', { name: 'Economics' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Choice #2'), { target: { value: 'other_social_science' } });
-    expect(screen.getByText(/broad group is submitted as one preference/i)).toBeInTheDocument();
+    expect(screen.queryByText(/broad group is submitted as one preference/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Economics' })).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -1457,13 +1713,13 @@ describe('StudentDashboard', () => {
     expect(screen.getByLabelText('Choice #2')).toHaveValue('other_social_science');
   });
 
-  it('shows Semester 2 preference options across colleges in the assigned stream', async () => {
+  it('uses the server-assigned stream for Semester 2 preference options', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) {
         return Promise.resolve({ data: [] });
       }
       if (url.includes('student_data_api.php')) {
-        return Promise.resolve({ data: { success: true, student: { id: '1', id_number: 'DTU16R1001', username: 'Alice', stream: 'Social Science' } } });
+        return Promise.resolve({ data: { success: true, student: { id: '1', id_number: 'DTU16R1001', username: 'Alice', stream: 'Natural Science' } } });
       }
       if (url.includes('placement_status.php')) {
         return Promise.resolve({
@@ -1479,9 +1735,10 @@ describe('StudentDashboard', () => {
         return Promise.resolve({
           data: {
             success: true,
+            assigned_stream: 'Social Science',
             departments: [
               { id: 1, name: 'Law', stream: 'Social Science', college_name: 'School of Law', placement_group: 'law', status: 'active', offered_semester: 2 },
-              { id: 2, name: 'Economics', stream: 'Social Science', college_name: 'Other Social Science', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
+              { id: 2, name: 'Economics', college_name: 'Other Social Science', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
               { id: 3, name: 'Sociology', stream: 'Social Science', college_name: 'Other Social Science', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
               { id: 4, name: 'Medicine', stream: 'Natural Science', college_name: 'Health Science', placement_group: 'health_science', status: 'active', offered_semester: 2 },
             ],
@@ -1822,7 +2079,7 @@ describe('StudentDashboard', () => {
     expect(screen.queryByRole('option', { name: 'College of Engineering' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Choice #1'), { target: { value: 'other_natural_science' } });
 
-    expect(screen.getByText(/broad group is submitted as one preference/i)).toBeInTheDocument();
+    expect(screen.queryByText(/broad group is submitted as one preference/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Biology' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Civil Engineering' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Mechanical Engineering' })).not.toBeInTheDocument();

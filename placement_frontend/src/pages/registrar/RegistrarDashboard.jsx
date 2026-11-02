@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api.js';
 import getAttachmentUrl from '../../utils/getAttachmentUrl';
+import { normalizeCollegeForStream } from '../../utils/placementColleges.js';
 import StudentRegistration from './StudentRegistration';
 import PlacedStudents from './PlacedStudents.jsx';
 import UnassignedStudents from './UnassignedStudents.jsx';
@@ -153,16 +154,69 @@ export const filterStudentIdsForPlacement = (studentRecords, selectedStudentIds)
 const hasPlacementResult = (student) => {
   if (!student) return false;
 
-  const status = String(student.status || student.placement_status || '').trim().toLowerCase();
+  const status = normalizePlacementStatus(student.status || student.placement_status);
   const result = student.placementResult ?? student.placement_result ?? student.result ?? student.placement;
 
   return ['placed', 'approved'].includes(status)
     || (result !== null && result !== undefined && result !== '' && result !== false);
 };
 
-const isActivePlacementCandidate = (student) => {
+const normalizePlacementStatus = (status) => {
+  const normalized = String(status || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]/g, ' ')
+    .replace(/\s+/g, ' ');
+  if (['pending second semester', 'pending 2 semester'].includes(normalized)) return 'pending 2nd semester';
+  if (['pending first semester', 'pending 1 semester'].includes(normalized)) return 'pending 1st semester';
+  return normalized;
+};
+
+const placementStatusLabel = (status) => {
+  const normalized = normalizePlacementStatus(status);
+  if (normalized === 'pending') return 'Pending';
+  if (normalized === 'pending 1st semester') return 'Pending 1st Semester';
+  if (normalized === 'pending 2nd semester') return 'Pending 2nd Semester';
+  return String(status || '').trim();
+};
+
+export const filterChoiceMatrixRecordsForSemester = (records, semester) => {
+  if (!Array.isArray(records) || semester !== 2) return Array.isArray(records) ? records : [];
+
+  return records.flatMap((record) => {
+    const choices = Array.isArray(record?.choices) ? record.choices : [];
+    const secondSemesterChoices = choices.filter((choice) => (
+      Number(choice?.semester ?? choice?.semester_number ?? 1) === 2
+    ));
+    const secondSemesterMap = record?.sem2_choices || record?.semester_2_choices || {};
+    const hasSecondSemesterMap = Object.keys(secondSemesterMap).length > 0;
+    const status = placementStatusLabel(record?.status || record?.placement_status);
+    if (normalizePlacementStatus(status) !== 'pending 2nd semester'
+      && !secondSemesterChoices.length
+      && !hasSecondSemesterMap) {
+      return [];
+    }
+
+    return [{
+      ...record,
+      status,
+      placement_status: status,
+      choices: secondSemesterChoices,
+      sem1_choices: {},
+      semester_1_choices: [],
+    }];
+  });
+};
+
+const isActivePlacementCandidate = (student, semester) => {
   if (!student || hasPlacementResult(student)) return false;
-  const status = String(student.status || student.placement_status || '').trim().toLowerCase();
+  const status = normalizePlacementStatus(student.placement_status || student.status);
+  if (semester === 1 && ['pending 2nd semester', 'pending second semester', 'deferred'].includes(status)) {
+    return false;
+  }
+  if (semester === 2 && status !== 'pending 2nd semester') {
+    return false;
+  }
   return !['inactive', 'disabled'].includes(status);
 };
 
@@ -325,10 +379,34 @@ const downloadPdf = async (filename, title, headers, rows) => {
   doc.save(filename);
 };
 
+export const getStudentPrimaryIdentifier = (student) => (
+  student.student_id || student.university_student_id || ''
+);
+
+export const getPlacementCandidatePrimaryIdentifier = (student = {}) => {
+  return [
+    student.university_student_id,
+    student.id_number,
+    student.student_id,
+  ]
+    .map((identifier) => String(identifier || '').trim())
+    .find((identifier) => identifier !== '' && !/^MOE/i.test(identifier)) || '';
+};
+
+export const getPlacementPreviewRequestParams = (candidates = []) => ({
+  student_ids: [...new Set(candidates
+    .map((candidate) => String(candidate.university_student_id || candidate.student_id || '').trim())
+    .filter((identifier) => identifier && !/^MOE/i.test(identifier)))],
+  admission_numbers: [...new Set(candidates
+    .map((candidate) => String(candidate.moe_admission_number || candidate.admission_number || '').trim())
+    .filter(Boolean))],
+});
+
 export const exportStudentInformation = (students, format = 'csv') => {
-  const headers = ['Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Disability', 'Minority', 'Cumulative Score', 'Placement Status'];
+  const headers = ['University Student ID', 'Ministry Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Disability', 'Minority', 'Cumulative Score', 'Placement Status'];
   const rows = students.map((student) => ({
-    'Admission Number': student.admission_number || '',
+    'University Student ID': getStudentPrimaryIdentifier(student),
+    'Ministry Admission Number': student.moe_admission_number || student.admission_number || '',
     'First Name': student.given_name || '',
     'Father Name': student.father_name || '',
     'Grandfather Name': student.grandfather_name || '',
@@ -409,10 +487,8 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
 };
 
 export const isDeferredPlacement = (placement) => {
-  const status = String(placement?.status || '').trim().toLowerCase().replace(/_/g, ' ');
-  return status === 'deferred'
-    || status === 'pending 2nd semester'
-    || status === 'pending second semester';
+  const status = normalizePlacementStatus(placement?.status);
+  return status === 'deferred' || status === 'pending 2nd semester';
 };
 
 export const exportPlacementResults = (placements, format = 'csv', statusFilter = 'all') => {
@@ -424,7 +500,7 @@ export const exportPlacementResults = (placements, format = 'csv', statusFilter 
     return true;
   });
   const rows = filteredPlacements.map((placement) => ({
-    'Student ID': placement.id_number || placement.studentId,
+    'Student ID': getPlacementCandidatePrimaryIdentifier(placement),
     'Student Name': placement.studentName || '-',
     'Merit Score': placement.score ?? '-',
     Department: placement.department || '-',
@@ -548,11 +624,46 @@ export const getPlacementCollegeOptions = (departments, selectedStream) => {
   return Array.from(colleges.values()).sort((left, right) => left.localeCompare(right));
 };
 
+export const getSecondSemesterCollegeOptions = (students) => {
+  const colleges = new Map();
+  students.forEach((student) => {
+    const college = String(student.allocated_college || '').trim();
+    const collegeKey = normalizePlacementCollege(college);
+    if (!collegeKey) return;
+    if (!Array.isArray(student.choices) || student.choices.length === 0) return;
+
+    const existing = colleges.get(collegeKey);
+    colleges.set(collegeKey, {
+      name: existing?.name || college,
+      count: (existing?.count || 0) + 1,
+    });
+  });
+
+  return Array.from(colleges.values()).sort((left, right) => left.name.localeCompare(right.name));
+};
+
+export const matchesStudentInformationSearch = (student, searchTerm) => {
+  const query = String(searchTerm ?? '').trim().toLowerCase();
+  if (!query) return true;
+
+  return [
+    student.student_id,
+    student.university_student_id,
+    student.moe_admission_number,
+    student.admission_number,
+    student.given_name,
+    student.father_name,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+};
+
 export const filterPlacementCandidates = (
   students,
   selectedStream,
   selectedCollege,
   loadAllStudentsInStream = false,
+  semester = 1,
 ) => {
   const selectedStreamKey = normalizePlacementStream(selectedStream);
   const selectedCollegeKey = normalizePlacementCollege(selectedCollege);
@@ -565,11 +676,19 @@ export const filterPlacementCandidates = (
       : [];
     if (choices.length === 0) return false;
     if (selectedStreamKey !== 'all' && normalizePlacementStream(student.stream) !== selectedStreamKey) return false;
-    if (
-      !loadAllStudentsInStream
-      && selectedCollegeKey !== 'all'
-      && !choices.some((choice) => normalizePlacementCollege(choice.college_name || choice.college) === selectedCollegeKey)
-    ) return false;
+    if (semester === 2) {
+      const allocatedCollege = normalizePlacementCollege(student.allocated_college);
+      if (!allocatedCollege) return false;
+    }
+    if (!loadAllStudentsInStream && selectedCollegeKey !== 'all') {
+      const matchingChoice = choices.find((choice) => (
+        normalizePlacementCollege(choice.college_name || choice.college) === selectedCollegeKey
+      ));
+      const studentCollege = semester === 2
+        ? student.allocated_college
+        : matchingChoice?.college_name || matchingChoice?.college;
+      if (normalizePlacementCollege(studentCollege) !== selectedCollegeKey) return false;
+    }
     return true;
   });
 };
@@ -626,17 +745,7 @@ export const getPlacementCandidateIneligibility = (student, semester, minimumGpa
   }
 
   const placementStatus = String(student?.placement_status || student?.status || '').trim().toLowerCase();
-  if (semester === 2 && placementStatus && ![
-    'pending',
-    'pending 1st semester',
-    'pending 2nd semester',
-    'not assigned',
-    'unassigned',
-    'placed in semester 1',
-    'allocated',
-    'eligible',
-    'unplaced',
-  ].includes(placementStatus)) {
+  if (semester === 2 && !['pending 2nd semester', 'pending second semester'].includes(placementStatus)) {
     return 'Student is not eligible for second-semester placement.';
   }
   if (semester === 1 && placementStatus && ![
@@ -644,7 +753,6 @@ export const getPlacementCandidateIneligibility = (student, semester, minimumGpa
     'pending 1st semester',
     'not assigned',
     'unassigned',
-    ...(!student?.has_first_semester_placement ? ['pending 2nd semester'] : []),
   ].includes(placementStatus)) {
     return 'Student is not eligible for first-semester placement.';
   }
@@ -857,9 +965,6 @@ const RegistrarDashboard = () => {
   const [studentAttributesSuccess, setStudentAttributesSuccess] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedPreferenceAdmissions, setSelectedPreferenceAdmissions] = useState([]);
-  const [clearingStudentPreferences, setClearingStudentPreferences] = useState(false);
-  const [clearPreferencesFeedback, setClearPreferencesFeedback] = useState('');
-  const [clearPreferencesError, setClearPreferencesError] = useState('');
   const [deletingStudents, setDeletingStudents] = useState(false);
   const [deleteStudentsFeedback, setDeleteStudentsFeedback] = useState('');
   const [deleteStudentsError, setDeleteStudentsError] = useState('');
@@ -870,6 +975,7 @@ const RegistrarDashboard = () => {
   const [choiceMatrixLoading, setChoiceMatrixLoading] = useState(false);
   const [choiceMatrixError, setChoiceMatrixError] = useState('');
   const [selectedStream, setSelectedStream] = useState('');
+  const [selectedPlacementCollege, setSelectedPlacementCollege] = useState('all');
   const [placementCandidatesData, setPlacementCandidatesData] = useState([]);
   const [placementCandidatesLoading, setPlacementCandidatesLoading] = useState(false);
   const [placementCandidatesError, setPlacementCandidatesError] = useState('');
@@ -1054,7 +1160,11 @@ const RegistrarDashboard = () => {
 
   const departmentStatusGroups = useMemo(() => {
     const groups = departments.reduce((currentGroups, department) => {
-      const collegeName = String(department.college || department.college_name || department.collegeName || 'General').trim() || 'General';
+      const stream = getDepartmentStream(department);
+      const collegeName = normalizeCollegeForStream(
+        department.college || department.college_name || department.collegeName,
+        stream,
+      );
       if (!currentGroups[collegeName]) currentGroups[collegeName] = [];
       currentGroups[collegeName].push(department);
       return currentGroups;
@@ -1102,7 +1212,10 @@ const RegistrarDashboard = () => {
 
   const collegeHasActiveDepartment = (collegeName) => {
     const collegeDepartments = departments.filter((department) => (
-      String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
+      normalizeCollegeForStream(
+        department.college || department.college_name || department.collegeName,
+        getDepartmentStream(department),
+      ) === collegeName
     ));
     return collegeDepartments.some((department) => (
       String(departmentStatusDrafts[String(department.id)] ?? department.status ?? 'active').toLowerCase() === 'active'
@@ -1115,7 +1228,10 @@ const RegistrarDashboard = () => {
       ...current,
       ...Object.fromEntries(departments
         .filter((department) => (
-          String(department.college || department.college_name || department.collegeName || 'General').trim() === collegeName
+          normalizeCollegeForStream(
+            department.college || department.college_name || department.collegeName,
+            getDepartmentStream(department),
+          ) === collegeName
         ))
         .map((department) => [String(department.id), nextStatus])),
     }));
@@ -1661,6 +1777,12 @@ const RegistrarDashboard = () => {
             const studentId = user?.id ?? user?.student_id;
             const email = user?.email || '';
             const admissionNumber = String(official.admission_number || official.id_number || '').trim();
+            const universityStudentId = String(
+              official.student_id || official.university_student_id || '',
+            ).trim();
+            const moeAdmissionNumber = String(
+              official.moe_admission_number || admissionNumber,
+            ).trim();
             const optionalRequest = (url) => api.get(url, { signal: controller.signal }).catch((error) => {
               if (controller.signal.aborted) throw error;
               console.error('Optional student details request failed:', error);
@@ -1754,6 +1876,9 @@ const RegistrarDashboard = () => {
               id: studentId ?? official.admission_number,
               id_number: official.admission_number,
               admission_number: official.admission_number,
+              student_id: universityStudentId,
+              university_student_id: universityStudentId,
+              moe_admission_number: moeAdmissionNumber,
               given_name: official.given_name || '',
               father_name: official.father_name || '',
               first_name: official.given_name || '',
@@ -2060,6 +2185,7 @@ const RegistrarDashboard = () => {
       setChoiceMatrixError('');
       try {
         const response = await api.get('api/registrar/get_student_choice_matrix.php', {
+          params: { semester: activeSemester },
           signal: controller.signal,
         });
         if (response.data?.success !== true) {
@@ -2090,7 +2216,7 @@ const RegistrarDashboard = () => {
       isCurrent = false;
       controller.abort();
     };
-  }, [registrar, tab, studentRecordsRefreshToken]);
+  }, [registrar, tab, activeSemester, studentRecordsRefreshToken]);
 
   const departmentPreferenceCounts = choiceMatrixRecords.reduce((accumulator, student) => {
     (student.choices || []).forEach((choice) => {
@@ -2107,7 +2233,7 @@ const RegistrarDashboard = () => {
       (record.choices || []).map((choice) => Number(choice.priority) || 0)
     )),
   );
-  const choiceMatrixRows = choiceMatrixRecords
+  const choiceMatrixRows = filterChoiceMatrixRecordsForSemester(choiceMatrixRecords, activeSemester)
     .map((record) => {
       const choices = Array.isArray(record.choices) ? record.choices : [];
       const prioritySlots = Array.from({ length: maxChoicesCount }, (_, index) => (
@@ -2117,6 +2243,7 @@ const RegistrarDashboard = () => {
       ));
       return {
         ...record,
+        status: placementStatusLabel(record.status || record.placement_status),
         id: record.student_id,
         id_number: record.student_id,
         name: record.student_name || record.name || 'Unknown Student',
@@ -2163,19 +2290,7 @@ const RegistrarDashboard = () => {
       return leftId.localeCompare(rightId, undefined, { numeric: true, sensitivity: 'base' });
     })
     .filter((student) => {
-      const searchTerm = studentSearch.trim().toLowerCase();
-      if (!searchTerm) return true;
-
-      const searchableText = [
-        student.admission_number,
-        student.given_name,
-        student.father_name,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchableText.includes(searchTerm);
+      return matchesStudentInformationSearch(student, studentSearch);
     });
 
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENT_PAGE_SIZE));
@@ -2195,38 +2310,6 @@ const RegistrarDashboard = () => {
       const remaining = current.filter((admissionNumber) => !visibleSet.has(admissionNumber));
       return checked ? [...remaining, ...visibleStudentAdmissions] : remaining;
     });
-  };
-
-  const clearSelectedStudentPreferences = async () => {
-    const admissionNumbers = selectedPreferenceAdmissions.filter(Boolean);
-    if (!admissionNumbers.length || clearingStudentPreferences) return;
-    const confirmed = window.confirm(
-      `Clear saved preferences for ${admissionNumbers.length} selected student(s)? Student records will not be deleted.`,
-    );
-    if (!confirmed) return;
-
-    setClearingStudentPreferences(true);
-    setClearPreferencesFeedback('');
-    setClearPreferencesError('');
-    try {
-      const response = await api.post(
-        'api/registrar/clear_student_preferences.php',
-        { admissionNumbers },
-        { withCredentials: true },
-      );
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Unable to clear selected student preferences.');
-      }
-      setClearPreferencesFeedback(response.data.message || 'Selected student preferences were cleared.');
-      setSelectedPreferenceAdmissions([]);
-      setStudentRecordsRefreshToken((current) => current + 1);
-    } catch (error) {
-      setClearPreferencesError(
-        error.response?.data?.message || error.message || 'Unable to clear selected student preferences.',
-      );
-    } finally {
-      setClearingStudentPreferences(false);
-    }
   };
 
   const deleteStudentRecords = async (admissionNumbers) => {
@@ -2369,6 +2452,7 @@ const RegistrarDashboard = () => {
   const activatePlacementSemester = async (semester) => {
     setPlacementMode(semester);
     setSelectedStream('');
+    setSelectedPlacementCollege('all');
     setSelectedStudentIds([]);
     setCompleteSemesterRun(false);
     setPlacementError('');
@@ -2594,6 +2678,7 @@ const RegistrarDashboard = () => {
   };
 
   const streamOptions = getPlacementStreamOptions(departments);
+  const secondSemesterCollegeOptions = getSecondSemesterCollegeOptions(placementCandidatesData);
 
   useEffect(() => {
     if (!registrar || tab !== 'run-placement') return undefined;
@@ -2645,7 +2730,9 @@ const RegistrarDashboard = () => {
             })),
           })),
         });
-        setPlacementCandidatesData(candidates.filter(isActivePlacementCandidate));
+        setPlacementCandidatesData(candidates.filter((candidate) => (
+          isActivePlacementCandidate(candidate, placementMode)
+        )));
       })
       .catch((error) => {
         if (!isCurrent) return;
@@ -2672,7 +2759,31 @@ const RegistrarDashboard = () => {
     let isCurrent = true;
     setPlacementPreviewLoading(true);
     setPlacementPreviewError('');
-    api.get('api/registrar/placement_preview.php', { withCredentials: true })
+    setPlacementPreviewData([]);
+
+    if (placementCandidatesLoading) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    if (placementCandidatesError) {
+      setPlacementPreviewError(placementCandidatesError);
+      setPlacementPreviewLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const params = getPlacementPreviewRequestParams(placementCandidatesData);
+    if (!params.student_ids.length && !params.admission_numbers.length) {
+      setPlacementPreviewLoading(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    api.post('api/registrar/placement_preview.php', params, { withCredentials: true })
       .then((response) => {
         if (!isCurrent) return;
         setPlacementPreviewData(Array.isArray(response.data?.students) ? response.data.students : []);
@@ -2691,12 +2802,21 @@ const RegistrarDashboard = () => {
     return () => {
       isCurrent = false;
     };
-  }, [registrar, tab, studentRecordsRefreshToken]);
+  }, [
+    registrar,
+    tab,
+    studentRecordsRefreshToken,
+    placementCandidatesData,
+    placementCandidatesLoading,
+    placementCandidatesError,
+  ]);
 
   const placementCandidates = filterPlacementCandidates(
     placementCandidatesData,
     selectedStream,
-    'all',
+    placementMode === 2 ? selectedPlacementCollege : 'all',
+    false,
+    placementMode,
   );
   const eligiblePlacementCandidates = placementCandidates.filter((student) => (
     !getPlacementCandidateIneligibility(student, placementMode, placementRules.minGpa)
@@ -3143,7 +3263,7 @@ const RegistrarDashboard = () => {
                     <input
                       type="text"
                       className="form-control form-control-sm"
-                      placeholder="Search admission number, given name, or father name..."
+                      placeholder="Search university ID, Ministry number, or name..."
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
                       style={{ minWidth: 260 }}
@@ -3163,16 +3283,6 @@ const RegistrarDashboard = () => {
                     {studentAttributesSuccess}
                   </div>
                 )}
-                {clearPreferencesFeedback && (
-                  <div className="alert alert-success py-2" role="status">
-                    {clearPreferencesFeedback}
-                  </div>
-                )}
-                {clearPreferencesError && (
-                  <div className="alert alert-danger py-2" role="alert">
-                    {clearPreferencesError}
-                  </div>
-                )}
                 {deleteStudentsFeedback && (
                   <div className="alert alert-success py-2" role="status">
                     {deleteStudentsFeedback}
@@ -3190,19 +3300,9 @@ const RegistrarDashboard = () => {
                   <div className="d-flex gap-2 flex-wrap">
                     <button
                       type="button"
-                      className="btn btn-outline-danger"
-                      onClick={clearSelectedStudentPreferences}
-                      disabled={!selectedPreferenceAdmissions.length || clearingStudentPreferences || deletingStudents}
-                    >
-                      {clearingStudentPreferences
-                        ? 'Clearing Preferences...'
-                        : `Clear Preferences for Selected Students${selectedPreferenceAdmissions.length ? ` (${selectedPreferenceAdmissions.length})` : ''}`}
-                    </button>
-                    <button
-                      type="button"
                       className="btn btn-danger"
                       onClick={() => deleteStudentRecords(selectedPreferenceAdmissions)}
-                      disabled={!selectedPreferenceAdmissions.length || deletingStudents || clearingStudentPreferences}
+                      disabled={!selectedPreferenceAdmissions.length || deletingStudents}
                     >
                       {deletingStudents
                         ? 'Deleting Students...'
@@ -3236,11 +3336,12 @@ const RegistrarDashboard = () => {
                                 className="form-check-input"
                                 aria-label="Select all visible students"
                                 checked={allVisibleStudentsSelected}
-                                disabled={!visibleStudentAdmissions.length || clearingStudentPreferences || deletingStudents}
+                                disabled={!visibleStudentAdmissions.length || deletingStudents}
                                 onChange={(event) => toggleVisibleStudentSelection(event.target.checked)}
                               />
                             </th>
-                            <th>Admission Number</th>
+                            <th>University Student ID</th>
+                            <th>Ministry Admission Number</th>
                             <th>First Name</th>
                             <th>Father Name</th>
                             <th>Grandfather Name</th>
@@ -3285,7 +3386,7 @@ const RegistrarDashboard = () => {
                                   className="form-check-input"
                                   aria-label={`Select ${student.admission_number || student.id_number}`}
                                   checked={selectedPreferenceAdmissions.includes(String(student.admission_number || student.id_number || '').trim())}
-                                  disabled={(!student.admission_number && !student.id_number) || clearingStudentPreferences || deletingStudents}
+                                  disabled={(!student.admission_number && !student.id_number) || deletingStudents}
                                   onChange={(event) => {
                                     const admissionNumber = String(student.admission_number || student.id_number || '').trim();
                                     if (!admissionNumber) return;
@@ -3297,7 +3398,10 @@ const RegistrarDashboard = () => {
                                   }}
                                 />
                               </td>
-                              <td className="fw-bold text-primary">{student.admission_number || '—'}</td>
+                              <td className="fw-bold text-primary">
+                                {getStudentPrimaryIdentifier(student) || '—'}
+                              </td>
+                              <td>{student.moe_admission_number || student.admission_number || '—'}</td>
                               <td>{student.given_name ?? '—'}</td>
                               <td>{student.father_name ?? '—'}</td>
                               <td>{student.grandfather_name ?? '—'}</td>
@@ -3341,23 +3445,25 @@ const RegistrarDashboard = () => {
                                 </button>
                               </td>
                               <td className="text-center">
-                                <span className={`badge px-3 py-2 ${
-                                  ['placed', 'placed in semester 1', 'allocated', 'approved']
-                                    .includes(String(student.placement_status || '').trim().toLowerCase())
-                                    ? 'bg-success text-white' 
-                                    : String(student.placement_status || '').trim().toLowerCase() === 'pending'
-                                      ? 'bg-warning text-dark' 
-                                      : 'bg-secondary text-white'
-                                }`}>
-                                  {student.placement_status || 'Pending'}
-                                </span>
+                                {(() => {
+                                  const status = placementStatusLabel(student.placement_status);
+                                  const normalizedStatus = normalizePlacementStatus(status);
+                                  const statusClass = ['placed', 'placed in semester 1', 'allocated', 'approved']
+                                    .includes(normalizedStatus)
+                                    ? 'bg-success text-white'
+                                    : ['pending', 'pending 1st semester', 'pending 2nd semester']
+                                      .includes(normalizedStatus)
+                                      ? 'bg-warning text-dark'
+                                      : 'bg-secondary text-white';
+                                  return <span className={`badge px-3 py-2 ${statusClass}`}>{status}</span>;
+                                })()}
                               </td>
                               <td className="text-center">
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-outline-secondary"
                                   onClick={() => openStudentAttributeEditor(student)}
-                                  disabled={deletingStudents || clearingStudentPreferences}
+                                  disabled={deletingStudents}
                                 >
                                   Update Scores
                                 </button>
@@ -3367,7 +3473,7 @@ const RegistrarDashboard = () => {
                                   onClick={() => deleteStudentRecords([
                                     student.admission_number || student.id_number,
                                   ])}
-                                  disabled={deletingStudents || clearingStudentPreferences}
+                                  disabled={deletingStudents}
                                 >
                                   Delete
                                 </button>
@@ -3375,7 +3481,7 @@ const RegistrarDashboard = () => {
                             </tr>
                             {scoreExpanded && (
                               <tr>
-                                <td colSpan={16} className="bg-body-tertiary px-4 py-3">
+                                <td colSpan={17} className="bg-body-tertiary px-4 py-3">
                                   <section
                                     aria-label={`Cumulative score breakdown for ${student.admission_number}`}
                                     className="border rounded bg-white p-3"
@@ -4401,7 +4507,9 @@ const RegistrarDashboard = () => {
                           value={selectedStream}
                           onChange={(e) => {
                             setSelectedStream(e.target.value);
+                            setSelectedPlacementCollege('all');
                             setSelectedStudentIds([]);
+                            setCompleteSemesterRun(false);
                           }}
                           style={{ borderRadius: '10px' }}
                         >
@@ -4411,6 +4519,28 @@ const RegistrarDashboard = () => {
                           ))}
                         </select>
                       </div>
+                      {placementMode === 2 && (
+                        <div className="flex-grow-1" style={{ minWidth: '220px' }}>
+                          <label className="form-label fw-semibold" style={{ color: '#123153' }}>Allocated College</label>
+                          <select
+                            className="form-select"
+                            value={selectedPlacementCollege}
+                            onChange={(event) => {
+                              setSelectedPlacementCollege(event.target.value);
+                              setSelectedStudentIds([]);
+                              setCompleteSemesterRun(false);
+                            }}
+                            style={{ borderRadius: '10px' }}
+                          >
+                            <option value="all">All candidates ({placementCandidatesData.length})</option>
+                            {secondSemesterCollegeOptions.map(({ name, count }) => (
+                              <option key={normalizePlacementCollege(name)} value={name}>
+                                {name} ({count})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="d-flex flex-wrap gap-2">
                         <button
@@ -4440,6 +4570,7 @@ const RegistrarDashboard = () => {
                           type="checkbox"
                           checked={completeSemesterRun}
                           disabled={selectedStream !== ''
+                            || (activeSemester === 2 && selectedPlacementCollege !== 'all')
                             || placementCandidatesData.length === 0
                             || eligiblePlacementCandidates.length !== placementCandidates.length
                             || missingSemesterTwoAllocations
@@ -4523,7 +4654,7 @@ const RegistrarDashboard = () => {
                                     type="checkbox"
                                     checked={checked}
                                     disabled={Boolean(ineligibilityReason)}
-                                    aria-label={`Select ${student.name || 'student'} (${student.admission_number || student.id_number || 'no admission number'})`}
+                                    aria-label={`Select ${student.name || 'student'} (${getPlacementCandidatePrimaryIdentifier(student) || 'University ID unavailable'})`}
                                     onChange={() => {
                                       setSelectedStudentIds((prev) => {
                                         const studentId = String(student.id);
@@ -4538,7 +4669,7 @@ const RegistrarDashboard = () => {
                                     <div className="truncate font-semibold text-slate-900">
                                       {student.name || 'Student'}
                                       <span className="ml-2 font-normal text-slate-500">
-                                        {student.admission_number || student.id_number || 'No admission number'}
+                                        {getPlacementCandidatePrimaryIdentifier(student) || 'University ID unavailable'}
                                       </span>
                                     </div>
                                     {placementMode === 2 && (
@@ -4685,7 +4816,7 @@ const RegistrarDashboard = () => {
                         <table className="table table-sm table-hover align-middle mb-0">
                           <thead className="table-light">
                             <tr>
-                              <th>Admission Number</th>
+                              <th>University Student ID</th>
                               <th>Student</th>
                               <th>Grade 12</th>
                               <th>CGPA</th>
@@ -4697,8 +4828,10 @@ const RegistrarDashboard = () => {
                           </thead>
                           <tbody>
                             {placementPreviewData.map((student) => (
-                              <tr key={student.admissionNumber}>
-                                <td>{student.admissionNumber}</td>
+                              <tr key={student.student_id || student.universityStudentId || student.studentId || student.admissionNumber}>
+                                <td>{getPlacementCandidatePrimaryIdentifier({
+                                  student_id: student.student_id || student.universityStudentId || student.studentId,
+                                }) || '—'}</td>
                                 <td>{student.name}</td>
                                 <td>{student.totalMark}</td>
                                 <td>{student.cgpa ?? '—'}</td>
@@ -4743,6 +4876,7 @@ const RegistrarDashboard = () => {
                       const fullRosterIds = placementCandidatesData
                         .map((student) => String(student.id));
                       const fullScopeSelected = selectedStream === ''
+                        && (activeSemester !== 2 || selectedPlacementCollege === 'all')
                         && fullRosterIds.length > 0
                         && fullRosterIds.every((id) => selectedStudentIds.includes(id));
                       if (completeSemesterRun && eligiblePlacementCandidates.length !== placementCandidates.length) {
@@ -4814,7 +4948,9 @@ const RegistrarDashboard = () => {
 
                               return {
                                 id: record.id,
+                                admission_number: record.admission_number || record.moe_admission_number || '',
                                 id_number: record.id_number,
+                                student_id: record.student_id || record.university_student_id || '',
                                 name: record.name,
                                 email: record.email,
                                 stream: record.stream || '',
@@ -4842,7 +4978,9 @@ const RegistrarDashboard = () => {
                         }
 
                         const finalizedDepartments = await fetchDepartments();
-                        const selectedCollege = 'all';
+                        const selectedCollege = activeSemester === 2
+                          ? selectedPlacementCollege
+                          : 'all';
                         const payload = {
                           semester: activeSemester,
                           stream: selectedStream,
@@ -4899,6 +5037,7 @@ const RegistrarDashboard = () => {
                           setPlacementBatch(currentBatch);
                           localStorage.setItem('dtuPlacementBatch', currentBatch);
                           setCompleteSemesterRun(false);
+                          setSelectedPlacementCollege('all');
                           setSelectedStudentIds([]);
                           setStudentRecordsRefreshToken((token) => token + 1);
                         }
@@ -5066,8 +5205,8 @@ const RegistrarDashboard = () => {
                       <strong>{runResult.skipped.length} candidate{runResult.skipped.length === 1 ? '' : 's'} skipped:</strong>
                       <ul className="mb-0 mt-1">
                         {runResult.skipped.map((studentError, index) => (
-                          <li key={`${studentError.admission_number || studentError.student_id || 'candidate'}-${index}`}>
-                            {studentError.admission_number || studentError.student_id || 'Candidate'}: {studentError.message}
+                          <li key={`${studentError.student_id || studentError.id_number || 'candidate'}-${index}`}>
+                            {getPlacementCandidatePrimaryIdentifier(studentError) || 'Candidate'}: {studentError.message}
                           </li>
                         ))}
                       </ul>
@@ -5144,8 +5283,8 @@ const RegistrarDashboard = () => {
                                 const deferred = isDeferredPlacement(placement);
 
                                 return (
-                                  <tr key={`${placement.studentId || placement.id_number || placement.admission_number || 'student'}-${placement.department || 'unassigned'}-${index}`}>
-                                    <td className="fw-semibold text-primary text-nowrap">{placement.id_number || placement.studentId}</td>
+                                  <tr key={`${placement.student_id || placement.university_student_id || placement.id_number || placement.studentId || 'student'}-${placement.department || 'unassigned'}-${index}`}>
+                                    <td className="fw-semibold text-primary text-nowrap">{getPlacementCandidatePrimaryIdentifier(placement) || '—'}</td>
                                     <td>{placement.studentName || '—'}</td>
                                     <td className="text-nowrap">{placement.score !== null && placement.score !== undefined ? Number(placement.score).toFixed(2) : '—'}</td>
                                     <td>{placement.department || '—'}</td>

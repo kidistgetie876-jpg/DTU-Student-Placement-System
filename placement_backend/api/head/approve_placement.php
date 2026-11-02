@@ -8,6 +8,7 @@ header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/head_department.php';
+require_once __DIR__ . '/../common/student_placement_notifications.php';
 
 function approvePlacementRespond(array $payload, int $status = 200): void
 {
@@ -151,9 +152,16 @@ try {
     if (!$conditions) {
         approvePlacementRespond(['success' => false, 'message' => 'The supplied student identifier is not supported by the placement schema.'], 400);
     }
+    ensureStudentPlacementNotificationSchema($db);
     $pendingCondition = "LOWER(TRIM(COALESCE(pr.status, ''))) = 'pending'";
     $approvedAtCondition = in_array('approved_at', $placementColumns, true) ? ' AND pr.approved_at IS NULL' : '';
-    $placementSql = 'SELECT pr.id FROM placement_results pr'
+    $placementFields = ['pr.id'];
+    foreach (['student_id', 'admission_number', 'id_number', 'dept_name', 'placement_semester'] as $column) {
+        if (in_array($column, $placementColumns, true)) {
+            $placementFields[] = "pr.`{$column}`";
+        }
+    }
+    $placementSql = 'SELECT ' . implode(', ', $placementFields) . ' FROM placement_results pr'
         . ' WHERE pr.`' . $departmentColumn . '` = ? AND ' . $pendingCondition . $approvedAtCondition
         . ' AND (' . implode(' OR ', $conditions) . ')'
         . (in_array('id', $placementColumns, true) ? ' ORDER BY pr.id DESC' : '')
@@ -200,6 +208,25 @@ try {
         throw new RuntimeException('Unable to approve placement.');
     }
     $updateStatement->close();
+    $semester = in_array('placement_semester', $placementColumns, true)
+        ? (int) ($placement['placement_semester'] ?? 1)
+        : 1;
+    $placementStudentId = isset($placement['student_id']) && (int) $placement['student_id'] > 0
+        ? (int) $placement['student_id']
+        : null;
+    $placementAdmissionNumber = trim((string) (
+        $placement['admission_number'] ?? $placement['id_number'] ?? ''
+    ));
+    $departmentName = trim((string) ($placement['dept_name'] ?? $department['name'] ?? 'your department'));
+    createStudentPlacementNotification(
+        $db,
+        $placementStudentId,
+        $placementAdmissionNumber,
+        $semester,
+        'placement_approved',
+        "Your Semester {$semester} placement in {$departmentName} has been approved and is awaiting Registrar publication.",
+        $placementIdValue
+    );
     if (!$db->commit()) {
         throw new RuntimeException('Unable to commit placement approval: ' . $db->error);
     }

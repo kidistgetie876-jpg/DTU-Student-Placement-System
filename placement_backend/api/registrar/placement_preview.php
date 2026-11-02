@@ -12,9 +12,18 @@ function placementPreviewRespond(array $payload, int $status = 200): void
     exit;
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
-    header('Allow: GET, OPTIONS');
-    placementPreviewRespond(['success' => false, 'message' => 'Only GET requests are allowed.'], 405);
+$requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+if (!in_array($requestMethod, ['GET', 'POST'], true)) {
+    header('Allow: GET, POST, OPTIONS');
+    placementPreviewRespond(['success' => false, 'message' => 'Only GET and POST requests are allowed.'], 405);
+}
+$requestData = $_GET;
+if ($requestMethod === 'POST') {
+    $requestBody = json_decode((string) file_get_contents('php://input'), true);
+    if (!is_array($requestBody)) {
+        placementPreviewRespond(['success' => false, 'message' => 'The candidate preview request is invalid.'], 400);
+    }
+    $requestData = array_merge($requestData, $requestBody);
 }
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -93,18 +102,28 @@ try {
         throw new RuntimeException('Student profile tables are missing the required account identifier columns.');
     }
 
-    $admissionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['admission_number', 'id_number']);
+    $admissionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['moe_admission_number', 'admission_number', 'id_number']);
+    $universityStudentIdExpression = studentPlacementTextExpression($studentColumns, 'sd', ['student_id']);
     if (in_array('id_number', $userColumns, true)) {
         $admissionExpression = "COALESCE(NULLIF({$admissionExpression}, ''), NULLIF(u.id_number, ''), '')";
     }
     if (in_array('user_id', $studentColumns, true)) {
-        $userJoin = 'INNER JOIN users u ON u.id = sd.user_id AND LOWER(TRIM(u.role)) = \'student\'';
-        $studentAccountId = 'sd.user_id';
+        $userIdentityMatches = ['u.id = sd.user_id'];
+        if (in_array('id_number', $userColumns, true)) {
+            foreach (['student_id', 'moe_admission_number', 'admission_number', 'id_number'] as $profileIdentifierColumn) {
+                if (in_array($profileIdentifierColumn, $studentColumns, true)) {
+                    $userIdentityMatches[] = "TRIM(u.id_number) = TRIM(sd.`{$profileIdentifierColumn}`)";
+                }
+            }
+        }
+        $userJoin = 'LEFT JOIN users u ON (' . implode(' OR ', $userIdentityMatches)
+            . ") AND LOWER(TRIM(u.role)) = 'student'";
+        $studentAccountId = 'COALESCE(u.id, sd.user_id)';
     } elseif (in_array('id_number', $studentColumns, true) && in_array('id_number', $userColumns, true)) {
-        $userJoin = "INNER JOIN users u ON TRIM(u.id_number) = TRIM(sd.id_number) AND LOWER(TRIM(u.role)) = 'student'";
+        $userJoin = "LEFT JOIN users u ON TRIM(u.id_number) = TRIM(sd.id_number) AND LOWER(TRIM(u.role)) = 'student'";
         $studentAccountId = 'u.id';
     } elseif (in_array('admission_number', $studentColumns, true) && in_array('id_number', $userColumns, true)) {
-        $userJoin = "INNER JOIN users u ON TRIM(u.id_number) = TRIM(sd.admission_number) AND LOWER(TRIM(u.role)) = 'student'";
+        $userJoin = "LEFT JOIN users u ON TRIM(u.id_number) = TRIM(sd.admission_number) AND LOWER(TRIM(u.role)) = 'student'";
         $studentAccountId = 'u.id';
     } else {
         throw new RuntimeException('Student profiles cannot be matched to student accounts.');
@@ -116,7 +135,10 @@ try {
     }
     $simsJoin = '';
     if (in_array('student_id', $simsColumns, true)) {
-        $simsJoin = " LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM({$admissionExpression})";
+        $simsJoin = " LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM({$admissionExpression})"
+            . ($universityStudentIdExpression !== 'NULL'
+                ? " OR TRIM(s.student_id) = TRIM({$universityStudentIdExpression})"
+                : '');
     }
     $officialName = [];
     foreach (['given_name', 'father_name', 'grandfather_name', 'first_name', 'last_name'] as $column) {
@@ -160,6 +182,7 @@ try {
         $yearExpression = studentPlacementColumnExpression($simsColumns, 's', ['year']);
         $registrationExpression = studentPlacementColumnExpression($simsColumns, 's', ['registration_type']);
     }
+    $primaryStudentIdExpression = "COALESCE(NULLIF({$universityStudentIdExpression}, ''), NULLIF({$studentIdExpression}, ''), '')";
     if ($mosheJoin !== '') {
         $regionExpression = studentPlacementTextExpression($mosheColumns, 'm', ['region'], $regionExpression);
         $genderExpression = studentPlacementTextExpression($mosheColumns, 'm', ['sex'], $genderExpression);
@@ -175,25 +198,76 @@ try {
     $placementCondition = in_array('student_id', $placementColumns, true)
         ? " AND NOT EXISTS (SELECT 1 FROM placement_results pr WHERE pr.student_id = {$studentAccountId})"
         : '';
-    $result = $db->query(
+    $readRequestedIdentifiers = static function ($value): array {
+        if (!is_array($value)) {
+            $value = $value === null ? [] : [$value];
+        }
+        $identifiers = [];
+        foreach ($value as $item) {
+            if (!is_scalar($item)) {
+                continue;
+            }
+            $identifier = trim((string) $item);
+            if ($identifier !== '') {
+                $identifiers[$identifier] = $identifier;
+            }
+        }
+        return array_values($identifiers);
+    };
+    $requestedStudentIds = $readRequestedIdentifiers($requestData['student_ids'] ?? []);
+    $requestedAdmissionNumbers = $readRequestedIdentifiers($requestData['admission_numbers'] ?? []);
+    $hasCandidateFilter = $requestedStudentIds || $requestedAdmissionNumbers;
+    $candidateConditions = [];
+    $filterTypes = '';
+    $filterValues = [];
+    foreach (
+        [
+            [$primaryStudentIdExpression, $requestedStudentIds],
+            [$admissionExpression, $requestedAdmissionNumbers],
+        ] as [$identifierExpression, $identifiers]
+    ) {
+        if (!$identifiers) {
+            continue;
+        }
+        $candidateConditions[] = $identifierExpression . ' IN (' . implode(', ', array_fill(0, count($identifiers), '?')) . ')';
+        $filterTypes .= str_repeat('s', count($identifiers));
+        array_push($filterValues, ...$identifiers);
+    }
+    $candidateCondition = $candidateConditions
+        ? ' AND (' . implode(' OR ', $candidateConditions) . ')'
+        : '';
+    $defaultCandidateConditions = $hasCandidateFilter
+        ? ''
+        : $statusCondition . $placementCondition;
+    $statement = $db->prepare(
         "SELECT {$studentAccountId} AS user_id, {$admissionExpression} AS admission_number,
+                {$admissionExpression} AS moe_admission_number,
+                {$primaryStudentIdExpression} AS student_id,
+                {$primaryStudentIdExpression} AS university_student_id,
                 {$regionExpression} AS region, {$nameExpression} AS full_name,
                 {$genderExpression} AS sex, {$disabilityExpression} AS disability,
                 {$minorityExpression} AS minority, {$grade12Expression} AS total_mark,
                 {$benefitExpression} AS benefit_group, {$fieldExpression} AS field_of_study,
-                {$studentIdExpression} AS student_id, {$cgpaExpression} AS cgpa,
+                {$cgpaExpression} AS cgpa,
                 {$cocExpression} AS coc_score, {$programExpression} AS program,
                 {$streamExpression} AS stream, {$yearExpression} AS year,
                 {$registrationExpression} AS registration_type
          FROM student_data sd
          {$userJoin}
          {$mosheJoin}{$simsJoin}
-         WHERE 1 = 1{$statusCondition}{$placementCondition}
+         WHERE 1 = 1{$defaultCandidateConditions}{$candidateCondition}
          ORDER BY admission_number"
     );
-    if (!$result) {
-        throw new RuntimeException('Unable to load joined import records: ' . $db->error);
+    if (!$statement) {
+        throw new RuntimeException('Unable to prepare joined import records: ' . $db->error);
     }
+    if ($filterValues && !$statement->bind_param($filterTypes, ...$filterValues)) {
+        throw new RuntimeException('Unable to bind candidate identifiers: ' . $statement->error);
+    }
+    if (!$statement->execute()) {
+        throw new RuntimeException('Unable to load joined import records: ' . $statement->error);
+    }
+    $result = $statement->get_result();
 
     $students = [];
     while ($row = $result->fetch_assoc()) {
@@ -241,6 +315,8 @@ try {
         }
         $students[] = [
             'admissionNumber' => $row['admission_number'],
+            'student_id' => $row['student_id'],
+            'universityStudentId' => $row['university_student_id'],
             'userId' => $row['user_id'],
             'name' => trim((string) $row['full_name']),
             'region' => $row['region'],
@@ -265,6 +341,7 @@ try {
         ];
     }
     $result->free();
+    $statement->close();
     $db->close();
     placementPreviewRespond(['success' => true, 'students' => $students]);
 } catch (Throwable $error) {

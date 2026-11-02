@@ -227,6 +227,71 @@ describe('SubmitPreferences', () => {
       { group: 'health_science', departments: ['Medicine', 'Pharmacy'] },
       { group: 'git', departments: [' medicine '] },
     ], [])).toBe(true);
+    expect(hasDuplicateDepartmentChoices(1, [
+      { group: 'other_social_science', departments: [] },
+      { group: 'other_social_science', departments: [] },
+    ], [])).toBe(true);
+  });
+
+  it('disables a selected Semester 1 group in other ranks and re-enables it when cleared', () => {
+    const props = {
+      assignedStream: 'Social Science',
+      preferenceSemester: 1,
+      groupValues: ['law', 'other_social_science'],
+      groupLabel: (value) => value === 'other_social_science' ? 'Other Social Science' : 'Law',
+      preferences: [
+        { group: 'other_social_science', department: '', departments: [] },
+        { group: '', department: '', departments: [] },
+      ],
+      onChoiceChange: jest.fn(),
+      onDepartmentsLoaded: jest.fn(),
+      onDepartmentLoadError: jest.fn(),
+      disabled: false,
+      semesterTwoDepartments: [],
+      semesterTwoPreferences: [],
+      semesterTwoChoiceCount: 0,
+      onSemesterTwoPreferenceChange: jest.fn(),
+    };
+    const { rerender } = render(<SubmitPreferences {...props} />);
+
+    const firstChoice = screen.getByRole('combobox', { name: 'Choice #1' });
+    const secondChoice = screen.getByRole('combobox', { name: 'Choice #2' });
+    expect(firstChoice.querySelector('option[value="other_social_science"]')).toBeEnabled();
+    expect(secondChoice.querySelector('option[value="other_social_science"]')).toBeDisabled();
+
+    rerender(
+      <SubmitPreferences
+        {...props}
+        preferences={[
+          { group: '', department: '', departments: [] },
+          { group: '', department: '', departments: [] },
+        ]}
+      />,
+    );
+
+    expect(secondChoice.querySelector('option[value="other_social_science"]')).toBeEnabled();
+  });
+
+  it('does not render the broad-group explanatory caption', () => {
+    render(<SubmitPreferences
+      assignedStream="Social Science"
+      preferenceSemester={1}
+      groupValues={['law', 'other_social_science']}
+      groupLabel={(value) => value === 'other_social_science' ? 'Other Social Science' : 'Law'}
+      preferences={[{ group: 'other_social_science', department: '', departments: [] }]}
+      onChoiceChange={jest.fn()}
+      onDepartmentsLoaded={jest.fn()}
+      onDepartmentLoadError={jest.fn()}
+      disabled={false}
+      semesterTwoDepartments={[]}
+      semesterTwoPreferences={[]}
+      semesterTwoChoiceCount={0}
+      onSemesterTwoPreferenceChange={jest.fn()}
+    />);
+
+    expect(screen.queryByText(
+      'This broad group is submitted as one preference; it is not expanded into individual departments.',
+    )).not.toBeInTheDocument();
   });
 
   it('renders the Semester 1 stream field when Semester 1 is active', () => {

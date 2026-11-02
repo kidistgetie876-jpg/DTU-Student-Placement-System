@@ -2,7 +2,7 @@ import React from 'react';
 import SourceImport from './SourceImport.jsx';
 
 export const ministryImportColumns = [
-  { header: 'AdmissionNumber', aliases: ['admission_number'] },
+  { header: 'moe_admission_number', aliases: ['AdmissionNumber', 'admission_number'] },
   { header: 'Region', aliases: ['region'] },
   { header: 'GivenName', aliases: ['given_name'] },
   { header: 'FatherName', aliases: ['father_name'] },

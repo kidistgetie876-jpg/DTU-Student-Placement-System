@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/db_config.php';
 require_once __DIR__ . '/../../config/placement_semester.php';
 require_once __DIR__ . '/../common/student_placement_schema.php';
+require_once __DIR__ . '/../common/student_placement_notifications.php';
 header('Content-Type: application/json; charset=UTF-8');
 
 function manualAssignmentRespond(array $payload, int $statusCode = 200): void
@@ -185,6 +186,7 @@ try {
     }
     $studentId = $studentId === false ? null : (int) $studentId;
 
+    ensureStudentPlacementNotificationSchema($db);
     if (!$db->begin_transaction()) {
         throw new RuntimeException('Unable to start manual assignment transaction: ' . $db->error);
     }
@@ -431,6 +433,7 @@ try {
         $insert->close();
         throw new RuntimeException('Unable to save manual placement: ' . $insertError);
     }
+    $placementResultId = (int) $insert->insert_id;
     $insert->close();
 
     $profileUpdates = [];
@@ -441,7 +444,7 @@ try {
         ? 'placement_status'
         : (in_array('status', $studentDataColumns, true) ? 'status' : '');
     if ($studentStatusColumn !== '') {
-        $profileUpdates[$studentStatusColumn] = $activeSemester === 1 ? 'Pending 2nd Semester' : 'Placed';
+        $profileUpdates[$studentStatusColumn] = $activeSemester === 1 ? 'Pending 2nd Semester' : 'Pending Approval';
     }
     if (in_array('is_choice_editable', $studentDataColumns, true)) {
         $profileUpdates['is_choice_editable'] = '0';
@@ -519,6 +522,16 @@ try {
         }
         $allocationSql->close();
     }
+
+    createStudentPlacementNotification(
+        $db,
+        $student['student_id'] !== null ? (int) $student['student_id'] : null,
+        $idNumber,
+        $activeSemester,
+        'placement_assigned',
+        "You have been assigned to {$department['name']} for Semester {$activeSemester}. Your placement is Pending Approval.",
+        $placementResultId
+    );
 
     $deleteColumn = $student['student_id'] !== null ? 'student_id' : 'admission_number';
     $deleteValue = $student['student_id'] !== null

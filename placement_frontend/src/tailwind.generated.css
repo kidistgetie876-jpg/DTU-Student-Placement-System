@@ -125,6 +125,10 @@
   margin: 0px
 }
 
+.m-3 {
+  margin: 0.75rem
+}
+
 .-mx-4 {
   margin-left: -1rem;
   margin-right: -1rem
@@ -140,9 +144,9 @@
   margin-right: auto
 }
 
-.my-2 {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem
+.my-3 {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem
 }
 
 .my-8 {
@@ -194,6 +198,11 @@
 .me-2 {
   -webkit-margin-end: 0.5rem;
           margin-inline-end: 0.5rem
+}
+
+.me-auto {
+  -webkit-margin-end: auto;
+          margin-inline-end: auto
 }
 
 .ml-1 {
@@ -307,6 +316,10 @@
   height: 18rem
 }
 
+.h-9 {
+  height: 2.25rem
+}
+
 .h-96 {
   height: 24rem
 }
@@ -351,6 +364,10 @@
   width: 18rem
 }
 
+.w-9 {
+  width: 2.25rem
+}
+
 .w-96 {
   width: 24rem
 }
@@ -373,6 +390,10 @@
 
 .min-w-9 {
   min-width: 2.25rem
+}
+
+.min-w-\[150px\] {
+  min-width: 150px
 }
 
 .min-w-\[160px\] {
@@ -406,6 +427,10 @@
 
 .max-w-3xl {
   max-width: 48rem
+}
+
+.max-w-4xl {
+  max-width: 56rem
 }
 
 .max-w-5xl {
@@ -554,6 +579,14 @@
   gap: 2rem
 }
 
+.gap-x-4 {
+  column-gap: 1rem
+}
+
+.gap-y-2 {
+  row-gap: 0.5rem
+}
+
 .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
   margin-top: calc(0.625rem * calc(1 - var(--tw-space-y-reverse)));
@@ -615,6 +648,10 @@
 
 .whitespace-nowrap {
   white-space: nowrap
+}
+
+.whitespace-pre-line {
+  white-space: pre-line
 }
 
 .whitespace-pre-wrap {
@@ -964,6 +1001,11 @@
   background-color: rgb(29 78 216 / var(--tw-bg-opacity, 1))
 }
 
+.bg-cyan-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(207 250 254 / var(--tw-bg-opacity, 1))
+}
+
 .bg-emerald-100 {
   --tw-bg-opacity: 1;
   background-color: rgb(209 250 229 / var(--tw-bg-opacity, 1))
@@ -1197,6 +1239,11 @@
 .px-6 {
   padding-left: 1.5rem;
   padding-right: 1.5rem
+}
+
+.py-0\.5 {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem
 }
 
 .py-1 {
@@ -1497,6 +1544,11 @@
 .text-blue-950 {
   --tw-text-opacity: 1;
   color: rgb(23 37 84 / var(--tw-text-opacity, 1))
+}
+
+.text-cyan-800 {
+  --tw-text-opacity: 1;
+  color: rgb(21 94 117 / var(--tw-text-opacity, 1))
 }
 
 .text-emerald-600 {
@@ -1841,6 +1893,10 @@
   color: rgb(148 163 184 / var(--tw-text-opacity, 1))
 }
 
+.last\:mb-0:last-child {
+  margin-bottom: 0px
+}
+
 .last\:border-b-0:last-child {
   border-bottom-width: 0px
 }
@@ -1896,6 +1952,11 @@
   border-color: rgb(199 210 254 / var(--tw-border-opacity, 1))
 }
 
+.hover\:border-rose-300:hover {
+  --tw-border-opacity: 1;
+  border-color: rgb(253 164 175 / var(--tw-border-opacity, 1))
+}
+
 .hover\:border-slate-300:hover {
   --tw-border-opacity: 1;
   border-color: rgb(203 213 225 / var(--tw-border-opacity, 1))
@@ -1909,6 +1970,11 @@
 .hover\:bg-amber-100:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(254 243 199 / var(--tw-bg-opacity, 1))
+}
+
+.hover\:bg-blue-100:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(219 234 254 / var(--tw-bg-opacity, 1))
 }
 
 .hover\:bg-blue-50:hover {
@@ -1946,6 +2012,11 @@
   background-color: rgb(55 48 163 / var(--tw-bg-opacity, 1))
 }
 
+.hover\:bg-rose-100:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 228 230 / var(--tw-bg-opacity, 1))
+}
+
 .hover\:bg-rose-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(255 241 242 / var(--tw-bg-opacity, 1))
@@ -1954,6 +2025,11 @@
 .hover\:bg-slate-100:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(241 245 249 / var(--tw-bg-opacity, 1))
+}
+
+.hover\:bg-slate-200:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1))
 }
 
 .hover\:bg-slate-50:hover {
@@ -1973,6 +2049,11 @@
 .hover\:bg-white:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1))
+}
+
+.hover\:text-blue-900:hover {
+  --tw-text-opacity: 1;
+  color: rgb(30 58 138 / var(--tw-text-opacity, 1))
 }
 
 .hover\:text-indigo-300:hover {
@@ -2119,6 +2200,11 @@
   --tw-ring-color: rgb(245 158 11 / var(--tw-ring-opacity, 1))
 }
 
+.focus-visible\:ring-blue-500:focus-visible {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(59 130 246 / var(--tw-ring-opacity, 1))
+}
+
 .focus-visible\:ring-emerald-500:focus-visible {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(16 185 129 / var(--tw-ring-opacity, 1))
@@ -2127,6 +2213,11 @@
 .focus-visible\:ring-indigo-500:focus-visible {
   --tw-ring-opacity: 1;
   --tw-ring-color: rgb(99 102 241 / var(--tw-ring-opacity, 1))
+}
+
+.focus-visible\:ring-rose-500:focus-visible {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(244 63 94 / var(--tw-ring-opacity, 1))
 }
 
 .focus-visible\:ring-offset-2:focus-visible {
@@ -2141,6 +2232,10 @@
 
 .disabled\:cursor-not-allowed:disabled {
   cursor: not-allowed
+}
+
+.disabled\:cursor-wait:disabled {
+  cursor: wait
 }
 
 .disabled\:opacity-50:disabled {
@@ -2342,6 +2437,10 @@
 
   .md\:grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr))
+  }
+
+  .md\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr))
   }
 }
 

@@ -8,6 +8,30 @@ const departmentsEndpoint = 'api/common/departments_api.php';
 const defaultStreams = ['Natural Science', 'Social Science'];
 
 const normalize = (value) => String(value ?? '').trim().toLowerCase();
+const getPlacementSemester = (student) => {
+  if (normalize(student?.status) === 'pending 2nd semester') return 2;
+  const semester = Number(student?.placement_semester);
+  return semester === 1 || semester === 2 ? semester : null;
+};
+const deduplicateStudentsByCurrentSemester = (records) => {
+  const byIdentity = new Map();
+  records.forEach((student, index) => {
+    const identity = normalize(student.id_number || student.student_id || student.id);
+    if (!identity) {
+      byIdentity.set(`row-${index}`, student);
+      return;
+    }
+    const current = byIdentity.get(identity);
+    const studentSemester = getPlacementSemester(student);
+    const currentSemester = getPlacementSemester(current);
+    if (!current
+      || (studentSemester !== null && currentSemester === null)
+      || (studentSemester === 2 && currentSemester !== 2)) {
+      byIdentity.set(identity, student);
+    }
+  });
+  return [...byIdentity.values()];
+};
 const normalizeStream = (value) => {
   const normalized = normalize(value).replace(/[\s_-]+/g, '');
   if (['natural', 'naturalscience', 'naturalsciences'].includes(normalized)) return 'Natural Science';
@@ -36,8 +60,76 @@ const displayStatus = (status) => {
 const statusClass = (status) => {
   const normalized = normalize(status);
   if (normalized === 'published' || normalized === 'approved') return 'bg-emerald-100 text-emerald-800';
-  if (normalized === 'pending') return 'bg-amber-100 text-amber-800';
+  if (normalized.startsWith('pending')) return 'bg-amber-100 text-amber-800';
   return 'bg-blue-100 text-blue-800';
+};
+
+const SemesterTable = ({ semester, students }) => {
+  const heading = `${semester === 1 ? '1st' : '2nd'} Semester`;
+  return (
+    <section className="mb-6 last:mb-0" aria-labelledby={`semester-${semester}-heading`}>
+      <div className="mb-3 flex items-center gap-3">
+        <h2 id={`semester-${semester}-heading`} className="text-lg font-bold text-slate-800">{heading}</h2>
+        <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
+          Semester {semester}
+        </span>
+        <span className="text-sm text-slate-500">{students.length} students</span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full min-w-[900px] border-collapse text-left text-sm" aria-label={`${heading} placed students`}>
+          <thead className="bg-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-700">
+            <tr>
+              <th scope="col" className="px-4 py-3">Student ID &amp; Full Name</th>
+              <th scope="col" className="px-4 py-3">Stream &amp; College</th>
+              <th scope="col" className="px-4 py-3">Final Cumulative Score</th>
+              <th scope="col" className="px-4 py-3">Assigned Department</th>
+              <th scope="col" className="px-4 py-3">Matched Preference</th>
+              <th scope="col" className="px-4 py-3">Placement Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {students.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-4 py-8 text-center text-sm text-slate-500">
+                  No students in this semester.
+                </td>
+              </tr>
+            ) : students.map((student, index) => {
+              const score = Number(student.final_score ?? student.cumulativeScore);
+              const choiceRank = Number(student.choice_rank);
+              return (
+                <tr
+                  key={`${student.student_id || student.id_number || student.name}-${semester}-${index}`}
+                  className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/80"
+                >
+                  <td className="px-4 py-3.5">
+                    <div className="font-semibold text-slate-800">{student.name || '—'}</div>
+                    <div className="text-xs text-slate-500">{student.id_number || student.student_id || student.id || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="text-slate-800">{student.stream || '—'}</div>
+                    <div className="text-xs text-slate-500">{student.college || '—'}</div>
+                  </td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-800">{Number.isFinite(score) ? score.toFixed(2) : '—'}</td>
+                  <td className="px-4 py-3.5 text-slate-700">{student.department || '—'}</td>
+                  <td className="px-4 py-3.5">
+                    {choiceRank > 0
+                      ? <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">Choice {choiceRank}</span>
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(student.status)}`}>
+                      {displayStatus(student.status)}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 };
 
 const PlacedStudents = ({ refreshToken = 0 }) => {
@@ -49,6 +141,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
   const [search, setSearch] = useState('');
   const [streamFilter, setStreamFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [semesterFilter, setSemesterFilter] = useState('all');
   const [exportFormat, setExportFormat] = useState('xlsx');
 
   const loadStudents = useCallback(async () => {
@@ -59,7 +152,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
       if (!response.data?.success || !Array.isArray(response.data.students)) {
         throw new Error(response.data?.message || 'Unable to load placement results.');
       }
-      setStudents(response.data.students);
+      setStudents(deduplicateStudentsByCurrentSemester(response.data.students));
     } catch (requestError) {
       setError(requestError.response?.data?.message || requestError.message || 'Unable to load placement results.');
     } finally {
@@ -123,9 +216,11 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
         || normalize(student.id_number || student.student_id || student.id).includes(query);
       return matchesSearch
         && (streamFilter === 'all' || normalizeStream(student.stream) === normalizeStream(streamFilter))
-        && (departmentFilter === 'all' || student.department === departmentFilter);
+        && (departmentFilter === 'all' || student.department === departmentFilter)
+        && getPlacementSemester(student) !== null
+        && (semesterFilter === 'all' || getPlacementSemester(student) === Number(semesterFilter));
     });
-  }, [students, search, streamFilter, departmentFilter]);
+  }, [students, search, streamFilter, departmentFilter, semesterFilter]);
 
   const changeStream = (event) => {
     setStreamFilter(event.target.value);
@@ -136,6 +231,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
     const headers = [
       'Student ID',
       'Full Name',
+      'Semester',
       'Stream',
       'College',
       'Final Cumulative Score',
@@ -146,6 +242,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
     const rows = filteredStudents.map((student) => [
       student.id_number || student.student_id || student.id || '',
       student.name || '',
+      getPlacementSemester(student) === 2 ? '2nd Semester' : '1st Semester',
       student.stream || '',
       student.college || '',
       student.final_score ?? student.cumulativeScore ?? '',
@@ -171,7 +268,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
             Placed Students
           </h1>
           <p className="mb-0 text-sm text-slate-500">
-            Manage and export finalized student placement allocations.
+            Track and export student placement allocations by semester.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -212,7 +309,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 items-end gap-4 md:grid-cols-3">
+      <div className="mb-6 grid grid-cols-1 items-end gap-4 md:grid-cols-4">
         <div>
           <label className="mb-1 block text-xs font-semibold text-slate-600" htmlFor="placed-students-search">
             Search by student name or ID
@@ -230,6 +327,21 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
               placeholder="Name or student ID"
             />
           </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-slate-600" htmlFor="placed-students-semester">
+            Semester
+          </label>
+          <select
+            id="placed-students-semester"
+            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            value={semesterFilter}
+            onChange={(event) => setSemesterFilter(event.target.value)}
+          >
+            <option value="all">All semesters</option>
+            <option value="1">1st Semester</option>
+            <option value="2">2nd Semester</option>
+          </select>
         </div>
         {[
           ['placed-students-stream', 'Stream', streamFilter, changeStream, options.streams],
@@ -260,58 +372,23 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
 
       {loading ? (
         <div className="py-10 text-center text-sm text-slate-500" role="status">Loading placement results…</div>
-      ) : filteredStudents.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600" role="status">
-          {students.length === 0 ? 'There are no placed students to display.' : 'No placement results match the selected filters.'}
-        </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[900px] border-collapse text-left text-sm">
-            <thead className="bg-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-700">
-              <tr>
-                <th scope="col" className="px-4 py-3">Student ID &amp; Full Name</th>
-                <th scope="col" className="px-4 py-3">Stream &amp; College</th>
-                <th scope="col" className="px-4 py-3">Final Cumulative Score</th>
-                <th scope="col" className="px-4 py-3">Assigned Department</th>
-                <th scope="col" className="px-4 py-3">Matched Preference</th>
-                <th scope="col" className="px-4 py-3">Placement Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.map((student, index) => {
-                const score = Number(student.final_score ?? student.cumulativeScore);
-                const choiceRank = Number(student.choice_rank);
-                return (
-                  <tr
-                    key={student.student_id || student.id_number || `${student.name}-${index}`}
-                    className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/80"
-                  >
-                    <td className="px-4 py-3.5">
-                      <div className="font-semibold text-slate-800">{student.name || '—'}</div>
-                      <div className="text-xs text-slate-500">{student.id_number || student.student_id || student.id || '—'}</div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="text-slate-800">{student.stream || '—'}</div>
-                      <div className="text-xs text-slate-500">{student.college || '—'}</div>
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-800">{Number.isFinite(score) ? score.toFixed(2) : '—'}</td>
-                    <td className="px-4 py-3.5 text-slate-700">{student.department || '—'}</td>
-                    <td className="px-4 py-3.5">
-                      {choiceRank > 0
-                        ? <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">Choice {choiceRank}</span>
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(student.status)}`}>
-                        {displayStatus(student.status)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {filteredStudents.length === 0 && (
+            <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-600" role="status">
+              {students.length === 0
+                ? 'There are no placed students to display.'
+                : 'No placement results match the selected filters.'}
+            </div>
+          )}
+          {[1, 2].map((semester) => (
+            <SemesterTable
+              key={semester}
+              semester={semester}
+              students={filteredStudents.filter((student) => getPlacementSemester(student) === semester)}
+            />
+          ))}
+        </>
       )}
     </section>
   );

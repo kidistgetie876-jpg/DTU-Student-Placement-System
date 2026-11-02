@@ -20,8 +20,8 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Content-Type: application/json; charset=UTF-8');
 
 // Error reporting
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
 error_reporting(E_ALL);
 
 // Handle OPTIONS preflight
@@ -60,6 +60,88 @@ function jsonResponse($payload, int $code = 200) {
     http_response_code($code);
     echo json_encode($payload);
     exit;
+}
+
+function ensureAdminSession(mysqli $conn): void {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+    if ($userId <= 0) {
+        jsonResponse(['success' => false, 'message' => 'Authentication required.'], 401);
+    }
+
+    $stmt = $conn->prepare('SELECT role FROM users WHERE id = ? LIMIT 1');
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+    $stmt->bind_param('i', $userId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $actor = $result ? $result->fetch_assoc() : null;
+    $stmt->close();
+
+    $role = strtolower(trim((string) ($actor['role'] ?? '')));
+    if ($role !== 'admin') {
+        jsonResponse(['success' => false, 'message' => 'Only administrators can update user roles.'], 403);
+    }
+}
+
+function ensureUserCreationPermission(string $role, array $auditActor): void {
+    $actorRole = strtolower(trim((string) ($auditActor['role'] ?? '')));
+    if ($actorRole === '') {
+        jsonResponse(['success' => false, 'message' => 'Authentication required.'], 401);
+    }
+
+    if ($role === 'student') {
+        if ($actorRole !== 'registrar') {
+            jsonResponse([
+                'success' => false,
+                'message' => 'Student accounts must be created through the Registrar import workflow.',
+            ], 403);
+        }
+        return;
+    }
+
+    if ($actorRole !== 'admin') {
+        jsonResponse(['success' => false, 'message' => 'Only administrators may create staff accounts.'], 403);
+    }
+}
+
+function bindUserUpdateValues(mysqli_stmt $statement, string $types, array $values): void {
+    $parameters = [$types];
+    foreach ($values as $index => $value) {
+        $parameters[] = &$values[$index];
+    }
+
+    if (!call_user_func_array([$statement, 'bind_param'], $parameters)) {
+        throw new RuntimeException($statement->error ?: 'Unable to bind user update values.');
+    }
+}
+
+function getStudentDataColumns(mysqli $conn): array {
+    $result = $conn->query('SHOW COLUMNS FROM student_data');
+    if (!$result) {
+        throw new RuntimeException($conn->error ?: 'Unable to inspect student profile columns.');
+    }
+
+    $columns = [];
+    while ($column = $result->fetch_assoc()) {
+        $columns[(string) $column['Field']] = true;
+    }
+    $result->free();
+    return $columns;
+}
+
+function normalizeRoleOption(?string $role): ?string {
+    if ($role === null) {
+        return null;
+    }
+
+    $normalized = strtolower(trim((string) $role));
+    $allowedRoles = ['head', 'admin', 'registrar'];
+    return in_array($normalized, $allowedRoles, true) ? $normalized : null;
 }
 
 function usersSelectQuery(mysqli $conn): string {
@@ -231,12 +313,17 @@ try {
         $last_name = isset($data['last_name']) ? trim((string)$data['last_name']) : '';
         $email = normalizeOptionalValue($data['email'] ?? null);
         $password = isset($data['password']) ? (string)$data['password'] : '';
-        $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : 'student';
+        $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : '';
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
         $roleIdNumber = normalizeOptionalValue($data['id_number'] ?? null) ?? '';
         $gender = trim((string)($data['gender'] ?? 'Not specified')) ?: 'Not specified';
         $requestedStream = trim((string)($data['stream'] ?? ''));
         $stream = in_array($requestedStream, ['Natural', 'Social'], true) ? $requestedStream : 'Natural';
+
+        if (!in_array($role, ['student', 'head', 'admin', 'registrar'], true)) {
+            jsonResponse(['success' => false, 'message' => 'A valid role is required.'], 400);
+        }
+        ensureUserCreationPermission($role, $auditActor);
 
         if ($email === null) {
             jsonResponse(['success' => false, 'message' => 'A valid @gmail.com address is required.'], 400);
@@ -360,7 +447,7 @@ try {
             $auditActor['id'],
             $auditActor['name'],
             'user.create',
-            json_encode(['target_user_id' => $newId, 'fields' => ['first_name', 'last_name', 'username', 'email', 'phone_number', 'role', 'id_number']])
+            "Created user {$username} with role {$role}."
         );
         jsonResponse([
             'success' => true,
@@ -380,18 +467,41 @@ try {
 
     // PUT/PATCH - Update user
     if ($method === 'PUT' || $method === 'PATCH') {
+        ensureAdminSession($conn);
+
         $id = (isset($_GET['id']) && is_numeric($_GET['id'])) ? (int)$_GET['id'] : null;
         if (!$id) jsonResponse(['success' => false, 'message' => 'User ID is required.'], 400);
+        $targetStmt = $conn->prepare('SELECT username, role FROM users WHERE id = ? LIMIT 1');
+        if (!$targetStmt) throw new Exception($conn->error);
+        $targetStmt->bind_param('i', $id);
+        if (!$targetStmt->execute()) throw new Exception($targetStmt->error);
+        $targetUser = $targetStmt->get_result()->fetch_assoc();
+        $targetStmt->close();
+        if (!$targetUser) jsonResponse(['success' => false, 'message' => 'User not found.'], 404);
+        $targetUsername = (string) $targetUser['username'];
+        $oldRole = strtolower(trim((string) $targetUser['role']));
+        if ($oldRole === 'student') {
+            jsonResponse([
+                'success' => false,
+                'message' => 'Student accounts are managed through the Registrar workflow and cannot be edited here.',
+            ], 403);
+        }
 
         $raw = file_get_contents('php://input');
-        $data = json_decode($raw, true) ?? [];
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            jsonResponse(['success' => false, 'message' => 'Invalid JSON request body.'], 400);
+        }
 
         $username = isset($data['username']) ? trim((string)$data['username']) : null;
         $first_name = isset($data['first_name']) ? trim((string)$data['first_name']) : null;
         $last_name = isset($data['last_name']) ? trim((string)$data['last_name']) : null;
         $emailProvided = array_key_exists('email', $data);
         $email = $emailProvided ? normalizeOptionalValue($data['email']) : null;
-        $role = isset($data['role']) ? strtolower(trim((string)$data['role'])) : null;
+        $role = isset($data['role']) ? normalizeRoleOption((string) $data['role']) : null;
+        if (isset($data['role']) && $role === null) {
+            jsonResponse(['success' => false, 'message' => 'Invalid role selected.'], 400);
+        }
         $phone_number = normalizeOptionalValue($data['phone_number'] ?? null);
         $role_id_number = normalizeOptionalValue($data['id_number'] ?? null);
         $current_password = isset($data['current_password']) ? (string)$data['current_password'] : '';
@@ -538,10 +648,7 @@ try {
 
         $stmt = $conn->prepare($sql);
         if (!$stmt) throw new Exception($conn->error);
-        
-        // Dynamic binding
-        $bind_values = array_merge([$types], $values);
-        $stmt->bind_param(...$bind_values);
+        bindUserUpdateValues($stmt, $types, $values);
 
         $conn->begin_transaction();
         try {
@@ -551,22 +658,44 @@ try {
             $stmt->close();
 
             if ($first_name !== null || $last_name !== null) {
-                $profileFirstName = $first_name;
-                $profileLastName = $last_name;
-                $studentProfile = $conn->prepare(
-                    'UPDATE student_data
-                     SET first_name = COALESCE(?, first_name),
-                         last_name = COALESCE(?, last_name)
-                     WHERE user_id = ?'
-                );
-                if (!$studentProfile) {
-                    throw new Exception($conn->error);
+                $profileColumns = getStudentDataColumns($conn);
+                if (isset($profileColumns['user_id'])) {
+                    $profileUpdates = [];
+                    $profileTypes = '';
+                    $profileValues = [];
+
+                    foreach ([
+                        [$first_name, ['first_name', 'given_name']],
+                        [$last_name, ['last_name', 'father_name']],
+                    ] as [$profileValue, $columnNames]) {
+                        if ($profileValue === null) {
+                            continue;
+                        }
+                        foreach ($columnNames as $columnName) {
+                            if (isset($profileColumns[$columnName])) {
+                                $profileUpdates[] = "`{$columnName}` = ?";
+                                $profileTypes .= 's';
+                                $profileValues[] = $profileValue;
+                            }
+                        }
+                    }
+
+                    if ($profileUpdates) {
+                        $profileTypes .= 'i';
+                        $profileValues[] = $id;
+                        $studentProfile = $conn->prepare(
+                            'UPDATE student_data SET ' . implode(', ', $profileUpdates) . ' WHERE user_id = ?'
+                        );
+                        if (!$studentProfile) {
+                            throw new Exception($conn->error);
+                        }
+                        bindUserUpdateValues($studentProfile, $profileTypes, $profileValues);
+                        if (!$studentProfile->execute()) {
+                            throw new Exception($studentProfile->error, $studentProfile->errno);
+                        }
+                        $studentProfile->close();
+                    }
                 }
-                $studentProfile->bind_param('ssi', $profileFirstName, $profileLastName, $id);
-                if (!$studentProfile->execute()) {
-                    throw new Exception($studentProfile->error);
-                }
-                $studentProfile->close();
             }
 
             $conn->commit();
@@ -593,22 +722,50 @@ try {
             throw $error;
         }
 
+        $updatedFields = array_map(
+            static fn ($update): string => trim(strtok($update, ' =')),
+            $updates
+        );
         logActivity(
             $conn,
             $auditActor['id'],
             $auditActor['name'],
             'user.update',
-            json_encode(['target_user_id' => $id, 'fields' => array_keys($updates)])
+            'Updated user ' . $targetUsername . '. Fields: ' . implode(', ', $updatedFields) . '.'
         );
+        if ($role !== null && $role !== $oldRole) {
+            logActivity(
+                $conn,
+                $auditActor['id'],
+                $auditActor['name'],
+                'user.role_change',
+                "Updated role for user {$targetUsername} from {$oldRole} to {$role}."
+            );
+        }
         jsonResponse(['success' => true, 'message' => 'User updated successfully.']);
     }
 
     // DELETE - Delete user
     if ($method === 'DELETE') {
+        ensureAdminSession($conn);
+
         if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
             jsonResponse(['success' => false, 'message' => 'User ID is required.'], 400);
         }
         $id = (int)$_GET['id'];
+        $targetStmt = $conn->prepare('SELECT username, role FROM users WHERE id = ? LIMIT 1');
+        if (!$targetStmt) throw new Exception($conn->error);
+        $targetStmt->bind_param('i', $id);
+        if (!$targetStmt->execute()) throw new Exception($targetStmt->error);
+        $targetUser = $targetStmt->get_result()->fetch_assoc();
+        $targetStmt->close();
+        if (!$targetUser) jsonResponse(['success' => false, 'message' => 'User not found.'], 404);
+        if (strtolower(trim((string) $targetUser['role'])) === 'student') {
+            jsonResponse([
+                'success' => false,
+                'message' => 'Student accounts are managed through the Registrar workflow and cannot be deleted here.',
+            ], 403);
+        }
         
         $stmt = $conn->prepare('DELETE FROM users WHERE id = ? LIMIT 1');
         if (!$stmt) throw new Exception($conn->error);
@@ -621,7 +778,7 @@ try {
                     $auditActor['id'],
                     $auditActor['name'],
                     'user.delete',
-                    json_encode(['target_user_id' => $id])
+                    'Deleted user ' . (string) $targetUser['username'] . '.'
                 );
                 jsonResponse(['success' => true, 'message' => 'User deleted successfully.']);
             }
@@ -633,7 +790,7 @@ try {
     // Method not allowed
     jsonResponse(['success' => false, 'message' => 'Method not allowed.'], 405);
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log('User API Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'Server error.', 'error' => $e->getMessage()], 500);
 }

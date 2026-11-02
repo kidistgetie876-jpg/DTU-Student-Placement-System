@@ -313,7 +313,7 @@ try {
             $auditActor['id'],
             $auditActor['name'],
             'user.bulk_import',
-            json_encode(['inserted_count' => $inserted, 'skipped_count' => $skippedCount])
+            "Imported users: {$inserted} created, {$skippedCount} skipped."
         );
     } catch (Throwable $auditError) {
         error_log('User import audit logging failed: ' . $auditError->getMessage());

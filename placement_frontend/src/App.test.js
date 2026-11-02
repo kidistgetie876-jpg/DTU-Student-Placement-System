@@ -150,6 +150,19 @@ describe('Login', () => {
     expect(screen.queryByRole('heading', { name: /let’s talk about your next step/i })).not.toBeInTheDocument();
   });
 
+  test('renders Edit User inside the admin dashboard shell without public navigation', async () => {
+    mockAppApiResponses();
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'admin', role: 'admin' }));
+    window.history.pushState({}, '', '/edit-user/86');
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Edit User' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Placement Admin navigation' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Home' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Login' })).not.toBeInTheDocument();
+  });
+
   test('renders the public footer for authenticated visitors', async () => {
     mockAppApiResponses();
     localStorage.setItem('user', JSON.stringify({ id: 1, role: 'student' }));

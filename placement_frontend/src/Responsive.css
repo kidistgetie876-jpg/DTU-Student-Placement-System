@@ -7,7 +7,6 @@ button, input, select, textarea { max-width: 100%; }
 .app-main:not(.dashboard-main),
 .public-layout-main:not(.login-route-main) { padding-top: 190px !important; }
 .app-main.dashboard-main { padding-top: 76px !important; }
-.app-main.assign-head-main { padding-top: 190px !important; }
 .responsive-sidebar { color: #fff; background: #0f172a; border: 1px solid rgba(148,163,184,.12); border-radius: 1rem; box-shadow: 0 16px 38px rgba(15,23,42,.2); }
 .sidebar-nav-item { display: flex; align-items: center; gap: .8rem; width: 100%; min-height: 46px; padding: .7rem .9rem; color: #cbd5e1; background: rgba(255,255,255,.025); border: 1px solid transparent; border-left: 3px solid transparent; border-radius: .65rem; font-weight: 600; letter-spacing: .01em; transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease, box-shadow .2s ease; }
 .sidebar-nav-item:hover { color: #fff; background: #1e293b; border-color: rgba(148,163,184,.12); transform: translateX(2px); }
@@ -39,7 +38,6 @@ button, input, select, textarea { max-width: 100%; }
   .app-main:not(.dashboard-main),
   .public-layout-main:not(.login-route-main) { padding-top: 0 !important; }
   .app-main.dashboard-main { padding-top: 0 !important; }
-  .app-main.assign-head-main { padding-top: 0 !important; }
   .top-branding-tier { padding: .6rem 0; }
   .top-branding-content { flex-wrap: nowrap; }
   .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation {
@@ -57,8 +55,17 @@ button, input, select, textarea { max-width: 100%; }
     position: relative; top: auto; left: auto; width: 100%; height: auto; min-height: 0; border-radius: 0;
   }
 
+  .admin-dashboard .sidebar {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
   .admin-dashboard .main-content, .head-dashboard .main-section {
     margin-left: 0; width: 100%; min-height: auto;
+  }
+  .admin-dashboard .main-content {
+    flex: 0 0 100%;
+    max-width: 100%;
   }
   .admin-dashboard, .head-dashboard { padding-top: 0; }
   .admin-dashboard .sidebar, .head-dashboard .sidebar { padding: 1rem !important; }

@@ -53,6 +53,43 @@ describe('LoginPage password reset', () => {
     });
   });
 
+  it('stores the Ministry admission number separately from the primary university ID', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        status: 'success',
+        user: {
+          id: 1,
+          id_number: 'DTU16R2001',
+          student_id: 'DTU16R2001',
+          admission_number: 'MOE10001',
+          role: 'student',
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('Admission ID / Email'), {
+      target: { value: 'DTU16R2001' },
+    });
+    fireEvent.change(screen.getByLabelText('First Name / Password'), {
+      target: { value: 'Abebe' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem('user'))).toMatchObject({
+        id_number: 'DTU16R2001',
+        admission_number: 'MOE10001',
+      });
+      expect(localStorage.getItem('admission_number')).toBe('MOE10001');
+    });
+  });
+
   it('submits email identifiers to the existing staff login contract', async () => {
     api.post.mockResolvedValue({ data: { status: 'error', message: 'Invalid credentials.' } });
 

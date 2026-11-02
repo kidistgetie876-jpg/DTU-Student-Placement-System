@@ -55,6 +55,7 @@ try {
     $showAll = in_array($status, ['all', 'all_status', 'all-status', 'both', 'false', '0'], true);
     $allocatedGroup = '';
     $allocatedCollege = '';
+    $allocatedCollegeId = 0;
     $assignedStream = '';
     $secondSemesterEligible = false;
     if ($semester === 2) {
@@ -75,9 +76,11 @@ try {
             $admissionNumber
         );
         $secondSemesterEligible = $secondSemesterPortal['eligible'];
-        $allocation = $secondSemesterPortal['allocation'] ?? ['group' => '', 'college' => ''];
+        $allocation = $secondSemesterPortal['allocation']
+            ?? ['group' => '', 'college' => '', 'college_id' => 0];
         $allocatedGroup = (string) ($allocation['group'] ?? '');
         $allocatedCollege = trim((string) ($allocation['college'] ?? ''));
+        $allocatedCollegeId = (int) ($allocation['college_id'] ?? 0);
         if ($secondSemesterEligible) {
             $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
         }
@@ -127,13 +130,20 @@ try {
     if ($semester === 2) {
         if (!$secondSemesterEligible || $allocatedGroup === '' || $allocatedCollege === ''
             || placementNormalizeStream($assignedStream) === ''
-            || !isset($columnNames['college_name'])) {
+            || (!isset($columnNames['college_name'])
+                && !($allocatedCollegeId > 0 && isset($columnNames['college_id'])))) {
             $whereClauses[] = '1 = 0';
         } else {
-            $requestedCollege = trim(preg_replace('/\s+/', ' ', $collegeName) ?? $collegeName);
-            $collegeNames = $requestedCollege !== '' ? [$requestedCollege] : [];
+            $requestedCollege = trim(preg_replace('/\s+/', ' ', $allocatedCollege) ?? $allocatedCollege);
+            $collegeNames = [$requestedCollege];
+            if ($allocatedCollegeId > 0 && isset($columnNames['college_id'])) {
+                $collegeMatchConditions = ['college_id = ?'];
+                $values[] = (string) $allocatedCollegeId;
+            } else {
+                $collegeMatchConditions = [];
+            }
             $collegeKey = normalizeStudentPlacementCollegeName($requestedCollege);
-            if ($collegeKey === 'other social science') {
+            if ($collegeNames && $collegeKey === 'other social science') {
                 $collegeNames = array_merge($collegeNames, [
                     'Other Social Science',
                     'Other Social Sciences',
@@ -144,7 +154,7 @@ try {
                     'College of Other Social Science',
                     'College of Other Social Sciences',
                 ]);
-            } elseif ($collegeKey === 'other natural science') {
+            } elseif ($collegeNames && $collegeKey === 'other natural science') {
                 $collegeNames = array_merge($collegeNames, [
                     'Other Natural Science',
                     'Other Natural Sciences',
@@ -153,27 +163,30 @@ try {
                     'College of Other Natural Science',
                     'College of Other Natural Sciences',
                 ]);
-            } elseif ($collegeKey === 'health science') {
+            } elseif ($collegeNames && $collegeKey === 'health science') {
                 $collegeNames = array_merge($collegeNames, [
                     'Health Science',
                     'Health Sciences',
                     'College of Health Science',
                     'College of Health Sciences',
                 ]);
-            } elseif ($collegeKey === 'gafat institute of technology') {
+            } elseif ($collegeNames && $collegeKey === 'gafat institute of technology') {
                 $collegeNames[] = 'Gafat Institute of Technology';
-            } elseif ($collegeKey === 'law') {
+            } elseif ($collegeNames && $collegeKey === 'law') {
                 $collegeNames[] = 'School of Law';
                 $collegeNames[] = 'Law';
             }
-            if ($collegeNames) {
+            if ($collegeNames && isset($columnNames['college_name'])) {
                 $collegeNames = array_values(array_unique(array_map(
                     static fn(string $name): string => strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? $name)),
                     $collegeNames
                 )));
-                $whereClauses[] = 'LOWER(TRIM(COALESCE(college_name, \'\'))) IN ('
+                $collegeMatchConditions[] = 'LOWER(TRIM(COALESCE(college_name, \'\'))) IN ('
                     . implode(', ', array_fill(0, count($collegeNames), '?')) . ')';
                 array_push($values, ...$collegeNames);
+            }
+            if ($collegeMatchConditions) {
+                $whereClauses[] = '(' . implode(' OR ', $collegeMatchConditions) . ')';
             }
         }
     }
@@ -229,10 +242,16 @@ try {
             $normalizedCollegeName = 'School of Law';
         }
         if ($semester === 2) {
-            if (placementNormalizeStream((string) ($row['stream'] ?? ''))
+            if (placementDepartmentStream($row)
                 !== placementNormalizeStream($assignedStream)) {
                 continue;
             }
+            if (!placementDepartmentMatchesAllocation($row, $allocation)) {
+                continue;
+            }
+            $row['stream'] = placementDepartmentStream($row) === 'natural'
+                ? 'Natural Science'
+                : 'Social Science';
         }
         $row['college_name'] = $normalizedCollegeName;
         $departments[] = $row;
@@ -249,6 +268,7 @@ try {
         'departments' => $departments,
         'placementGroup' => $allocatedGroup,
         'allocated_college' => $allocatedCollege,
+        'allocated_college_id' => $allocatedCollegeId,
         'assigned_stream' => $assignedStream,
         'secondSemesterChoiceEligible' => $secondSemesterEligible,
     ]);

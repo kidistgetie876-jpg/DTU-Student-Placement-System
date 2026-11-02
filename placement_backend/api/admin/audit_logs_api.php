@@ -66,7 +66,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $pdo->prepare("DELETE FROM audit_logs WHERE id IN ($placeholders)");
         $stmt->execute($ids);
-        auditResponse(['success' => true, 'deleted' => $stmt->rowCount()]);
+        $deleted = $stmt->rowCount();
+        if ($deleted > 0) {
+            logActivity(
+                $pdo,
+                $actor['id'],
+                $actor['name'],
+                'audit_logs.delete',
+                "Deleted {$deleted} audit log record(s)."
+            );
+        }
+        auditResponse(['success' => true, 'deleted' => $deleted]);
     } catch (Throwable $error) {
         error_log('Audit API delete failed: ' . $error->getMessage());
         auditResponse(['success' => false, 'message' => 'Unable to delete audit logs.'], 500);

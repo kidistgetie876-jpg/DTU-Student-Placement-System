@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 import ManageUsers from './ManageUsers';
 import ManageDepartments from './ManageDepartments';
-import AssignHead from './AssignHead.jsx';
 import DataImport from './DataImport.jsx';
 import RolePermissions from './RolePermissions.jsx';
 import AuditLogs from './AuditLogs';
@@ -23,7 +22,6 @@ const adminTabs = [
   'departments',
   'reports',
   'contact-messages',
-  'assign-head',
   'data-import',
   'role-permissions',
   'account-settings',
@@ -36,7 +34,6 @@ const adminTabPermissions = {
   departments: 'admin.departments',
   reports: 'admin.reports',
   'contact-messages': 'admin.contact-messages',
-  'assign-head': 'admin.assign-head',
   'data-import': 'admin.data-import',
   'audit-logs': 'admin.audit-logs',
   'account-settings': 'admin.account-settings',
@@ -78,8 +75,9 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   const [tab, setTabState] = useState(() => {
-    const initialTab = requestedTab || location.state?.activeTab
+    const storedTab = requestedTab || location.state?.activeTab
       || localStorage.getItem('activeTab:admin');
+    const initialTab = storedTab === 'assign-head' ? 'departments' : storedTab;
     return adminTabs.includes(initialTab) ? initialTab : 'dashboard';
   });
   const setTab = useCallback((nextTab) => {
@@ -97,12 +95,16 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const routeTab = new URLSearchParams(location.search).get('tab');
+    if (routeTab === 'assign-head') {
+      setTab('departments');
+      return;
+    }
     if (adminTabs.includes(routeTab)) {
       setTabState(routeTab);
       localStorage.setItem('activeTab:admin', routeTab);
       localStorage.setItem('activeTab', routeTab);
     }
-  }, [location.search]);
+  }, [location.search, setTab]);
 
   useEffect(() => {
     const permissionId = adminTabPermissions[tab];
@@ -130,7 +132,7 @@ const AdminDashboard = () => {
       const [overviewResult, usersResult, departmentsResult] = await Promise.allSettled([
         api.get('api/common/dashboard_overview_api.php'),
         api.get('api/admin/users_api.php'),
-        api.get('api/common/departments_api.php')
+        api.get('api/common/departments_api.php', { params: { status: 'all' } })
       ]);
 
       const overviewResponse = overviewResult.status === 'fulfilled' ? overviewResult.value.data : null;
@@ -152,7 +154,15 @@ const AdminDashboard = () => {
 
       const departmentsResponse = departmentsResult.status === 'fulfilled' ? departmentsResult.value.data : [];
       const depts = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse?.departments || [];
-      const totalDepartments = Number(overview?.departments ?? depts.filter(Boolean).length);
+      const departmentCount = Array.isArray(departmentsResponse)
+        ? null
+        : departmentsResponse?.total_departments;
+      const totalDepartments = Number(
+        departmentCount
+        ?? overview?.total_departments
+        ?? overview?.departments
+        ?? depts.filter(Boolean).length
+      );
 
       setAllUsers(users); // Store all users for modal
       setAllDepartments(depts); // Store all departments for modal
@@ -560,8 +570,6 @@ const AdminDashboard = () => {
             <AdminReports />
           ) : tab === 'contact-messages' ? (
             <ContactMessages />
-          ) : tab === 'assign-head' ? (
-            <AssignHead />
           ) : tab === 'data-import' ? (
             <DataImport />
           ) : tab === 'role-permissions' ? (

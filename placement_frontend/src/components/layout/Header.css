@@ -19,7 +19,7 @@
 
 /* Tier 1 Styling: University Branding */
 .top-branding-tier {
-  background: linear-gradient(110deg, #1e1b4b 0%, #172554 58%, #1e3a8a 100%);
+  background: var(--dtu-deep-blue);
   padding: 0.55rem 0;
   color: white;
   border-bottom: 1px solid rgba(59, 130, 246, 0.5);
@@ -35,7 +35,14 @@
 .top-branding-tier.has-dashboard-utilities {
   padding: 0.45rem 0;
   border-bottom: 1px solid rgba(59, 130, 246, 0.5);
-  background: linear-gradient(110deg, #1e1b4b 0%, #172554 58%, #1e3a8a 100%);
+  background: var(--dtu-deep-blue);
+}
+
+.top-branding-tier.has-dashboard-utilities.admin-dashboard-header {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  background: var(--dtu-deep-blue);
 }
 
 .university-logo {

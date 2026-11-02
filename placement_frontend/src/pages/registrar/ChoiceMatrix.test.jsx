@@ -118,6 +118,7 @@ describe('ChoiceMatrix', () => {
         '!font-bold',
       );
     });
+
     expect(screen.getAllByRole('columnheader', { name: '1st Choice' })).toHaveLength(2);
     expect(screen.getAllByRole('columnheader', { name: '1st Choice' })[0]).toHaveClass(
       'min-w-[180px]',
@@ -148,6 +149,40 @@ describe('ChoiceMatrix', () => {
       'transition-colors',
       'border-b',
       'border-slate-200',
+    );
+  });
+
+  it('displays the university ID while retaining the Ministry ID for registrar actions', async () => {
+    api.post.mockResolvedValue({ data: { success: true } });
+    render(<ChoiceMatrix
+      students={[{
+        ...student,
+        student_id: 'DTU16R1001',
+        id_number: 'MOE10001',
+        admission_number: 'MOE10001',
+      }]}
+      totalStudentCount={1}
+      totalRecordCount={1}
+    />);
+
+    expect(screen.getByText('DTU16R1001')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('MOE10001');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Aster Student choices' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Selected Semester 1 Choices (1)' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Semester 1 Choices' }));
+
+    expect(api.post).toHaveBeenCalledWith(
+      'api/registrar/delete_selected_student_choices.php',
+      {
+        admissionNumbers: ['MOE10001'],
+        semester: 1,
+        expectedSemester: 1,
+        confirmed: true,
+      },
+      { withCredentials: true },
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Deleted Semester 1 choices for 1 selected student(s).',
     );
   });
 
@@ -204,6 +239,24 @@ describe('ChoiceMatrix', () => {
     expect(cells[5]).not.toHaveTextContent('Accounting and Finance');
     expect(cells[6]).toHaveTextContent('Accounting and Finance');
     expect(cells[7]).toHaveTextContent('Early Childhood Care and Education');
+  });
+
+  it('normalizes pending semester status labels in the matrix', () => {
+    render(<ChoiceMatrix
+      students={[{
+        ...student,
+        status: 'pending_second_semester',
+        choices: [],
+        sem2_choices: {},
+      }]}
+      totalStudentCount={1}
+      totalRecordCount={1}
+    />);
+
+    expect(screen.getByText('Pending 2nd Semester')).toHaveClass(
+      'bg-amber-100',
+      'text-amber-800',
+    );
   });
 
   it('shows broad semester-two college queues in the same preference card layout', () => {
@@ -273,7 +326,7 @@ describe('ChoiceMatrix', () => {
     expect(screen.getByText('Approved')).toHaveClass('bg-emerald-100', 'text-emerald-800');
   });
 
-  it('selects individual students and deletes their choices across all semesters after confirmation', async () => {
+  it('deletes only the selected semester choices for selected students after confirmation', async () => {
     const secondStudent = {
       ...student,
       id: 'DTU16R1002',
@@ -283,7 +336,7 @@ describe('ChoiceMatrix', () => {
     };
     const onChoicesDeleted = jest.fn();
     api.post.mockResolvedValue({
-      data: { success: true, message: 'Deleted choice records across all semesters for 1 selected student(s).' },
+      data: { success: true, message: 'Deleted Semester 2 choices for 1 selected student(s) (2 record(s)); choices for the other semester were preserved.' },
     });
     render(
       <ChoiceMatrix
@@ -297,27 +350,60 @@ describe('ChoiceMatrix', () => {
     );
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Aster Student choices' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Selected Choices (1)' }));
-    expect(screen.getByRole('dialog')).toHaveTextContent('Delete selected students’ choices across all semesters?');
-    expect(screen.getByRole('dialog')).toHaveTextContent('including both Semester 1 and Semester 2');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Selected Semester 2 Choices (1)' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent("Delete selected students' Semester 2 choices?");
+    expect(screen.getByRole('dialog')).toHaveTextContent('Only Semester 2 choice records');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Choices for the other semester');
     expect(api.post).not.toHaveBeenCalled();
 
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Selected Choices' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Semester 2 Choices' }));
 
     expect(api.post).toHaveBeenCalledWith(
       'api/registrar/delete_selected_student_choices.php',
       {
         admissionNumbers: ['DTU16R1001'],
+        semester: 2,
         expectedSemester: 2,
         confirmed: true,
       },
       { withCredentials: true },
     );
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Deleted choice records across all semesters for 1 selected student(s).',
+      'Deleted Semester 2 choices for 1 selected student(s) (2 record(s)); choices for the other semester were preserved.',
     );
     expect(onChoicesDeleted).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('checkbox', { name: 'Select Aster Student choices' })).not.toBeChecked();
+  });
+
+  it('deletes only one student’s Semester 1 choices while Semester 2 is active', async () => {
+    api.post.mockResolvedValue({
+      data: { success: true, message: 'Deleted Semester 1 choices for 1 selected student(s) (3 record(s)); choices for the other semester were preserved.' },
+    });
+    render(
+      <ChoiceMatrix
+        students={[student]}
+        totalStudentCount={1}
+        totalRecordCount={1}
+        activeSemester={2}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Aster Student Semester 1 choices' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent("Delete this student's Semester 1 choices?");
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete Semester 1 Choices' }));
+
+    expect(api.post).toHaveBeenCalledWith(
+      'api/registrar/delete_selected_student_choices.php',
+      {
+        admissionNumbers: ['DTU16R1001'],
+        semester: 1,
+        expectedSemester: 2,
+        confirmed: true,
+      },
+      { withCredentials: true },
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('choices for the other semester were preserved.');
   });
 
   it('selects all students through the master checkbox and allows cancelling the confirmation', () => {
@@ -340,7 +426,7 @@ describe('ChoiceMatrix', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all students with choices' }));
     expect(screen.getByRole('checkbox', { name: 'Select Aster Student choices' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Select Birtukan Student choices' })).toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Selected Choices (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Selected Semester 1 Choices (2)' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

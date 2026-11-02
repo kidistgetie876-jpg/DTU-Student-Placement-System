@@ -13,8 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/logger.php';
 require_once __DIR__ . '/../../config/id_number.php';
 $db = getDbConnection();
+$auditActor = getAuditActor($db);
 
 function sendJson(array $payload, int $code = 200): void
 {
@@ -161,6 +163,13 @@ try {
         }
     }
 
+    logActivity(
+        $db,
+        $auditActor['id'],
+        $auditActor['name'],
+        'data.import',
+        'Imported student registration data: ' . count($students) . " records processed, {$newCount} created, {$updatedCount} updated, {$skippedCount} skipped."
+    );
     sendJson([
         'success' => true,
         'message' => 'Student registration import completed successfully.',

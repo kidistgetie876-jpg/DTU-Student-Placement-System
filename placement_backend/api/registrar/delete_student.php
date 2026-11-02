@@ -120,6 +120,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../../config/logger.php';
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
@@ -192,6 +193,7 @@ $db = getDbConnection();
 if (!$db instanceof mysqli) {
     deleteStudentResponse(['success' => false, 'message' => 'Unable to connect to the database.'], 500);
 }
+$auditActor = getAuditActor($db);
 
 $transactionStarted = false;
 try {
@@ -371,9 +373,20 @@ try {
         $accountDelete->close();
     }
 
-    $db->commit();
+    if (!$db->commit()) {
+        throw new RuntimeException('Unable to commit student deletion: ' . $db->error);
+    }
     $transactionStarted = false;
     $deletedCount = max($deletedAccounts, $deletedProfiles);
+    if ($deletedCount > 0) {
+        logActivity(
+            $db,
+            $auditActor['id'],
+            $auditActor['name'],
+            'student.delete',
+            "Deleted {$deletedCount} student record(s) and their related data."
+        );
+    }
     deleteStudentResponse([
         'success' => true,
         'deleted_count' => $deletedCount,

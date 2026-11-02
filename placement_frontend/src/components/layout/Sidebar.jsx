@@ -54,7 +54,6 @@ const roleNavigation = {
       { key: 'departments', label: 'Manage Departments', Icon: Building2, permissionId: 'admin.departments' },
       { key: 'reports', label: 'Reports', Icon: FileText, permissionId: 'admin.reports' },
       { key: 'contact-messages', label: 'Contact Messages', Icon: Mail, permissionId: 'admin.contact-messages' },
-      { key: 'assign-head', label: 'Assign Department Head', Icon: UserPlus, permissionId: 'admin.assign-head' },
       { key: 'data-import', label: 'Data Import', Icon: UserPlus, permissionId: 'admin.data-import' },
       { key: 'audit-logs', label: 'Audit Logs / System Health', Icon: ShieldCheck, permissionId: 'admin.audit-logs' },
       { key: 'role-permissions', label: 'Role & Permissions', Icon: Settings },

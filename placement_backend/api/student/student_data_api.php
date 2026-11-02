@@ -13,7 +13,7 @@ try {
     exit;
 }
 
-$studentId = trim((string) ($_GET['student_id'] ?? ''));
+$studentId = trim((string) ($_GET['student_id'] ?? $_GET['university_student_id'] ?? $_GET['moe_admission_number'] ?? ''));
 $email = trim((string) ($_GET['email'] ?? ''));
 
 $studentColumnsResult = $db->query('SHOW COLUMNS FROM student_data');
@@ -44,7 +44,7 @@ $coalesce = static function (string ...$expressions): string {
 $studentColumn = static fn (string $name): string => $column('student_data', $studentColumns, $name);
 $userColumn = static fn (string $name): string => $column('users', $userColumns, $name);
 $mosheColumns = studentPlacementTableColumns($db, 'moshe_students');
-$profileAdmissionExpression = studentPlacementTextExpression($studentColumns, 'student_data', ['admission_number', 'id_number']);
+$profileAdmissionExpression = studentPlacementTextExpression($studentColumns, 'student_data', ['moe_admission_number', 'admission_number', 'id_number']);
 if ($userColumn('id_number') !== 'NULL') {
     $profileAdmissionExpression = "COALESCE(NULLIF({$profileAdmissionExpression}, ''), NULLIF(users.id_number, ''))";
 }
@@ -74,10 +74,18 @@ if ($studentColumn('admission_number') !== 'NULL' && $userColumn('id_number') !=
 if ($studentColumn('id_number') !== 'NULL' && $userColumn('id_number') !== 'NULL') {
     $userJoinConditions[] = 'users.id_number = student_data.id_number';
 }
+if ($studentColumn('student_id') !== 'NULL' && $userColumn('id_number') !== 'NULL') {
+    $userJoinConditions[] = 'users.id_number = student_data.student_id';
+}
+if ($studentColumn('moe_admission_number') !== 'NULL' && $userColumn('id_number') !== 'NULL') {
+    $userJoinConditions[] = 'users.id_number = student_data.moe_admission_number';
+}
 $fields = [
     $resolvedUserId . ' AS id',
     $resolvedUserId . ' AS user_id',
-    $coalesce($studentColumn('admission_number'), $studentColumn('id_number'), $userColumn('id_number')) . ' AS id_number',
+    $coalesce($studentColumn('student_id')) . ' AS id_number',
+    $coalesce($studentColumn('student_id')) . ' AS student_id',
+    $coalesce($studentColumn('student_id')) . ' AS university_student_id',
     $coalesce($studentColumn('given_name'), $studentColumn('first_name'), $userColumn('first_name'), $studentColumn('username')) . ' AS first_name',
     $coalesce($studentColumn('father_name'), $studentColumn('last_name'), $userColumn('last_name')) . ' AS last_name',
     $coalesce($studentColumn('given_name'), $studentColumn('first_name'), $userColumn('first_name'), $studentColumn('username')) . ' AS given_name',
@@ -110,6 +118,8 @@ $parameters = [];
 
 if ($studentId !== '') {
     $studentIdentifiers = [
+        [$studentColumn('student_id'), 'student_data.student_id'],
+        [$studentColumn('moe_admission_number'), 'student_data.moe_admission_number'],
         [$studentColumn('admission_number'), 'student_data.admission_number'],
         [$studentColumn('id_number'), 'student_data.id_number'],
         [$userColumn('id_number'), 'users.id_number'],

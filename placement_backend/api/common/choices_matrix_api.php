@@ -154,6 +154,65 @@ function fetchChoiceMatrix(mysqli $db, ?string $studentId = null): array
     return $matrix;
 }
 
+function resolveChoiceStudentAccountId(mysqli $db, array $identity): int
+{
+    $studentId = trim((string) ($identity['student_id'] ?? ''));
+    $explicitIdentifier = trim((string) (
+        $identity['university_student_id']
+        ?? $identity['moe_admission_number']
+        ?? $identity['admission_number']
+        ?? ''
+    ));
+    if ($explicitIdentifier === '' && $studentId !== '' && ctype_digit($studentId) && (int) $studentId > 0) {
+        return (int) $studentId;
+    }
+
+    $identifier = $explicitIdentifier !== '' ? $explicitIdentifier : $studentId;
+    if ($identifier === '') {
+        return 0;
+    }
+
+    $profileLookup = $db->prepare(
+        'SELECT sd.user_id
+         FROM student_data sd
+         WHERE UPPER(TRIM(sd.student_id)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(sd.moe_admission_number)) = UPPER(TRIM(?))
+            OR UPPER(TRIM(sd.admission_number)) = UPPER(TRIM(?))
+         LIMIT 1'
+    );
+    if (!$profileLookup) {
+        throw new RuntimeException('Unable to prepare student identifier lookup: ' . $db->error);
+    }
+    $profileLookup->bind_param('sss', $identifier, $identifier, $identifier);
+    if (!$profileLookup->execute()) {
+        $error = $profileLookup->error;
+        $profileLookup->close();
+        throw new RuntimeException('Unable to resolve student identifier: ' . $error);
+    }
+    $profile = $profileLookup->get_result()->fetch_assoc();
+    $profileLookup->close();
+    $accountId = (int) ($profile['user_id'] ?? 0);
+    if ($accountId > 0) {
+        return $accountId;
+    }
+
+    $accountLookup = $db->prepare(
+        'SELECT id FROM users WHERE UPPER(TRIM(id_number)) = UPPER(TRIM(?)) AND LOWER(TRIM(role)) = \'student\' LIMIT 1'
+    );
+    if (!$accountLookup) {
+        throw new RuntimeException('Unable to prepare student account lookup: ' . $db->error);
+    }
+    $accountLookup->bind_param('s', $identifier);
+    if (!$accountLookup->execute()) {
+        $error = $accountLookup->error;
+        $accountLookup->close();
+        throw new RuntimeException('Unable to resolve student account: ' . $error);
+    }
+    $account = $accountLookup->get_result()->fetch_assoc();
+    $accountLookup->close();
+    return (int) ($account['id'] ?? 0);
+}
+
 function validateChoicePayload(array $choice): array
 {
     $clean = [];
@@ -298,9 +357,24 @@ try {
     $method = $_SERVER['REQUEST_METHOD'];
 
     if ($method === 'GET') {
-        $studentId = isset($_GET['student_id']) ? trim((string) $_GET['student_id']) : null;
-        if ($studentId === '') {
-            $studentId = null;
+        $requestedIdentifier = trim((string) (
+            $_GET['university_student_id']
+            ?? $_GET['moe_admission_number']
+            ?? $_GET['admission_number']
+            ?? $_GET['student_id']
+            ?? ''
+        ));
+        $studentId = null;
+        if ($requestedIdentifier !== '') {
+            $studentId = (string) resolveChoiceStudentAccountId($db, [
+                'student_id' => $_GET['student_id'] ?? '',
+                'university_student_id' => $_GET['university_student_id'] ?? '',
+                'moe_admission_number' => $_GET['moe_admission_number'] ?? '',
+                'admission_number' => $_GET['admission_number'] ?? '',
+            ]);
+            if ($studentId === '0') {
+                sendJson(['success' => false, 'message' => 'Student was not found for the supplied identifier.'], 404);
+            }
         }
         $matrix = fetchChoiceMatrix($db, $studentId);
 
@@ -308,13 +382,14 @@ try {
             'success' => true,
             'count' => count($matrix),
             'student_id' => $studentId,
+            'requested_identifier' => $requestedIdentifier !== '' ? $requestedIdentifier : null,
             'choices' => $matrix,
         ]);
     }
 
     if ($method === 'POST') {
         $payload = readJsonBody();
-        $studentId = isset($payload['student_id']) && is_numeric($payload['student_id']) ? (int) $payload['student_id'] : 0;
+        $studentId = resolveChoiceStudentAccountId($db, $payload);
         $choices = $payload['choices'] ?? $payload;
 
         if ($studentId <= 0) {
@@ -344,7 +419,7 @@ try {
     if ($method === 'PUT' || $method === 'PATCH') {
         $payload = readJsonBody();
         $id = isset($payload['id']) && is_numeric($payload['id']) ? (int) $payload['id'] : 0;
-        $studentId = isset($payload['student_id']) && is_numeric($payload['student_id']) ? (int) $payload['student_id'] : 0;
+        $studentId = resolveChoiceStudentAccountId($db, $payload);
 
         if ($id <= 0 && $studentId <= 0) {
             sendJson(['success' => false, 'message' => 'Either id or student_id is required.'], 400);
@@ -420,7 +495,7 @@ try {
 
     if ($method === 'DELETE') {
         $id = isset($_GET['id']) && is_numeric($_GET['id']) ? (int) $_GET['id'] : 0;
-        $studentId = isset($_GET['student_id']) && is_numeric($_GET['student_id']) ? (int) $_GET['student_id'] : 0;
+        $studentId = resolveChoiceStudentAccountId($db, $_GET);
 
         if ($id <= 0 && $studentId <= 0) {
             sendJson(['success' => false, 'message' => 'Either id or student_id is required for deletion.'], 400);

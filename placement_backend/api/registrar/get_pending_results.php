@@ -145,7 +145,8 @@ try {
             FROM placement_results pr
             LEFT JOIN student_data sd ON {$studentJoin}
             LEFT JOIN users u ON {$userJoin}
-            WHERE LOWER(TRIM(pr.`status`)) IN ('pending', 'approved')
+                WHERE LOWER(TRIM(REPLACE(REPLACE(pr.`status`, '_', ' '), '-', ' ')))
+                    IN ('pending', 'approved', 'assigned', 'pending approval')
               AND " . (in_array('is_published', $placementColumns, true) ? 'COALESCE(pr.is_published, 0) = 0' : '1 = 1') . "
               AND NULLIF(TRIM(COALESCE(pr.`dept_name`, '')), '') IS NOT NULL
               AND LOWER(TRIM(pr.`dept_name`)) NOT IN ('not assigned', 'unassigned')";

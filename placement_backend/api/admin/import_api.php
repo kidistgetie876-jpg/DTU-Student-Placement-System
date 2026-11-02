@@ -127,6 +127,7 @@ if (!isset($data['students']) || !is_array($data['students'])) {
 }
 
 $db = getDbConnection();
+$auditActor = getAuditActor($db);
 $inserted = 0;
 $updated = 0;
 $skipped = [];
@@ -419,12 +420,21 @@ try {
         }
     }
 
-    $db->commit();
+    if (!$db->commit()) {
+        throw new RuntimeException('Unable to commit student import changes: ' . $db->error);
+    }
+    $skippedCount = count($skipped);
+    logActivity(
+        $db,
+        $auditActor['id'],
+        $auditActor['name'],
+        'data.import',
+        "Imported student data: {$inserted} new, {$updated} updated, {$skippedCount} skipped."
+    );
     $total = $inserted + $updated;
     $unchangedCount = count(array_filter($skipped, static function ($item) {
         return !empty($item['unchanged']);
     }));
-    $skippedCount = count($skipped);
     $message = "Import complete: {$inserted} new, {$updated} updated, {$skippedCount} skipped";
     if ($unchangedCount > 0) {
         $message .= " ({$unchangedCount} already exist, unchanged)";

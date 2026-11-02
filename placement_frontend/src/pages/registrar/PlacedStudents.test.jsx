@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import PlacedStudents from './PlacedStudents.jsx';
 import api from '../../services/api.js';
 import * as XLSX from 'xlsx';
@@ -32,6 +32,7 @@ const placedStudents = [
     department: 'Agricultural Economics',
     choice_rank: 1,
     status: 'Pending',
+    placement_semester: 1,
   },
   {
     student_id: 11,
@@ -43,6 +44,7 @@ const placedStudents = [
     department: 'Economics',
     choice_rank: 2,
     status: 'Approved',
+    placement_semester: 2,
   },
 ];
 
@@ -66,8 +68,10 @@ describe('PlacedStudents', () => {
     expect(await screen.findByText('Abebe Kebede')).toBeInTheDocument();
     expect(screen.getByText('Pending Approval')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Placed Students', level: 1 })).toHaveClass('text-2xl', 'text-slate-800');
-    expect(screen.getByText('Manage and export finalized student placement allocations.')).toBeInTheDocument();
+    expect(screen.getByText('Track and export student placement allocations by semester.')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('2 of 2 students');
+    expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).getByText('Abebe Kebede')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: '2nd Semester placed students' })).getByText('Mekdes Alemu')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Stream'), { target: { value: 'Natural Science' } });
     fireEvent.change(screen.getByLabelText('Assigned Department'), { target: { value: 'Agricultural Economics' } });
@@ -79,6 +83,17 @@ describe('PlacedStudents', () => {
     fireEvent.change(screen.getByLabelText('Search by student name or ID'), { target: { value: 'dtu16r2001' } });
     expect(screen.getByText('Abebe Kebede')).toBeInTheDocument();
     expect(screen.getByText('Choice 1')).toBeInTheDocument();
+  });
+
+  it('filters semester batches without merging the two tables', async () => {
+    render(<PlacedStudents />);
+    await screen.findByText('Abebe Kebede');
+
+    fireEvent.change(screen.getByLabelText('Semester'), { target: { value: '2' } });
+
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 2 students');
+    expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).queryByText('Abebe Kebede')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: '2nd Semester placed students' })).getByText('Mekdes Alemu')).toBeInTheDocument();
   });
 
   it('exports the filtered results to the selected format', async () => {
@@ -102,23 +117,67 @@ describe('PlacedStudents', () => {
     ]));
   });
 
-  it('displays current placement status values without changing their meaning', async () => {
+  it('groups deferred records into Semester 2 even when the stored semester is stale', async () => {
     api.get.mockImplementation((path) => Promise.resolve({
       data: path === departmentsEndpoint
         ? { success: true, departments: [] }
         : {
           success: true,
           students: [
-            { ...placedStudents[0], status: 'Pending 2nd Semester' },
-            { ...placedStudents[1], status: 'Assigned' },
+            { ...placedStudents[0], status: 'Pending 2nd Semester', placement_semester: 1 },
+            { ...placedStudents[1], status: 'Assigned', placement_semester: 2 },
           ],
           count: 2,
         },
     }));
     render(<PlacedStudents />);
 
-    expect(await screen.findByText('Pending 2nd Semester')).toBeInTheDocument();
-    expect(screen.getByText('Assigned')).toBeInTheDocument();
+    const secondSemesterTable = await screen.findByRole('table', { name: '2nd Semester placed students' });
+    expect(within(secondSemesterTable).getByText('Assigned')).toBeInTheDocument();
+    expect(within(secondSemesterTable).getByText('Abebe Kebede')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).queryByText('Abebe Kebede'))
+      .not.toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).queryByText('Mekdes Alemu'))
+      .not.toBeInTheDocument();
+  });
+
+  it('keeps only the second-semester row when a student appears in both semester records', async () => {
+    api.get.mockImplementation((path) => Promise.resolve({
+      data: path === departmentsEndpoint
+        ? { success: true, departments: [] }
+        : {
+          success: true,
+          students: [
+            { ...placedStudents[0], status: 'Pending', placement_semester: 1 },
+            { ...placedStudents[0], status: 'Pending 2nd Semester', placement_semester: 2 },
+          ],
+          count: 2,
+        },
+    }));
+    render(<PlacedStudents />);
+
+    await screen.findByText('Abebe Kebede');
+    expect(screen.getByRole('status')).toHaveTextContent('1 of 1 students');
+    expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).queryByText('Abebe Kebede'))
+      .not.toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: '2nd Semester placed students' })).getByText('Pending 2nd Semester'))
+      .toBeInTheDocument();
+  });
+
+  it('shows second-semester results as pending approval after placement runs', async () => {
+    api.get.mockImplementation((path) => Promise.resolve({
+      data: path === departmentsEndpoint
+        ? { success: true, departments: [] }
+        : {
+          success: true,
+          students: [{ ...placedStudents[0], status: 'Pending', placement_semester: 2 }],
+          count: 1,
+        },
+    }));
+    render(<PlacedStudents />);
+
+    const secondSemesterTable = await screen.findByRole('table', { name: '2nd Semester placed students' });
+    expect(within(secondSemesterTable).getByText('Pending Approval')).toBeInTheDocument();
   });
 
   it('keeps stream options available, removes the college filter, and filters departments by stream', async () => {

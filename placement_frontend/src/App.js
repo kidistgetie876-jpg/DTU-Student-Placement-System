@@ -17,7 +17,6 @@ import EditDepartment from "./pages/admin/EditDepartment.jsx";
 import StudentDashboard from "./pages/student/StudentDashboard.jsx";
 import HeadDashboard from "./pages/head/HeadDashboard.jsx";
 import StudentRegistration from "./pages/registrar/StudentRegistration.jsx";
-import AssignHead from "./pages/admin/AssignHead.jsx";
 import MissingScoresForm from "./pages/registrar/MissingScoresForm.jsx";
 import Maintenance from './pages/public/Maintenance.jsx';
 import { LanguageProvider } from './contexts/LanguageContext.jsx';
@@ -98,8 +97,7 @@ function AppRoutes() {
     return <Maintenance settings={maintenance} />;
   }
 
-  const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department') || location.pathname.startsWith('/admin/assign-head');
-  const isAssignHeadPage = location.pathname === '/admin/assign-head';
+  const isAdmin = location.pathname.startsWith('/admin-dashboard') || location.pathname.startsWith('/registrar-dashboard') || location.pathname.startsWith('/head-dashboard') || location.pathname.startsWith('/student-dashboard') || location.pathname.startsWith('/edit-user') || location.pathname.startsWith('/edit-department');
   const isPublicPage = ['/', '/services', '/placement-info', '/announcements', '/contact', '/login'].includes(location.pathname);
   const workspaceRole = String(user?.role || '').trim().toLowerCase();
   const permissionsRole = ['head', 'hod', 'coordinator', 'department_head', 'department head'].includes(workspaceRole)
@@ -182,7 +180,6 @@ function AppRoutes() {
     const adminRoutePermissions = [
       ['/edit-user/', 'admin.users'],
       ['/edit-department/', 'admin.departments'],
-      ['/admin/assign-head', 'admin.assign-head'],
     ];
     const blockedAdminRoute = adminRoutePermissions.find(([path, permissionId]) => (
       location.pathname.startsWith(path) && !isOpen(permissionId)
@@ -205,7 +202,6 @@ function AppRoutes() {
       <Route path="/student-registration" element={<StudentRegistration />} />
       <Route path="/student-score-form/:studentId" element={<MissingScoresForm />} />
       <Route path="/head-dashboard" element={<HeadDashboard />} />
-      <Route path="/admin/assign-head" element={<AssignHead />} />
       <Route path="/edit-user/:id" element={<EditUser />} />
       <Route path="/edit-department/:id" element={<EditDepartment />} />
       <Route path="/student-dashboard" element={<StudentDashboard />} />
@@ -227,7 +223,7 @@ function AppRoutes() {
   return (
     <>
       <Header />
-      <main className={`app-main ${isAdmin && !isAssignHeadPage ? 'dashboard-main' : 'container pt-0'} ${isAssignHeadPage ? 'assign-head-main' : ''}`}>
+      <main className={`app-main ${isAdmin ? 'dashboard-main' : 'container pt-0'}`}>
         {routes}
       </main>
     </>

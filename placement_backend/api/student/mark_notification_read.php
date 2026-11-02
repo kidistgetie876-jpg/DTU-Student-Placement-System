@@ -23,7 +23,8 @@ $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 $notificationId = (int) ($input['notification_id'] ?? 0);
 $notificationType = (string) ($input['notification_type'] ?? 'general');
-if ($notificationId <= 0 || !in_array($notificationType, ['general', 'meeting'], true)) {
+$studentNotificationTypes = ['meeting', 'placement_run', 'placement_assigned', 'placement_approved', 'placement_published'];
+if ($notificationId <= 0 || !in_array($notificationType, array_merge(['general'], $studentNotificationTypes), true)) {
     markStudentNotificationResponse(['success' => false, 'message' => 'A valid notification is required.'], 400);
 }
 
@@ -68,7 +69,7 @@ try {
     }
 
     if ($studentId <= 0) {
-        if ($notificationType === 'meeting') {
+        if (in_array($notificationType, $studentNotificationTypes, true)) {
             if (!studentNotificationTableExists($db, 'student_notifications')) {
                 markStudentNotificationResponse(['success' => false, 'message' => 'Meeting notifications are unavailable.']);
             }
@@ -135,7 +136,7 @@ try {
         markStudentNotificationResponse(['success' => true, 'message' => 'Notification marked as read.']);
     }
 
-    if ($notificationType === 'meeting') {
+    if (in_array($notificationType, $studentNotificationTypes, true)) {
         if (!studentNotificationTableExists($db, 'student_notifications')) {
             markStudentNotificationResponse(['success' => false, 'message' => 'Meeting notifications are unavailable.']);
         }

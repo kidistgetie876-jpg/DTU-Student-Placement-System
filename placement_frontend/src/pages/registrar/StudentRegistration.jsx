@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api.js';
 
 const initialForm = {
-  admission_number: '',
+  moe_admission_number: '',
+  student_id: '',
   given_name: '',
   father_name: '',
   grandfather_name: '',
@@ -47,7 +48,7 @@ const StudentRegistration = ({ onBack, onSuccess, isModal = false }) => {
   };
 
   const validateForm = () => {
-    if (!form.admission_number.trim()) return 'Admission number is required.';
+    if (!form.moe_admission_number.trim()) return 'Ministry admission number is required.';
     if (!form.given_name.trim()) return 'First name is required.';
     if (!form.father_name.trim()) return 'Father name is required.';
     if (!form.grandfather_name.trim()) return 'Grandfather name is required.';
@@ -78,7 +79,8 @@ const StudentRegistration = ({ onBack, onSuccess, isModal = false }) => {
     try {
       const payload = {
         ...form,
-        admission_number: form.admission_number.trim(),
+        moe_admission_number: form.moe_admission_number.trim(),
+        student_id: form.student_id.trim(),
         given_name: form.given_name.trim(),
         father_name: form.father_name.trim(),
         grandfather_name: form.grandfather_name.trim(),
@@ -158,16 +160,29 @@ const StudentRegistration = ({ onBack, onSuccess, isModal = false }) => {
           <form onSubmit={handleSubmit}>
             <div className="row g-3">
               <div className="col-md-6 col-lg-4">
-                <label className="form-label fw-semibold" htmlFor="student-admission-number">Admission Number</label>
+                <label className="form-label fw-semibold" htmlFor="student-moe-admission-number">Ministry Admission Number</label>
                 <input
-                  id="student-admission-number"
+                  id="student-moe-admission-number"
                   type="text"
                   className="form-control"
-                  name="admission_number"
-                  placeholder="DTU16R2006"
-                  value={form.admission_number}
+                  name="moe_admission_number"
+                  placeholder="Ministry registration number"
+                  value={form.moe_admission_number}
                   onChange={handleChange}
                   required
+                />
+              </div>
+              <div className="col-md-6 col-lg-4">
+                <label className="form-label fw-semibold" htmlFor="student-university-id">University Student ID</label>
+                <input
+                  id="student-university-id"
+                  type="text"
+                  className="form-control"
+                  name="student_id"
+                  placeholder="Leave blank to auto-generate"
+                  value={form.student_id}
+                  onChange={handleChange}
+                  maxLength={50}
                 />
               </div>
               <div className="col-md-6 col-lg-4">

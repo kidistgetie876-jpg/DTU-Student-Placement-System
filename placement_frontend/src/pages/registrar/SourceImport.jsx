@@ -22,14 +22,56 @@ export const parseSourceImportGrid = (grid, columns) => {
       .map((normalizedHeader) => headers.indexOf(normalizedHeader))
       .find((index) => index >= 0)
   ));
-  const rows = grid.slice(headerIndex + 1)
-    .filter((row) => row.some((cell) => String(cell ?? '').trim() !== ''))
-    .map((row) => Object.fromEntries(columns.map(({ header }, index) => [
+  const headerRow = grid[headerIndex];
+  const expectedColumnCount = headerRow.reduce(
+    (lastNonEmptyIndex, cell, index) => String(cell ?? '').trim() !== '' ? index + 1 : lastNonEmptyIndex,
+    0,
+  );
+  const rows = [];
+  grid.slice(headerIndex + 1).forEach((row, index) => {
+    if (!row.some((cell) => String(cell ?? '').trim() !== '')) return;
+    const rowNumber = headerIndex + index + 2;
+    if (row.length !== expectedColumnCount) {
+      throw new Error(
+        `Row ${rowNumber} has ${row.length} columns; the header has ${expectedColumnCount}. Check for missing or extra delimiters.`,
+      );
+    }
+    rows.push(Object.fromEntries(columns.map(({ header }, columnIndex) => [
       header,
-      String(row[indices[index]] ?? '').trim(),
+      String(row[indices[columnIndex]] ?? '').trim(),
     ])));
+  });
 
   return { headersFound: true, rows };
+};
+
+export const parseSourceImportCsv = (csvText, columns) => {
+  const candidates = [',', ';'].map((delimiter) => {
+    const workbook = XLSX.read(csvText, { type: 'string', FS: delimiter });
+    const sheetName = workbook.SheetNames[0];
+    const grid = sheetName
+      ? XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        header: 1,
+        defval: '',
+        raw: false,
+      })
+      : [];
+    return { delimiter, grid };
+  });
+
+  const parsedCandidates = candidates.map(({ delimiter, grid }) => {
+    try {
+      return { delimiter, grid, parsed: parseSourceImportGrid(grid, columns) };
+    } catch (error) {
+      return { delimiter, grid, error };
+    }
+  });
+  const matchingCandidate = parsedCandidates.find(({ parsed }) => parsed?.headersFound);
+  if (matchingCandidate) return matchingCandidate.parsed;
+
+  const malformedCandidate = parsedCandidates.find(({ error }) => error);
+  if (malformedCandidate) throw malformedCandidate.error;
+  return { headersFound: false, rows: [] };
 };
 
 const SourceImport = ({ title, endpoint, columns, onImportSuccess }) => {
@@ -46,15 +88,23 @@ const SourceImport = ({ title, endpoint, columns, onImportSuccess }) => {
     }
 
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) throw new Error('The selected workbook does not contain a worksheet.');
-      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1,
-        defval: '',
-        raw: false,
-      });
-      const parsed = parseSourceImportGrid(grid, columns);
+      let parsed;
+      if (/\.csv$/i.test(file.name)) {
+        parsed = parseSourceImportCsv(
+          new TextDecoder().decode(await file.arrayBuffer()),
+          columns,
+        );
+      } else {
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) throw new Error('The selected workbook does not contain a worksheet.');
+        const grid = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+          header: 1,
+          defval: '',
+          raw: false,
+        });
+        parsed = parseSourceImportGrid(grid, columns);
+      }
       if (!parsed.headersFound) {
         throw new Error(`Required columns: ${columns.map(({ header }) => header).join(', ')}.`);
       }

@@ -12,6 +12,7 @@ import {
   GraduationCap,
   MapPin,
   Printer,
+  Trash2,
 } from 'lucide-react';
 import api from '../../services/api.js';
 import '../admin/AdminDashboard.css';
@@ -43,6 +44,8 @@ const normalizeDepartmentsPayload = (payload) => {
   return [];
 };
 
+const isMinistryAdmissionNumber = (value) => /^MOE/i.test(String(value || '').trim());
+
 const isNotificationUnread = (notification) => {
   const readValue = notification.is_read ?? notification.read;
   if (typeof readValue === 'boolean') return !readValue;
@@ -52,7 +55,7 @@ const isNotificationUnread = (notification) => {
   return String(notification.status || '').trim().toLowerCase() === 'unread';
 };
 
-const getStudentNotificationIdentity = (student) => {
+const getStudentRequestIdentity = (student, profile) => {
   let storedUser = {};
   try {
     const parsedUser = JSON.parse(localStorage.getItem('user') || 'null');
@@ -60,17 +63,34 @@ const getStudentNotificationIdentity = (student) => {
   } catch {
     storedUser = {};
   }
-  return {
-    student_id: String(student?.user_id || student?.id || storedUser.user_id || storedUser.id || localStorage.getItem('student_id') || ''),
-    admission_number: String(
-      student?.admission_number
-      || student?.id_number
-      || storedUser.admission_number
-      || storedUser.id_number
-      || localStorage.getItem('admission_number')
-      || '',
-    ),
+  const identitySources = [profile, student, storedUser].filter(Boolean);
+  const firstValue = (keys, fallback = '') => {
+    for (const source of identitySources) {
+      for (const key of keys) {
+        const value = String(source?.[key] ?? '').trim();
+        if (value) return value;
+      }
+    }
+    return localStorage.getItem(fallback) || '';
   };
+  let studentId = firstValue(['user_id', 'id', 'student_id'], 'student_id');
+  let admissionNumber = firstValue(['admission_number', 'id_number'], 'admission_number');
+  if (!admissionNumber && studentId && !/^\d+$/.test(studentId)) {
+    admissionNumber = studentId;
+  }
+  return {
+    ...(studentId ? { student_id: studentId } : {}),
+    ...(admissionNumber ? { admission_number: admissionNumber } : {}),
+  };
+};
+
+const hasStoredStudentSession = () => {
+  try {
+    const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
+    return String(storedUser?.role || '').trim().toLowerCase() === 'student';
+  } catch {
+    return false;
+  }
 };
 
 const isActiveDepartment = (department) => String(department?.status || '').trim().toLowerCase() === 'active';
@@ -244,7 +264,23 @@ const getInitialFirstSemesterPreferences = (choices, departments) => {
 
 const getDepartmentStream = (department) => {
   const rawStream = department?.stream || department?.academic_stream || department?.category;
-  return normalizeStream(rawStream);
+  const normalizedStream = normalizeStream(rawStream);
+  if (normalizedStream) return normalizedStream;
+  const rawStreamKey = String(rawStream || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (rawStreamKey.includes('natural')) return 'Natural Science';
+  if (rawStreamKey.includes('social')) return 'Social Science';
+  const group = normalizePlacementGroup(department?.placement_group);
+  const college = normalizePlacementGroup(department?.college_name || department?.college);
+  if (group.includes('natural') || ['health_science', 'git'].includes(group)
+    || college.includes('natural') || college.includes('health')
+    || college.includes('gafat') || college.includes('technology')) {
+    return 'Natural Science';
+  }
+  if (group.includes('social') || group === 'law'
+    || college.includes('social') || college.includes('law')) {
+    return 'Social Science';
+  }
+  return '';
 };
 
 const StudentDashboard = () => {
@@ -305,6 +341,7 @@ const StudentDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsFeedback, setNotificationsFeedback] = useState('');
+  const [deletingNotificationIds, setDeletingNotificationIds] = useState([]);
   const [editingPreferences, setEditingPreferences] = useState(false);
   const [resultLoading, setResultLoading] = useState(false);
   const [resultError, setResultError] = useState('');
@@ -344,12 +381,24 @@ const StudentDashboard = () => {
         }));
         setAllDepartments(normalizedDepartments);
 
-        const resProfile = await api.get(`api/student/student_data_api.php?student_id=${encodeURIComponent(parsedUser.id)}&email=${encodeURIComponent(parsedUser.email || '')}`);
-        const studentData = resProfile?.data?.student || (Array.isArray(resProfile?.data?.students) ? resProfile.data.students[0] : null);
-        if (resProfile?.data?.success && studentData) {
+        const profileIdentity = getStudentRequestIdentity(parsedUser);
+        let studentData = null;
+        const profileLookupId = profileIdentity.student_id || profileIdentity.admission_number;
+        if (profileLookupId || parsedUser.email) {
+          const resProfile = await api.get('api/student/student_data_api.php', {
+            params: {
+              ...(profileLookupId ? { student_id: profileLookupId } : {}),
+              ...(parsedUser.email ? { email: parsedUser.email } : {}),
+            },
+          });
+          studentData = resProfile?.data?.student
+            || (Array.isArray(resProfile?.data?.students) ? resProfile.data.students[0] : null);
+        }
+        if (studentData) {
           setStudent((current) => ({
             ...current,
-            id_number: studentData.id_number || current?.id_number,
+            id_number: studentData.student_id || studentData.id_number || current?.id_number,
+            student_id: studentData.student_id || current?.student_id,
             field_of_study: studentData.field_of_study || current?.field_of_study,
             stream: studentData.field_of_study || studentData.stream || current?.stream,
           }));
@@ -368,15 +417,11 @@ const StudentDashboard = () => {
           console.error('Unable to load placement eligibility settings:', error);
         }
 
-        const admissionNumber = studentData?.admission_number || studentData?.id_number || parsedUser?.id_number || '';
-        const preferenceParams = new URLSearchParams({
-          student_id: String(parsedUser.id ?? ''),
-          admission_number: String(admissionNumber),
-        });
+        const identity = getStudentRequestIdentity(parsedUser, studentData);
         let placementStatus = {};
         try {
           const statusResponse = await api.get('api/student/placement_status.php', {
-            params: { student_id: String(parsedUser.id ?? ''), admission_number: String(admissionNumber) },
+            params: identity,
           });
           placementStatus = statusResponse.data || {};
           if (placementStatus.success === false) {
@@ -389,7 +434,7 @@ const StudentDashboard = () => {
           setChoiceEditingAllowed(false);
           setPlacementStatusError(error.message || 'Unable to load your placement status.');
         }
-        const resPrefs = await api.get(`api/student/student_preferences.php?${preferenceParams.toString()}`);
+        const resPrefs = await api.get('api/student/student_preferences.php', { params: identity });
         const statusText = String(
           placementStatus.status
           || placementStatus.placement_status
@@ -399,6 +444,10 @@ const StudentDashboard = () => {
           || parsedUser?.status
           || '',
         ).trim().toLowerCase();
+        const placementResultStatusText = String(
+          placementStatus.placement_status || placementStatus.latest_placement?.status || statusText,
+        ).trim().toLowerCase();
+        const latestPlacementWasRejected = ['rejected', 'cancelled', 'canceled'].includes(placementResultStatusText);
         const statusAllocatedCollege = String(placementStatus.allocated_college || '');
         const activeSemester = Number(
           placementStatus.active_semester
@@ -413,26 +462,36 @@ const StudentDashboard = () => {
           || getPlacementGroupFromCollege(allocatedCollege);
         const secondSemesterFinalized = placementStatus.second_semester_choice_finalized === true
           || resPrefs.data?.secondSemesterChoiceFinalized === true;
+        const hasActiveAssignedPlacement = !latestPlacementWasRejected && (
+          placementStatus.has_active_assigned_placement === true
+          || resPrefs.data?.hasActiveAssignedPlacement === true
+          || Boolean(String(placementStatus.assigned_department || placementStatus.latest_placement?.department || '').trim())
+          || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed']
+            .includes(placementResultStatusText)
+        );
         const hasSecondSemesterAllocation = allocatedCollege.trim() !== '' && allocatedGroup !== '';
         const isSecondSemesterStage = [
           'pending 2nd semester',
           'placed in semester 1',
           'allocated',
         ].includes(statusText);
-        const secondSemesterEligible = (activeSemester === 2 && hasSecondSemesterAllocation && isSecondSemesterStage)
+        const secondSemesterEligible = !hasActiveAssignedPlacement && (
+          (activeSemester === 2 && hasSecondSemesterAllocation && isSecondSemesterStage)
           || placementStatus.second_sem_choice_eligible === true
           || resPrefs.data?.secondSemesterChoiceEligible === true
-          || statusText === 'pending 2nd semester';
+          || statusText === 'pending 2nd semester'
+        );
         const registrarPortalOpen = typeof placementStatus.is_second_sem_choice_open === 'boolean'
           ? placementStatus.is_second_sem_choice_open
           : resPrefs.data?.isSecondSemesterChoiceOpen === true;
-        const pendingSecondSemesterEditable = hasSecondSemesterAllocation
+        const pendingSecondSemesterEditable = !hasActiveAssignedPlacement
+          && hasSecondSemesterAllocation
           && (isSecondSemesterStage || secondSemesterEligible)
           && registrarPortalOpen
           && !secondSemesterFinalized;
         const firstSemesterChoicesEditable = ['pending', 'pending 1st semester'].includes(statusText)
           && !(hasSecondSemesterAllocation && secondSemesterEligible && registrarPortalOpen);
-        const isChoiceEditable = !secondSemesterFinalized && (
+        const isChoiceEditable = !hasActiveAssignedPlacement && !secondSemesterFinalized && (
           (isPlacementLockFlagSet(
             placementStatus.is_choice_editable ?? resPrefs.data?.is_choice_editable,
           ) && (activeSemester !== 2 || registrarPortalOpen))
@@ -467,8 +526,8 @@ const StudentDashboard = () => {
         if (isSecondSemesterStudent) {
           const activeDepartmentsResponse = await api.get('api/student/get_active_departments.php', {
             params: {
-              student_id: String(parsedUser.id ?? ''),
-              admission_number: String(admissionNumber),
+              ...(identity.student_id ? { student_id: identity.student_id } : {}),
+              admission_number: identity.admission_number || '',
               semester: 2,
               status: 'active',
             },
@@ -487,7 +546,12 @@ const StudentDashboard = () => {
           }));
           serverAllowedDepartments = filterSecondSemesterDepartments(
             normalizedSecondSemesterDepartments,
-            studentData?.field_of_study || studentData?.stream || parsedUser?.stream || '',
+            activeDepartmentsResponse.data?.assigned_stream
+              || resPrefs.data?.assignedStream
+              || studentData?.field_of_study
+              || studentData?.stream
+              || parsedUser?.stream
+              || '',
           );
           setAllDepartments(serverAllowedDepartments);
         }
@@ -834,24 +898,21 @@ const StudentDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (tab !== 'preferences') return undefined;
+    if (tab !== 'preferences' || !hasStoredStudentSession()) return undefined;
     let active = true;
     let refreshing = false;
     const refreshDepartments = async () => {
       if (!active || refreshing) return;
       refreshing = true;
       try {
-        const studentId = student?.id || student?.student_id || student?.id_number || '';
-        const admissionNumber = profile?.admission_number || profile?.id_number || student?.id_number || '';
-        const preferenceParams = new URLSearchParams({
-          student_id: String(studentId),
-          admission_number: String(admissionNumber),
-        });
+        const identity = getStudentRequestIdentity(student, profile);
+        const studentId = identity.student_id || '';
+        const admissionNumber = identity.admission_number || '';
         const [statusResponse, preferencesResponse] = await Promise.all([
           api.get('api/student/placement_status.php', {
-            params: { student_id: String(studentId), admission_number: String(admissionNumber) },
+            params: identity,
           }),
-          api.get(`api/student/student_preferences.php?${preferenceParams.toString()}`),
+          api.get('api/student/student_preferences.php', { params: identity }),
         ]);
         if (!active) return;
         const statusData = statusResponse.data || {};
@@ -868,6 +929,10 @@ const StudentDashboard = () => {
           || student?.status
           || '',
         ).trim().toLowerCase();
+        const placementResultStatusText = String(
+          statusData.placement_status || statusData.latest_placement?.status || statusText,
+        ).trim().toLowerCase();
+        const latestPlacementWasRejected = ['rejected', 'cancelled', 'canceled'].includes(placementResultStatusText);
         const statusAllocatedCollege = String(statusData.allocated_college || '');
         const activeSemester = Number(
           statusData.active_semester
@@ -882,26 +947,36 @@ const StudentDashboard = () => {
           || getPlacementGroupFromCollege(allocatedCollege);
         const secondSemesterFinalized = statusData.second_semester_choice_finalized === true
           || preferencesResponse.data?.secondSemesterChoiceFinalized === true;
+        const hasActiveAssignedPlacement = !latestPlacementWasRejected && (
+          statusData.has_active_assigned_placement === true
+          || preferencesResponse.data?.hasActiveAssignedPlacement === true
+          || Boolean(String(statusData.assigned_department || statusData.latest_placement?.department || '').trim())
+          || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed']
+            .includes(placementResultStatusText)
+        );
         const hasSecondSemesterAllocation = allocatedCollege.trim() !== '' && allocatedGroup !== '';
         const isSecondSemesterStage = [
           'pending 2nd semester',
           'placed in semester 1',
           'allocated',
         ].includes(statusText);
-        const secondSemesterEligible = (activeSemester === 2 && hasSecondSemesterAllocation && isSecondSemesterStage)
+        const secondSemesterEligible = !hasActiveAssignedPlacement && (
+          (activeSemester === 2 && hasSecondSemesterAllocation && isSecondSemesterStage)
           || statusData.second_sem_choice_eligible === true
           || preferencesResponse.data?.secondSemesterChoiceEligible === true
-          || statusText === 'pending 2nd semester';
+          || statusText === 'pending 2nd semester'
+        );
         const registrarPortalOpen = typeof statusData.is_second_sem_choice_open === 'boolean'
           ? statusData.is_second_sem_choice_open
           : preferencesResponse.data?.isSecondSemesterChoiceOpen === true;
-        const pendingSecondSemesterEditable = hasSecondSemesterAllocation
+        const pendingSecondSemesterEditable = !hasActiveAssignedPlacement
+          && hasSecondSemesterAllocation
           && (isSecondSemesterStage || secondSemesterEligible)
           && registrarPortalOpen
           && !secondSemesterFinalized;
         const firstSemesterChoicesEditable = ['pending', 'pending 1st semester'].includes(statusText)
           && !(hasSecondSemesterAllocation && secondSemesterEligible && registrarPortalOpen);
-        const isChoiceEditable = !secondSemesterFinalized && (
+        const isChoiceEditable = !hasActiveAssignedPlacement && !secondSemesterFinalized && (
           (isPlacementLockFlagSet(
             statusData.is_choice_editable ?? preferencesResponse.data?.is_choice_editable,
           ) && (activeSemester !== 2 || registrarPortalOpen))
@@ -1050,12 +1125,15 @@ const StudentDashboard = () => {
   ]);
 
   useEffect(() => {
-    if (tab !== 'notifications' && tab !== 'overview') return undefined;
     let active = true;
+    if (!hasStoredStudentSession()) {
+      setNotificationsLoading(false);
+      return () => { active = false; };
+    }
     const loadNotifications = async () => {
       setNotificationsLoading(true);
       try {
-        const identity = getStudentNotificationIdentity(student);
+        const identity = getStudentRequestIdentity(student, profile);
         const response = await api.get('api/student/get_student_notifications.php', { params: identity });
         const list = response.data?.notifications || response.data?.data || [];
         if (active) setNotifications(Array.isArray(list) ? list : []);
@@ -1065,8 +1143,19 @@ const StudentDashboard = () => {
         if (active) setNotificationsLoading(false);
       }
     };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadNotifications();
+    };
     loadNotifications();
-    return () => { active = false; };
+    const refreshInterval = window.setInterval(refreshWhenVisible, 30000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [student, tab]);
 
   useEffect(() => {
@@ -1092,15 +1181,41 @@ const StudentDashboard = () => {
     try {
       const response = await api.post('api/student/mark_notification_read.php', {
         notification_id: notification.id,
-        ...(notification.notification_type === 'meeting' ? { notification_type: 'meeting' } : {}),
+        ...(notification.notification_type && notification.notification_type !== 'general'
+          ? { notification_type: notification.notification_type }
+          : {}),
       });
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to mark notification as read.');
       setNotifications((current) => current.map((item) => (
         item.id === notification.id ? { ...item, is_read: 1, read: true, status: 'read' } : item
       )));
-      setNotificationsFeedback(response.data.message || 'Notification marked as read.');
+      setNotificationsFeedback('');
     } catch (error) {
       setNotificationsFeedback(error.response?.data?.message || error.message || 'Unable to mark notification as read.');
+    }
+  };
+
+  const deleteStudentNotification = async (notification) => {
+    const notificationId = String(notification?.id ?? '').trim();
+    if (!notificationId || deletingNotificationIds.includes(notificationId)) return;
+
+    setDeletingNotificationIds((current) => [...new Set([...current, notificationId])]);
+    setNotificationsFeedback('');
+    try {
+      const response = await api.delete('api/student/delete_student_notification.php', {
+        params: {
+          notification_id: notificationId,
+          notification_type: notification.notification_type || 'general',
+        },
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to delete notification.');
+      }
+      setNotifications((current) => current.filter((item) => String(item.id) !== notificationId));
+    } catch (error) {
+      setNotificationsFeedback(error.response?.data?.message || error.message || 'Unable to delete notification.');
+    } finally {
+      setDeletingNotificationIds((current) => current.filter((id) => id !== notificationId));
     }
   };
 
@@ -1109,7 +1224,7 @@ const StudentDashboard = () => {
       const response = await api.post('api/student/mark_all_notifications_read.php');
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to mark notifications as read.');
       setNotifications((current) => current.map((item) => ({ ...item, is_read: 1, read: true, status: 'read' })));
-      setNotificationsFeedback(response.data.message || 'All notifications marked as read.');
+      setNotificationsFeedback('');
     } catch (error) {
       setNotificationsFeedback(error.response?.data?.message || error.message || 'Unable to mark notifications as read.');
     }
@@ -1206,13 +1321,24 @@ const StudentDashboard = () => {
     || resultStudent?.username
     || student?.username
     || 'Not available';
-  const resultStudentId = resultStudent?.id_number
-    || resultStudent?.admission_number
-    || profile?.id_number
-    || profile?.admission_number
-    || student?.id_number
-    || student?.id
-    || 'Not available';
+  const resultStudentId = [
+    resultStudent?.student_id,
+    resultStudent?.university_student_id,
+    resultStudent?.id_number,
+    profile?.student_id,
+    profile?.university_student_id,
+    profile?.id_number,
+    student?.student_id,
+    student?.id_number,
+  ].find((identifier) => identifier && !isMinistryAdmissionNumber(identifier)) || 'Not available';
+  const primaryStudentId = [
+    profile?.student_id,
+    profile?.university_student_id,
+    profile?.id_number,
+    student?.student_id,
+    student?.id_number,
+    resultStudentId,
+  ].find((identifier) => identifier && !isMinistryAdmissionNumber(identifier)) || 'Not available';
   const resultMeritScore = resultPlacement?.merit_score
     ?? resultPlacement?.final_score
     ?? resultPlacement?.cumulative_score
@@ -1226,7 +1352,23 @@ const StudentDashboard = () => {
     displayedPreferenceAlerts.add(text);
     return <div key={text} className={className} role={role}>{text}</div>;
   };
-  const overviewPlacementStatus = String(
+  const latestPlacementStatus = String(
+    currentPlacementStatus?.placement_status
+      || currentPlacementStatus?.latest_placement?.status
+      || '',
+  ).trim().toLowerCase();
+  const latestPlacementSemester = Number(
+    currentPlacementStatus?.assigned_semester
+      || currentPlacementStatus?.latest_placement?.semester
+      || activePlacementSemester
+      || 1,
+  );
+  const latestPlacementDepartment = String(
+    currentPlacementStatus?.assigned_department
+      || currentPlacementStatus?.latest_placement?.department
+      || '',
+  ).trim();
+  const profilePlacementStatus = String(
     currentPlacementStatus?.status
       || currentPlacementStatus?.placement_status
       || profile?.placement_status
@@ -1235,9 +1377,40 @@ const StudentDashboard = () => {
       || student?.status
       || 'Pending',
   ).trim();
-  const overviewIsPlaced = ['assigned', 'placed', 'approved', 'completed'].includes(
-    overviewPlacementStatus.toLowerCase(),
+  const isPendingSecondSemester = latestPlacementStatus === 'pending 2nd semester'
+    || profilePlacementStatus.toLowerCase() === 'pending 2nd semester';
+  const latestPlacementWasRejected = ['rejected', 'cancelled', 'canceled'].includes(latestPlacementStatus);
+  const hasActiveAssignedPlacement = !latestPlacementWasRejected && (
+    currentPlacementStatus?.has_active_assigned_placement === true
+    || Boolean(resultDepartment && !['not assigned', 'unassigned'].includes(resultDepartment.toLowerCase()))
+    || Boolean(latestPlacementDepartment && !['not assigned', 'unassigned'].includes(latestPlacementDepartment.toLowerCase()))
+    || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed'].includes(latestPlacementStatus)
+    || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed'].includes(profilePlacementStatus.toLowerCase())
   );
+  let overviewPlacementStatus = profilePlacementStatus;
+  if (isPendingSecondSemester) {
+    overviewPlacementStatus = 'Deferred to 2nd Semester - Pending Placement';
+  } else if (latestPlacementStatus === 'pending') {
+    overviewPlacementStatus = `Assigned to Semester ${latestPlacementSemester} - Pending Approval`;
+  } else if (latestPlacementStatus === 'approved') {
+    overviewPlacementStatus = `Placement Approved for Semester ${latestPlacementSemester}`;
+  } else if (latestPlacementStatus === 'published') {
+    overviewPlacementStatus = `Placement Completed for Semester ${latestPlacementSemester}`;
+  }
+  const overviewIsPlaced = /approved|completed|published/i.test(overviewPlacementStatus);
+  let placementStatusMessage = 'Your current placement progress is shown below.';
+  if (isPendingSecondSemester) {
+    placementStatusMessage = 'Your department placement process will take place during the 2nd Semester placement run.';
+  } else if (latestPlacementStatus === 'pending') {
+    const assignedDepartment = latestPlacementDepartment
+      ? `You have been assigned to ${latestPlacementDepartment}. `
+      : '';
+    placementStatusMessage = `${assignedDepartment}Your Semester ${latestPlacementSemester} placement is awaiting approval.`;
+  } else if (latestPlacementStatus === 'approved') {
+    placementStatusMessage = `Your Semester ${latestPlacementSemester} placement has been approved.`;
+  } else if (latestPlacementStatus === 'published') {
+    placementStatusMessage = `Your Semester ${latestPlacementSemester} placement has been published and is complete.`;
+  }
   const overviewScore = profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A';
   const overviewChoices = (firstSemesterPreferences.length ? firstSemesterPreferences : semesterTwoPreferences)
     .flatMap((choice) => {
@@ -1270,8 +1443,23 @@ const StudentDashboard = () => {
             username={student?.username}
             role="Student"
             greeting="Welcome"
-            profileDetail={`ID: ${student?.id_number || student?.id}`}
+            profileDetail={`ID: ${primaryStudentId}`}
           />
+          <section
+            className={`mb-4 flex flex-col gap-3 rounded-xl border-l-4 p-4 sm:flex-row sm:items-center sm:justify-between ${
+              overviewIsPlaced
+                ? 'border-emerald-600 bg-emerald-50 text-emerald-950'
+                : 'border-amber-500 bg-amber-50 text-amber-950'
+            }`}
+            aria-label="Placement status update"
+            data-testid="placement-status-banner"
+          >
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider">Your placement status</p>
+              <p className="mb-1 font-bold">{overviewPlacementStatus}</p>
+              <p className="mb-0 text-sm">{placementStatusMessage}</p>
+            </div>
+          </section>
 
           {tab === 'overview' && (
             <section className="container-fluid student-overview space-y-5">
@@ -1286,7 +1474,7 @@ const StudentDashboard = () => {
                     </p>
                     <p className="mb-0 text-sm text-slate-600">
                       <span className="font-semibold text-slate-900">
-                        ID: {profile?.id_number || student?.id_number || student?.id || 'Not available'}
+                        ID: {primaryStudentId}
                       </span>
                       <span className="mx-2 text-slate-300">|</span>
                       Stream <span className="font-semibold text-slate-900">{assignedStream || 'Not available'}</span>
@@ -1382,11 +1570,22 @@ const StudentDashboard = () => {
             <section className="container-fluid student-preferences-page">
               <header className="student-preferences-heading">
                 <span className="student-section-eyebrow">PLACEMENT PREFERENCES</span>
-                <h1>Rank Your Department Preferences</h1>
-                <p>{preferenceSemester === 2
+                <h1>{hasActiveAssignedPlacement ? 'Placement Result' : 'Rank Your Department Preferences'}</h1>
+                {!hasActiveAssignedPlacement && <p>{preferenceSemester === 2
                   ? 'Rank the active departments available across colleges in your assigned stream.'
-                  : 'Choose your preferred placement group, then rank the active departments available to you.'}</p>
+                  : 'Choose your preferred placement group, then rank the active departments available to you.'}</p>}
               </header>
+              {hasActiveAssignedPlacement ? (
+                <div className="student-placement-result-locked" role="status" data-testid="assigned-placement-choice-lock">
+                  <h2>Department placement already assigned</h2>
+                  <p>Assigned department: <strong>{latestPlacementDepartment || resultDepartment || 'Not available'}</strong></p>
+                  <p>Status: <strong>{currentPlacementStatus?.placement_status || profilePlacementStatus || placementResultStatus || 'Pending Approval'}</strong></p>
+                  <button type="button" className="student-preferences-submit" onClick={() => setTab('result')}>
+                    View official placement result
+                  </button>
+                </div>
+              ) : (
+                <>
               {renderPreferenceAlert(placementStatusError)}
               {preferenceSemester === 2 && (
                 renderPreferenceAlert(
@@ -1534,6 +1733,8 @@ const StudentDashboard = () => {
                   >{editingPreferences ? 'Save Updated Preferences' : 'Submit Preferences'}</button>}
                 </>
               )}
+                </>
+              )}
             </section>
           )}
 
@@ -1620,21 +1821,117 @@ const StudentDashboard = () => {
           {tab === 'appeal' && <StudentAppeal studentId={student?.id || student?.id_number} placement={placementResult?.placement} />}
 
           {tab === 'notifications' && (
-            <section>
-              <h1>Notifications</h1>
+            <section className="mx-auto w-full max-w-4xl" aria-labelledby="student-notifications-heading">
+              <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 id="student-notifications-heading" className="mb-1 text-2xl font-bold text-slate-900">
+                    Notifications
+                  </h1>
+                  <p className="mb-0 text-sm text-slate-600">Placement updates and messages from the Registrar.</p>
+                </div>
+                {notifications.some(isNotificationUnread) && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                    onClick={markAllNotificationsRead}
+                  >
+                    <Bell size={14} aria-hidden="true" />
+                    Mark all as read
+                  </button>
+                )}
+              </header>
               {notificationsLoading ? <p role="status">Loading notifications...</p> : notifications.map((notification) => (
-                <article key={notification.id} className="card p-3 my-2">
-                  <h2 className="h5">{notification.title || 'System notification'}</h2>
-                  <p>{notification.message}</p>
-                  {notification.meeting_date && <p>{notification.meeting_date}</p>}
-                  {notification.meeting_time && <p>{notification.meeting_time}</p>}
-                  {notification.location && <p><MapPin size={16} /> {notification.location}</p>}
-                  {notification.file_path && <a href={getAttachmentUrl(notification.file_path, notification.id)} target="_blank" rel="noopener noreferrer"><Download size={16} />Open attachment</a>}
-                  {isNotificationUnread(notification) && <button type="button" onClick={() => markNotificationRead(notification)}><CheckCheck size={16} />Mark as read</button>}
+                <article
+                  key={`${notification.notification_type || 'general'}-${notification.id}`}
+                  className={`my-3 rounded-xl border p-4 shadow-sm transition-colors sm:p-5 ${
+                    isNotificationUnread(notification)
+                      ? 'border-blue-200 bg-white'
+                      : 'border-slate-200 bg-slate-50/70'
+                  }`}
+                >
+                  <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        {notification.notification_type?.startsWith('placement_') && (
+                          <span className="inline-flex items-center rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-800">
+                            Placement update
+                          </span>
+                        )}
+                        {notification.placement_semester && (
+                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                            Semester {notification.placement_semester}
+                          </span>
+                        )}
+                        {isNotificationUnread(notification) && (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-600" aria-hidden="true" />
+                            New
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="mb-0 text-base font-semibold text-slate-900">
+                        {notification.title || 'System notification'}
+                      </h2>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {isNotificationUnread(notification) && (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                          onClick={() => markNotificationRead(notification)}
+                        >
+                          <CheckCheck size={14} aria-hidden="true" />
+                          Mark as read
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                        aria-label={`Delete notification: ${notification.title || notification.message || notification.id}`}
+                        title="Delete notification"
+                        onClick={() => deleteStudentNotification(notification)}
+                        disabled={deletingNotificationIds.includes(String(notification.id))}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </header>
+                  {notification.message && <p className="mb-3 whitespace-pre-line text-sm leading-6 text-slate-700">{notification.message}</p>}
+                  {(notification.meeting_date || notification.meeting_time || notification.location) && (
+                    <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-600">
+                      {notification.meeting_date && <span>{notification.meeting_date}</span>}
+                      {notification.meeting_time && <span>{notification.meeting_time}</span>}
+                      {notification.location && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <MapPin size={15} aria-hidden="true" />
+                          {notification.location}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {notification.file_path && (
+                    <a
+                      className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      href={getAttachmentUrl(notification.file_path, notification.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download size={16} aria-hidden="true" />
+                      Open attachment
+                    </a>
+                  )}
                 </article>
               ))}
-              {notifications.some(isNotificationUnread) && <button type="button" onClick={markAllNotificationsRead}><Bell size={16} />Mark all as read</button>}
-              {notificationsFeedback && <p role="status">{notificationsFeedback}</p>}
+              {!notificationsLoading && notifications.length === 0 && (
+                <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600" role="status">
+                  You have no notifications.
+                </p>
+              )}
+              {notificationsFeedback && (
+                <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">
+                  {notificationsFeedback}
+                </p>
+              )}
             </section>
           )}
         </main>
