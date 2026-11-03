@@ -290,7 +290,9 @@ try {
         END)";
     }
 
-    $sql = "SELECT {$studentIdentifier} AS student_id,
+    $sql = "SELECT {$studentIdentifier} AS matrix_identity,
+                   {$universityStudentIdentifier} AS student_id,
+                   {$universityStudentIdentifier} AS university_student_id,
                    {$admissionIdentifier} AS admission_number,
                    {$nameExpression} AS student_name,
                    " . choiceMatrixTextExpression($joinedUserColumns, 'u', ['email']) . " AS email,
@@ -314,10 +316,11 @@ try {
 
     $matrix = [];
     while ($row = $result->fetch_assoc()) {
-        $studentId = trim((string) ($row['student_id'] ?? ''));
-        if ($studentId === '') {
+        $matrixIdentity = trim((string) ($row['matrix_identity'] ?? ''));
+        if ($matrixIdentity === '') {
             continue;
         }
+        $universityStudentId = trim((string) ($row['university_student_id'] ?? ''));
         $semester = (int) ($row['semester'] ?? 1);
         $status = placementStudentStatusLabel((string) ($row['status'] ?? ''));
         $normalizedStatus = placementNormalizeStudentStatus($status);
@@ -327,10 +330,11 @@ try {
             continue;
         }
 
-        $key = strtolower($studentId);
+        $key = strtolower($matrixIdentity);
         if (!isset($matrix[$key])) {
             $matrix[$key] = [
-                'student_id' => $studentId,
+                'student_id' => $universityStudentId,
+                'university_student_id' => $universityStudentId,
                 'admission_number' => trim((string) ($row['admission_number'] ?? '')),
                 'student_name' => trim((string) ($row['student_name'] ?? '')) ?: 'Unknown Student',
                 'email' => trim((string) ($row['email'] ?? '')),

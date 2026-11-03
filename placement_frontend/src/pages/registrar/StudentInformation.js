@@ -90,8 +90,6 @@ const StudentInformation = ({
       const fields = [
         student?.student_id,
         student?.university_student_id,
-        student?.moe_admission_number,
-        student?.admission_number,
         student?.given_name,
         student?.father_name,
       ]
@@ -183,7 +181,7 @@ const StudentInformation = ({
             <input
               type="text"
               className="form-control form-control-sm"
-              placeholder="Search university ID, Ministry number, name..."
+              placeholder="Search university ID or name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ minWidth: "260px" }}
@@ -222,7 +220,6 @@ const StudentInformation = ({
                   <thead className="table-light">
                     <tr>
                       <th>University Student ID</th>
-                      <th>Ministry Admission Number</th>
                       <th>First Name</th>
                       <th>Father Name</th>
                       <th>Grandfather Name</th>
@@ -254,8 +251,7 @@ const StudentInformation = ({
                       const normalizedPlacementStatus = String(status).trim().toLowerCase();
                       const scoreBreakdown = student.score_breakdown;
                       const universityId = student.student_id || student.university_student_id || "";
-                      const moeAdmissionNumber = student.moe_admission_number || student.admission_number || "";
-                      const rowIdentifier = universityId || moeAdmissionNumber;
+                      const rowIdentifier = universityId || student.student_data_id || student.id || "";
                       const scoreExpanded = expandedScoreStudent === rowIdentifier;
                       const fieldOfStudy = String(
                         student.field_of_study ||
@@ -266,13 +262,10 @@ const StudentInformation = ({
                       ).trim();
 
                       return (
-                        <React.Fragment key={`${student.id ?? student.admission_number ?? student.id_number ?? "student"}-${index}`}>
+                        <React.Fragment key={`${student.student_data_id ?? student.id ?? universityId ?? "student"}-${index}`}>
                         <tr>
                           <td className="fw-bold text-primary">
                             {universityId || "—"}
-                          </td>
-                          <td>
-                            {moeAdmissionNumber || "—"}
                           </td>
                           <td>{student.given_name ?? "—"}</td>
                           <td>{student.father_name ?? "—"}</td>
@@ -344,7 +337,7 @@ const StudentInformation = ({
                                 <input
                                   type="text"
                                   className="form-control form-control-sm"
-                                  aria-label={`University Student ID for ${moeAdmissionNumber || "student"}`}
+                                  aria-label={`University Student ID for ${universityId || "student"}`}
                                   placeholder="Leave blank to auto-generate"
                                   maxLength={50}
                                   value={studentIdDrafts[student.student_data_id] || ""}

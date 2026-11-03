@@ -235,7 +235,7 @@ const UnassignedStudents = ({ refreshToken = 0 }) => {
             <table className="w-full min-w-[900px] border-collapse text-left text-sm">
               <thead className="bg-slate-100 text-xs font-semibold uppercase tracking-wider text-slate-700">
                 <tr>
-                  <th scope="col" className="px-4 py-3">Student ID</th>
+                  <th scope="col" className="px-4 py-3">University Student ID</th>
                   <th scope="col" className="px-4 py-3">Full Name</th>
                   <th scope="col" className="px-4 py-3">Email</th>
                   <th scope="col" className="px-4 py-3">Stream</th>
@@ -250,7 +250,7 @@ const UnassignedStudents = ({ refreshToken = 0 }) => {
                   const reason = getUnassignmentReason(student);
                   return (
                     <tr key={student.studentId} className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/80">
-                      <td className="px-4 py-3.5 font-semibold text-blue-800">{student.idNumber || student.studentId}</td>
+                      <td className="px-4 py-3.5 font-semibold text-blue-800">{student.universityStudentId || '—'}</td>
                       <td className="px-4 py-3.5 text-slate-800">{student.fullName || '—'}</td>
                       <td className="px-4 py-3.5 text-slate-700">{student.email || '—'}</td>
                       <td className="px-4 py-3.5 text-slate-700">{student.stream || '—'}</td>
@@ -301,7 +301,7 @@ const UnassignedStudents = ({ refreshToken = 0 }) => {
                   <div>
                     <h5 className="modal-title" id="manual-assignment-title">Manually Assign Student</h5>
                     <div className="small text-muted">
-                      {assignmentStudent.fullName} ({assignmentStudent.idNumber || assignmentStudent.studentId})
+                      {assignmentStudent.fullName} ({assignmentStudent.universityStudentId || '—'})
                     </div>
                   </div>
                   <button

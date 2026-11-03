@@ -428,7 +428,7 @@ const HeadDashboard = () => {
       const response = await api.post('api/head/approve_placement.php', {
         placement_id: placement.placement_id,
         student_id: placement.student_id,
-        admission_number: placement.id_number,
+        admission_number: placement.admission_number || placement.id_number,
         department_id: department.id,
       }, {
         withCredentials: true,

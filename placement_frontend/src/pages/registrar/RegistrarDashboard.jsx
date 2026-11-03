@@ -386,7 +386,6 @@ export const getStudentPrimaryIdentifier = (student) => (
 export const getPlacementCandidatePrimaryIdentifier = (student = {}) => {
   return [
     student.university_student_id,
-    student.id_number,
     student.student_id,
   ]
     .map((identifier) => String(identifier || '').trim())
@@ -403,10 +402,9 @@ export const getPlacementPreviewRequestParams = (candidates = []) => ({
 });
 
 export const exportStudentInformation = (students, format = 'csv') => {
-  const headers = ['University Student ID', 'Ministry Admission Number', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Disability', 'Minority', 'Cumulative Score', 'Placement Status'];
+  const headers = ['University Student ID', 'First Name', 'Father Name', 'Grandfather Name', 'Region', 'Sex', 'Field of Study', 'Total Mark (G12)', 'CGPA', 'COC Score', 'Disability', 'Minority', 'Cumulative Score', 'Placement Status'];
   const rows = students.map((student) => ({
     'University Student ID': getStudentPrimaryIdentifier(student),
-    'Ministry Admission Number': student.moe_admission_number || student.admission_number || '',
     'First Name': student.given_name || '',
     'Father Name': student.father_name || '',
     'Grandfather Name': student.grandfather_name || '',
@@ -464,7 +462,7 @@ export const exportChoiceMatrix = (students, format = 'csv') => {
   const headers = ['Student ID', 'Student Name', 'Stream', 'Status', ...choiceHeaders];
   const rows = students.map((student) => {
     const row = {
-      'Student ID': student.id_number || student.id || '',
+      'Student ID': student.university_student_id || student.student_id || '',
       'Student Name': student.name || '',
       Stream: student.stream || '',
       Status: student.status || '',
@@ -649,8 +647,6 @@ export const matchesStudentInformationSearch = (student, searchTerm) => {
   return [
     student.student_id,
     student.university_student_id,
-    student.moe_admission_number,
-    student.admission_number,
     student.given_name,
     student.father_name,
   ]
@@ -3174,7 +3170,7 @@ const RegistrarDashboard = () => {
                                 )}
                                 {cardDetailModal === 'unplacedStudents' && (
                                   <>
-                                    <td>{item.admission_number || item.student_id}</td>
+                                    <td>{item.university_student_id || item.student_id || '—'}</td>
                                     <td><strong>{item.name || 'Student'}</strong></td>
                                     <td>{item.college || 'Not available'}</td>
                                     <td>{item.stream || 'Not available'}</td>
@@ -3341,7 +3337,6 @@ const RegistrarDashboard = () => {
                               />
                             </th>
                             <th>University Student ID</th>
-                            <th>Ministry Admission Number</th>
                             <th>First Name</th>
                             <th>Father Name</th>
                             <th>Grandfather Name</th>
@@ -3368,7 +3363,8 @@ const RegistrarDashboard = () => {
                             const femaleFlag = student.score_breakdown?.female_flag
                               ?? String(student.sex || '').trim().toLowerCase() === 'female';
                             const scoreBreakdown = student.score_breakdown;
-                            const scoreExpanded = expandedStudentScoreId === student.admission_number;
+                            const displayedStudentId = getStudentPrimaryIdentifier(student);
+                            const scoreExpanded = expandedStudentScoreId === displayedStudentId;
                             const fieldOfStudy = String(
                               student.field_of_study
                                 || student.fieldOfStudy
@@ -3384,7 +3380,7 @@ const RegistrarDashboard = () => {
                                 <input
                                   type="checkbox"
                                   className="form-check-input"
-                                  aria-label={`Select ${student.admission_number || student.id_number}`}
+                                  aria-label={`Select ${displayedStudentId || 'student'}`}
                                   checked={selectedPreferenceAdmissions.includes(String(student.admission_number || student.id_number || '').trim())}
                                   disabled={(!student.admission_number && !student.id_number) || deletingStudents}
                                   onChange={(event) => {
@@ -3401,7 +3397,6 @@ const RegistrarDashboard = () => {
                               <td className="fw-bold text-primary">
                                 {getStudentPrimaryIdentifier(student) || '—'}
                               </td>
-                              <td>{student.moe_admission_number || student.admission_number || '—'}</td>
                               <td>{student.given_name ?? '—'}</td>
                               <td>{student.father_name ?? '—'}</td>
                               <td>{student.grandfather_name ?? '—'}</td>
@@ -3436,9 +3431,9 @@ const RegistrarDashboard = () => {
                                   type="button"
                                   className="btn btn-link btn-sm p-0"
                                   aria-expanded={scoreExpanded}
-                                  aria-label={`${scoreExpanded ? 'Hide' : 'Show'} score breakdown for ${student.admission_number}`}
+                                  aria-label={`${scoreExpanded ? 'Hide' : 'Show'} score breakdown for ${displayedStudentId || 'student'}`}
                                   onClick={() => setExpandedStudentScoreId(
-                                    scoreExpanded ? null : student.admission_number,
+                                    scoreExpanded ? null : displayedStudentId,
                                   )}
                                 >
                                   {scoreExpanded ? 'Hide breakdown' : 'Score breakdown'}
@@ -3483,7 +3478,7 @@ const RegistrarDashboard = () => {
                               <tr>
                                 <td colSpan={17} className="bg-body-tertiary px-4 py-3">
                                   <section
-                                    aria-label={`Cumulative score breakdown for ${student.admission_number}`}
+                                    aria-label={`Cumulative score breakdown for ${displayedStudentId || 'student'}`}
                                     className="border rounded bg-white p-3"
                                   >
                                     <h6 className="fw-bold mb-3">Cumulative Score Breakdown</h6>
@@ -5376,7 +5371,7 @@ const RegistrarDashboard = () => {
                           <tr key={`${result.student_id}-${result.dept_name}`}>
                             <td>
                               <span className="badge px-3 py-2" style={{ backgroundColor: '#e2edff', color: '#0d6efd', borderRadius: '8px' }}>
-                                {result.official_id_number || result.id_number || result.student_id}
+                                {result.university_student_id || result.student_id || '—'}
                               </span>
                             </td>
                             <td>{result.first_name || '—'}</td>
@@ -5973,7 +5968,7 @@ const RegistrarDashboard = () => {
                         >
                           <option value="all">All Students</option>
                           {studentRecords.map((student) => (
-                            <option key={student.id} value={student.id}>{student.name} ({student.id_number || student.id})</option>
+                            <option key={student.id} value={student.id}>{student.name} ({getStudentPrimaryIdentifier(student) || '—'})</option>
                           ))}
                         </select>
                       </div>

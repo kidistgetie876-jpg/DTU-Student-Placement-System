@@ -54,6 +54,7 @@ try {
 
     $placementColumns = studentPlacementTableColumns($db, 'placement_results');
     $studentColumns = studentPlacementTableColumns($db, 'student_data');
+    $userColumns = studentPlacementTableColumns($db, 'users');
     if (!in_array('status', $placementColumns, true)) {
         throw new RuntimeException('The placement_results table is missing status.');
     }
@@ -78,10 +79,38 @@ try {
     }
     $studentJoin = $studentJoinConditions ? implode(' OR ', array_unique($studentJoinConditions)) : '1 = 0';
 
-    $studentIdExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['student_id']);
+    $userJoinConditions = [];
+    if (in_array('user_id', $studentColumns, true) && in_array('id', $userColumns, true)) {
+        $userJoinConditions[] = 'u.id = sd.user_id';
+    }
+    if (in_array('student_id', $placementColumns, true) && in_array('id', $userColumns, true)) {
+        $userJoinConditions[] = 'u.id = pr.student_id';
+    }
+    if (in_array('id_number', $userColumns, true)) {
+        foreach (['moe_admission_number', 'admission_number', 'id_number', 'student_id'] as $profileKey) {
+            if (in_array($profileKey, $studentColumns, true)) {
+                $userJoinConditions[] = "TRIM(u.id_number) = TRIM(sd.`{$profileKey}`)";
+            }
+        }
+        foreach (['admission_number', 'id_number'] as $placementKey) {
+            if (in_array($placementKey, $placementColumns, true)) {
+                $userJoinConditions[] = "TRIM(u.id_number) = TRIM(pr.`{$placementKey}`)";
+            }
+        }
+    }
+    $userJoin = $userJoinConditions
+        ? ' LEFT JOIN users u ON (' . implode(' OR ', array_unique($userJoinConditions))
+            . ") AND LOWER(TRIM(u.role)) = 'student'"
+        : ' LEFT JOIN users u ON 1 = 0';
+
     $placementAdmission = studentPlacementTextExpression($placementColumns, 'pr', ['admission_number', 'id_number']);
-    $admissionExpression = studentPlacementTextExpression($studentColumns, 'sd', ['admission_number', 'id_number']);
-    $idNumberExpression = "COALESCE(NULLIF({$admissionExpression}, ''), {$placementAdmission}, '')";
+    $admissionExpression = studentPlacementTextExpression(
+        $studentColumns,
+        'sd',
+        ['moe_admission_number', 'admission_number', 'id_number'],
+        $placementAdmission
+    );
+    $universityStudentIdExpression = studentPlacementTextExpression($studentColumns, 'sd', ['student_id']);
     $firstName = studentPlacementTextExpression($studentColumns, 'sd', ['given_name', 'first_name']);
     $lastName = studentPlacementTextExpression($studentColumns, 'sd', ['father_name', 'last_name']);
     $nameExpression = "COALESCE(NULLIF(TRIM(CONCAT_WS(' ', NULLIF({$firstName}, ''), NULLIF({$lastName}, ''))), ''), 'Student')";
@@ -89,8 +118,11 @@ try {
     $usernameExpression = "COALESCE(NULLIF({$usernameExpression}, ''), NULLIF(TRIM(CONCAT_WS(' ', NULLIF({$firstName}, ''), NULLIF({$lastName}, ''))), ''), '')";
     $fields = [
         studentPlacementColumnExpression($placementColumns, 'pr', ['id'], '0') . ' AS placement_id',
-        "{$studentIdExpression} AS student_id",
-        "{$idNumberExpression} AS id_number",
+        studentPlacementColumnExpression($userColumns, 'u', ['id']) . ' AS account_id',
+        "{$universityStudentIdExpression} AS student_id",
+        "{$universityStudentIdExpression} AS university_student_id",
+        "{$admissionExpression} AS admission_number",
+        "{$universityStudentIdExpression} AS id_number",
         "{$nameExpression} AS name",
         "{$firstName} AS first_name",
         "{$lastName} AS last_name",
@@ -113,8 +145,8 @@ try {
     $orderBy = in_array('placed_at', $placementColumns, true)
         ? 'pr.placed_at DESC'
         : (in_array('id', $placementColumns, true) ? 'pr.id DESC' : 'pr.status');
-    $query = 'SELECT ' . implode(', ', $fields)
-        . ' FROM placement_results pr LEFT JOIN student_data sd ON ' . $studentJoin
+    $query = 'SELECT DISTINCT ' . implode(', ', $fields)
+        . ' FROM placement_results pr LEFT JOIN student_data sd ON ' . $studentJoin . $userJoin
         . ' WHERE pr.`' . $placementDepartmentColumn . '` = ?' . $publishedFilter
         . ' ORDER BY ' . $orderBy;
     $statement = $db->prepare($query);
@@ -128,7 +160,10 @@ try {
     $result = $statement->get_result();
     $students = [];
     while ($student = $result->fetch_assoc()) {
-        $student['student_id'] = isset($student['student_id']) ? (int) $student['student_id'] : 0;
+        $student['account_id'] = isset($student['account_id']) ? (int) $student['account_id'] : null;
+        $student['student_id'] = (string) ($student['student_id'] ?? '');
+        $student['university_student_id'] = $student['student_id'];
+        $student['id_number'] = $student['student_id'];
         $student['final_score'] = isset($student['final_score']) ? (float) $student['final_score'] : 0.0;
         $student['choice_rank'] = (int) ($student['choice_rank'] ?? 0);
         $students[] = $student;

@@ -63,9 +63,9 @@ describe('matchesStudentInformationSearch', () => {
     father_name: 'Mekonnen',
   };
 
-  it('matches either the University Student ID or the Ministry admission number', () => {
+  it('matches the University Student ID but not the Ministry admission number', () => {
     expect(matchesStudentInformationSearch(student, 'dtu16r2001')).toBe(true);
-    expect(matchesStudentInformationSearch(student, 'MOE10001')).toBe(true);
+    expect(matchesStudentInformationSearch(student, 'MOE10001')).toBe(false);
     expect(matchesStudentInformationSearch(student, 'MOE10002')).toBe(false);
   });
 });

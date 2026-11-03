@@ -28,7 +28,7 @@ const departmentName = (choice) => normalizeChoiceText(
 );
 
 const getStudentDisplayId = (student) => String(
-  student?.student_id || student?.id_number || student?.id || '',
+  student?.university_student_id || student?.student_id || '',
 ).trim();
 
 const getStudentChoiceIdentity = (student) => String(

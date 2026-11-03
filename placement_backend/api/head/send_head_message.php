@@ -6,6 +6,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Content-Type: application/json; charset=UTF-8');
 
 require_once __DIR__ . '/../../config/db_config.php';
+require_once __DIR__ . '/../common/student_placement_schema.php';
 require_once __DIR__ . '/head_department.php';
 
 function headSendResponse(array $payload, int $status = 200): void
@@ -43,25 +44,114 @@ try {
     if (!$department) headSendResponse(['success' => false, 'message' => 'No active department is assigned to this head.'], 403);
     $departmentId = (int) $department['id'];
 
+    $placementColumns = studentPlacementTableColumns($db, 'placement_results');
+    $userColumns = studentPlacementTableColumns($db, 'users');
+    $studentColumns = studentPlacementTableColumns($db, 'student_data');
+    if (!in_array('id', $userColumns, true) || !in_array('role', $userColumns, true)) {
+        throw new RuntimeException('Student account identifiers are unavailable.');
+    }
+
+    $joins = '';
+    if (in_array('student_id', $placementColumns, true)) {
+        $studentAccountCondition = 'u.id = pr.student_id';
+    } else {
+        $placementAdmissionColumn = in_array('admission_number', $placementColumns, true)
+            ? 'admission_number'
+            : (in_array('id_number', $placementColumns, true) ? 'id_number' : null);
+        $profileIdentityColumns = array_values(array_intersect(
+            ['moe_admission_number', 'admission_number', 'id_number', 'student_id'],
+            $studentColumns
+        ));
+        if ($placementAdmissionColumn === null
+            || (!in_array('id_number', $userColumns, true) && !in_array('user_id', $studentColumns, true))) {
+            throw new RuntimeException('Placement results cannot be matched to student accounts.');
+        }
+
+        $profileJoinConditions = array_map(
+            static fn (string $column): string => "TRIM(sd.`{$column}`) = TRIM(pr.`{$placementAdmissionColumn}`)",
+            $profileIdentityColumns
+        );
+        if ($profileJoinConditions) {
+            $joins .= ' LEFT JOIN student_data sd ON (' . implode(' OR ', $profileJoinConditions) . ')';
+        }
+
+        $accountJoinConditions = [];
+        if (in_array('user_id', $studentColumns, true)) {
+            $accountJoinConditions[] = 'u.id = sd.user_id';
+        }
+        if (in_array('id_number', $userColumns, true)) {
+            $accountJoinConditions[] = "TRIM(u.id_number) = TRIM(pr.`{$placementAdmissionColumn}`)";
+            foreach ($profileIdentityColumns as $column) {
+                $accountJoinConditions[] = "TRIM(u.id_number) = TRIM(sd.`{$column}`)";
+            }
+        }
+        if (!$accountJoinConditions) {
+            throw new RuntimeException('Placement results cannot be matched to student accounts.');
+        }
+        $studentAccountCondition = '(' . implode(' OR ', $accountJoinConditions) . ')';
+    }
+
+    $departmentColumn = in_array('dept_id', $placementColumns, true)
+        ? 'dept_id'
+        : (in_array('department_id', $placementColumns, true)
+            ? 'department_id'
+            : (in_array('dept_name', $placementColumns, true) ? 'dept_name' : null));
+    if ($departmentColumn === null) {
+        throw new RuntimeException('Placement results cannot be matched to the assigned department.');
+    }
+    $departmentCondition = $departmentColumn === 'dept_name'
+        ? "LOWER(TRIM(pr.`{$departmentColumn}`)) = LOWER(TRIM(?))"
+        : "pr.`{$departmentColumn}` = ?";
+    $departmentValue = $departmentColumn === 'dept_name'
+        ? (string) $department['name']
+        : $departmentId;
+    $departmentType = $departmentColumn === 'dept_name' ? 's' : 'i';
+    $loadDepartmentStudents = static function (?int $onlyStudentId = null) use (
+        $db,
+        $joins,
+        $studentAccountCondition,
+        $departmentCondition,
+        $departmentValue,
+        $departmentType
+    ): array {
+        $studentCondition = $onlyStudentId === null ? '' : ' AND u.id = ?';
+        $statement = $db->prepare(
+            'SELECT DISTINCT u.id AS student_id FROM placement_results pr'
+            . $joins
+            . " INNER JOIN users u ON {$studentAccountCondition}"
+            . " AND LOWER(TRIM(u.role)) = 'student'"
+            . " WHERE {$departmentCondition}{$studentCondition}"
+        );
+        if (!$statement) {
+            throw new RuntimeException('Unable to prepare department student lookup: ' . $db->error);
+        }
+        if ($onlyStudentId === null) {
+            $statement->bind_param($departmentType, $departmentValue);
+        } else {
+            $statement->bind_param($departmentType . 'i', $departmentValue, $onlyStudentId);
+        }
+        if (!$statement->execute()) {
+            $error = $statement->error;
+            $statement->close();
+            throw new RuntimeException('Unable to load department students: ' . $error);
+        }
+        $result = $statement->get_result();
+        $studentIds = [];
+        while ($row = $result->fetch_assoc()) {
+            $studentIds[] = (int) $row['student_id'];
+        }
+        $statement->close();
+        return $studentIds;
+    };
+
     $recipientRole = $recipientType === 'registrar' ? 'registrar' : 'student';
     $recipientIds = [];
     if ($recipientType === 'student') {
         if ($studentId <= 0) headSendResponse(['success' => false, 'message' => 'Select a student recipient.'], 400);
-        $studentStatement = $db->prepare('SELECT pr.student_id FROM placement_results pr WHERE pr.student_id = ? AND pr.dept_id = ? LIMIT 1');
-        if (!$studentStatement) throw new Exception('Unable to validate the student recipient.');
-        $studentStatement->bind_param('ii', $studentId, $departmentId);
-        $studentStatement->execute();
-        if (!$studentStatement->get_result()->fetch_assoc()) headSendResponse(['success' => false, 'message' => 'The selected student is not assigned to your department.'], 403);
-        $studentStatement->close();
-        $recipientIds[] = $studentId;
+        $recipientIds = $loadDepartmentStudents($studentId);
+        if (!$recipientIds) headSendResponse(['success' => false, 'message' => 'The selected student is not assigned to your department.'], 403);
     } elseif ($recipientType === 'all_students') {
-        $studentsStatement = $db->prepare('SELECT DISTINCT student_id FROM placement_results WHERE dept_id = ?');
-        if (!$studentsStatement) throw new Exception('Unable to load department students.');
-        $studentsStatement->bind_param('i', $departmentId);
-        $studentsStatement->execute();
-        $result = $studentsStatement->get_result();
-        while ($row = $result->fetch_assoc()) $recipientIds[] = (int) $row['student_id'];
-        $studentsStatement->close();
+        $recipientIds = $loadDepartmentStudents();
         if (!$recipientIds) headSendResponse(['success' => false, 'message' => 'No students are assigned to your department.'], 400);
     } else {
         $recipientIds[] = null;

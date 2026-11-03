@@ -16,7 +16,7 @@ const getPlacementSemester = (student) => {
 const deduplicateStudentsByCurrentSemester = (records) => {
   const byIdentity = new Map();
   records.forEach((student, index) => {
-    const identity = normalize(student.id_number || student.student_id || student.id);
+    const identity = normalize(student.student_id || student.university_student_id || student.account_id || student.id);
     if (!identity) {
       byIdentity.set(`row-${index}`, student);
       return;
@@ -99,12 +99,12 @@ const SemesterTable = ({ semester, students }) => {
               const choiceRank = Number(student.choice_rank);
               return (
                 <tr
-                  key={`${student.student_id || student.id_number || student.name}-${semester}-${index}`}
+                  key={`${student.student_id || student.university_student_id || student.name}-${semester}-${index}`}
                   className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/80"
                 >
                   <td className="px-4 py-3.5">
                     <div className="font-semibold text-slate-800">{student.name || '—'}</div>
-                    <div className="text-xs text-slate-500">{student.id_number || student.student_id || student.id || '—'}</div>
+                    <div className="text-xs text-slate-500">{student.student_id || student.university_student_id || '—'}</div>
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="text-slate-800">{student.stream || '—'}</div>
@@ -213,7 +213,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
     return students.filter((student) => {
       const matchesSearch = !query
         || normalize(student.name).includes(query)
-        || normalize(student.id_number || student.student_id || student.id).includes(query);
+        || normalize(student.student_id || student.university_student_id).includes(query);
       return matchesSearch
         && (streamFilter === 'all' || normalizeStream(student.stream) === normalizeStream(streamFilter))
         && (departmentFilter === 'all' || student.department === departmentFilter)
@@ -240,7 +240,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
       'Placement Status',
     ];
     const rows = filteredStudents.map((student) => [
-      student.id_number || student.student_id || student.id || '',
+      student.student_id || student.university_student_id || '',
       student.name || '',
       getPlacementSemester(student) === 2 ? '2nd Semester' : '1st Semester',
       student.stream || '',

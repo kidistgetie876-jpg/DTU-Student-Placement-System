@@ -102,6 +102,34 @@ describe('Reports attachment', () => {
     consoleError.mockRestore();
   });
 
+  it('sends an individual head message to the student account while displaying the University ID', async () => {
+    api.post.mockResolvedValue({ data: { success: true } });
+    render(
+      <Reports
+        leader={{ id: 7 }}
+        students={[{
+          account_id: 57,
+          student_id: 'DTU16R2057',
+          university_student_id: 'DTU16R2057',
+          username: 'Student Example',
+        }]}
+      />
+    );
+
+    expect(await screen.findByRole('option', { name: 'Student Example (ID: DTU16R2057)' })).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: '57' } });
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Placement update' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send Message' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/head/send_head_message.php',
+      expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    ));
+    expect(api.post.mock.calls[0][1].get('recipient_id')).toBe('57');
+    expect(api.post.mock.calls[0][1].get('student_id')).toBe('57');
+  });
+
   it('permanently clears report history after confirmation', async () => {
     api.post.mockResolvedValue({ data: { success: true, deleted_count: 1 } });
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);

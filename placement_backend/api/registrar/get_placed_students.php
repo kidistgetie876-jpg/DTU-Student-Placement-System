@@ -49,6 +49,12 @@ try {
         }
     }
     $idNumberExpression = $idNumberParts ? 'COALESCE(' . implode(', ', $idNumberParts) . ", '')" : "''";
+    $universityStudentIdExpression = studentPlacementTextExpression(
+        $studentColumns,
+        'sd',
+        ['student_id'],
+        "''"
+    );
 
     $studentJoinConditions = [];
     if (in_array('user_id', $studentColumns, true) && in_array('student_id', $placementColumns, true)) {
@@ -148,7 +154,8 @@ try {
     $placementOrder = $orderParts ? implode(', ', $orderParts) : '1';
 
     $result = $db->query(
-        "SELECT {$placementStudentId} AS student_id,
+        "SELECT {$placementStudentId} AS account_id,
+                {$universityStudentIdExpression} AS university_student_id,
                 {$idNumberExpression} AS id_number,
                 {$nameExpression} AS name,
                 {$emailExpression} AS email,
@@ -173,10 +180,14 @@ try {
 
     $students = [];
     while ($row = $result->fetch_assoc()) {
+        $universityStudentId = (string) ($row['university_student_id'] ?? '');
+        $accountId = $row['account_id'] !== null ? (int) $row['account_id'] : null;
         $students[] = [
-            'id' => $row['student_id'] !== null ? (int) $row['student_id'] : (string) $row['id_number'],
-            'student_id' => $row['student_id'] !== null ? (int) $row['student_id'] : (string) $row['id_number'],
-            'id_number' => (string) ($row['id_number'] ?? ''),
+            'id' => $accountId ?? $universityStudentId,
+            'account_id' => $accountId,
+            'student_id' => $universityStudentId,
+            'university_student_id' => $universityStudentId,
+            'id_number' => $universityStudentId,
             'name' => (string) $row['name'],
             'email' => (string) ($row['email'] ?? ''),
             'status' => (string) $row['status'],
@@ -272,9 +283,15 @@ try {
                 ['cumulative_score', 'final_score', 'gpa'],
                 'NULL'
             );
+            $allocationUniversityStudentId = studentPlacementTextExpression(
+                $studentColumns,
+                'sd',
+                ['student_id'],
+                "''"
+            );
             $pendingAllocationResult = $db->query(
-                "SELECT {$allocationStudentId} AS student_id,
-                        TRIM(pca.admission_number) AS id_number,
+                "SELECT {$allocationStudentId} AS account_id,
+                        {$allocationUniversityStudentId} AS university_student_id,
                         {$allocationNameExpression} AS name,
                         {$allocationEmailExpression} AS email,
                         {$allocationStream} AS stream,
@@ -298,14 +315,17 @@ try {
                 throw new RuntimeException('Unable to query pending semester-two allocations: ' . $db->error);
             }
             while ($row = $pendingAllocationResult->fetch_assoc()) {
-                $studentId = $row['student_id'] !== null ? (int) $row['student_id'] : (string) $row['id_number'];
+                $accountId = $row['account_id'] !== null ? (int) $row['account_id'] : null;
+                $universityStudentId = (string) ($row['university_student_id'] ?? '');
                 $score = $row['final_score'] !== null && is_numeric($row['final_score'])
                     ? (float) $row['final_score']
                     : null;
                 $students[] = [
-                    'id' => $studentId,
-                    'student_id' => $studentId,
-                    'id_number' => (string) ($row['id_number'] ?? ''),
+                    'id' => $accountId ?? $universityStudentId,
+                    'account_id' => $accountId,
+                    'student_id' => $universityStudentId,
+                    'university_student_id' => $universityStudentId,
+                    'id_number' => $universityStudentId,
                     'name' => (string) $row['name'],
                     'email' => (string) ($row['email'] ?? ''),
                     'status' => (string) $row['status'],
@@ -324,9 +344,9 @@ try {
 
     $studentsByIdentity = [];
     foreach ($students as $student) {
-        $identity = trim((string) ($student['id_number'] ?? ''));
+        $identity = trim((string) ($student['student_id'] ?? ''));
         if ($identity === '') {
-            $identity = trim((string) ($student['student_id'] ?? $student['id'] ?? ''));
+            $identity = trim((string) ($student['account_id'] ?? $student['id'] ?? ''));
         }
         if ($identity === '') {
             $studentsByIdentity[] = $student;

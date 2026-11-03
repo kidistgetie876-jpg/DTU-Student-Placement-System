@@ -21,7 +21,8 @@ describe('UnassignedStudents', () => {
         success: true,
         students: [{
           studentId: 4,
-          idNumber: 'DTU-004',
+          idNumber: 'MOE-004',
+          universityStudentId: 'DTU16R2004',
           fullName: 'Aster Tesfaye',
           email: 'aster@example.edu',
           stream: 'Natural Science',
@@ -37,7 +38,8 @@ describe('UnassignedStudents', () => {
     render(<UnassignedStudents />);
 
     expect(await screen.findByText('Aster Tesfaye')).toBeInTheDocument();
-    expect(screen.getByText('DTU-004')).toBeInTheDocument();
+    expect(screen.getByText('DTU16R2004')).toBeInTheDocument();
+    expect(screen.queryByText('MOE-004')).not.toBeInTheDocument();
     expect(screen.getByText('aster@example.edu')).toBeInTheDocument();
     expect(screen.getByText('Natural Science')).toBeInTheDocument();
     expect(screen.getByText('College of Technology')).toBeInTheDocument();
@@ -115,7 +117,7 @@ describe('UnassignedStudents', () => {
     render(<UnassignedStudents />);
 
     expect(await screen.findByText('College of Health Science')).toBeInTheDocument();
-    expect(screen.getByText('Did not submit department choices')).toHaveClass('unassigned-reason-alert');
+    expect(screen.getAllByText('Did not submit department choices')[0]).toHaveClass('unassigned-reason-alert');
     expect(screen.getByText('N/A')).toBeInTheDocument();
   });
 
@@ -184,6 +186,7 @@ describe('UnassignedStudents', () => {
           success: true,
           students: [{
             studentId: 'DTU16R2014',
+            universityStudentId: 'DTU16R2014',
             admissionNumber: 'DTU16R2014',
             idNumber: 'DTU16R2014',
             fullName: 'Marta Tesfaye',
@@ -207,7 +210,7 @@ describe('UnassignedStudents', () => {
 
     expect(await screen.findByText('Portal account not linked')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Manually Assign' }));
-    await screen.findByRole('option', { name: 'Computer Science (1 seats left)' });
+    await screen.findByRole('option', { name: 'Computer Science (1 seat left)' });
     expect(api.get).toHaveBeenNthCalledWith(2, 'api/registrar/assign_manual_student.php', {
       params: { admission_number: 'DTU16R2014' },
     });

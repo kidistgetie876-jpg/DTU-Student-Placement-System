@@ -371,6 +371,7 @@ try {
 
         $operationStage = 'loading roster';
         $rosterColumns = studentPlacementTableColumns($db, 'unassigned_students');
+        $studentColumns = studentPlacementTableColumns($db, 'student_data');
         $choiceColumns = studentPlacementTableColumns($db, 'student_choices');
         $departmentColumns = studentPlacementTableColumns($db, 'departments');
         $choiceIdentityConditions = [];
@@ -408,12 +409,34 @@ try {
                 . " ORDER BY {$choicePriority} ASC LIMIT 1)";
         }
         $collegeExpression = "COALESCE(NULLIF(us.college_name, ''), NULLIF({$collegeFallback}, ''), '')";
+        $studentJoinConditions = [];
+        if (in_array('user_id', $studentColumns, true)) {
+            $studentJoinConditions[] = 'sd.user_id = us.student_id';
+        }
+        foreach (['admission_number', 'id_number'] as $studentIdentifier) {
+            if (in_array($studentIdentifier, $studentColumns, true)) {
+                $rosterIdentity = in_array('admission_number', $rosterColumns, true)
+                    ? "COALESCE(NULLIF(us.admission_number, ''), us.id_number)"
+                    : 'us.id_number';
+                $studentJoinConditions[] = "TRIM(sd.`{$studentIdentifier}`) = TRIM({$rosterIdentity})";
+            }
+        }
+        $studentJoin = $studentJoinConditions
+            ? implode(' OR ', array_unique($studentJoinConditions))
+            : '1 = 0';
+        $universityStudentIdExpression = studentPlacementTextExpression(
+            $studentColumns,
+            'sd',
+            ['student_id']
+        );
         $result = $db->query(
             "SELECT us.student_id, us.admission_number, us.id_number, us.full_name,
+                    {$universityStudentIdExpression} AS university_student_id,
                     COALESCE(NULLIF(us.email, ''), 'No Email') AS email,
                     us.stream, {$collegeExpression} AS college_name, us.status,
                     us.reason_code, us.reason_details, us.total_score, us.placement_run_at
              FROM unassigned_students us
+             LEFT JOIN student_data sd ON {$studentJoin}
              WHERE us.status = 'Not assigned'
                AND us.placement_run_at IS NOT NULL
                AND us.reason_code IN (
@@ -444,6 +467,9 @@ try {
             $collegeName = (string) $row['college_name'];
             $students[] = [
                 'studentId' => $studentId ?? $admissionNumber,
+                'account_id' => $studentId,
+                'student_id' => (string) ($row['university_student_id'] ?? ''),
+                'universityStudentId' => (string) ($row['university_student_id'] ?? ''),
                 'idNumber' => (string) $row['id_number'],
                 'admissionNumber' => $admissionNumber,
                 'accountLinked' => $studentId !== null,
@@ -483,7 +509,7 @@ try {
                     $reasonDetails = $student['reasonDetails']['message'] ?? '';
                 }
                 $values = [
-                    $student['idNumber'] !== '' ? $student['idNumber'] : $student['studentId'],
+                    $student['universityStudentId'],
                     $student['fullName'],
                     $student['email'],
                     $student['stream'],

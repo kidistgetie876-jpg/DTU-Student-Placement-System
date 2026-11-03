@@ -94,14 +94,8 @@ try {
         $cycleConditions[] = "sd.`{$studentColumn}` = '{$escapedValue}'";
     }
 
-    $identityParts = [];
-    foreach (['user_id', 'admission_number', 'id_number', 'id'] as $column) {
-        if (in_array($column, $studentColumns, true)) {
-            $identityParts[] = "NULLIF(TRIM(CAST(sd.`{$column}` AS CHAR)), '')";
-        }
-    }
-    $studentIdExpression = $identityParts
-        ? 'COALESCE(' . implode(', ', $identityParts) . ')'
+    $studentIdExpression = in_array('student_id', $studentColumns, true)
+        ? "COALESCE(NULLIF(TRIM(CAST(sd.`student_id` AS CHAR)), ''), '')"
         : "''";
 
     $nameColumns = [];
@@ -141,19 +135,13 @@ try {
     $streamExpression = $streamColumn === null
         ? "''"
         : "COALESCE(sd.`{$streamColumn}`, '')";
-    $admissionColumn = in_array('admission_number', $studentColumns, true)
-        ? 'admission_number'
-        : (in_array('id_number', $studentColumns, true) ? 'id_number' : null);
-    $admissionExpression = $admissionColumn === null
-        ? "''"
-        : "COALESCE(sd.`{$admissionColumn}`, '')";
     $conditions = array_merge(
         ["LOWER(TRIM(REPLACE(COALESCE(sd.`{$statusColumn}`, ''), '_', ' '))) IN ('pending 1st semester', 'pending 2nd semester', 'unassigned')"],
         $cycleConditions
     );
     $sql = 'SELECT '
         . $studentIdExpression . ' AS student_id, '
-        . $admissionExpression . ' AS admission_number, '
+        . $studentIdExpression . ' AS university_student_id, '
         . $nameExpression . ' AS name, '
         . $collegeExpression . ' AS college, '
         . $streamExpression . ' AS stream, '
@@ -169,7 +157,7 @@ try {
     while ($student = $result->fetch_assoc()) {
         $students[] = [
             'student_id' => (string) ($student['student_id'] ?? ''),
-            'admission_number' => (string) ($student['admission_number'] ?? ''),
+            'university_student_id' => (string) ($student['university_student_id'] ?? ''),
             'name' => (string) ($student['name'] ?? 'Student'),
             'college' => (string) ($student['college'] ?? ''),
             'stream' => (string) ($student['stream'] ?? ''),

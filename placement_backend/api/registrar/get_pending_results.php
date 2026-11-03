@@ -115,6 +115,7 @@ try {
         $field('sd', $studentColumns, 'id_number'),
         $field('u', $userColumns, 'id_number')
     );
+    $universityStudentId = $coalesce($field('sd', $studentColumns, 'student_id'));
     $firstName = $coalesce(
         $field('sd', $studentColumns, 'given_name'),
         $field('sd', $studentColumns, 'first_name'),
@@ -139,7 +140,7 @@ try {
 
     $sql = "SELECT pr.*,
                 {$resolvedStudentId} AS resolved_student_id,
-                {$officialId} AS official_id_number,
+                {$universityStudentId} AS university_student_id,
                 {$firstName} AS first_name,
                 {$lastName} AS last_name
             FROM placement_results pr
@@ -161,12 +162,14 @@ try {
 
     $placements = [];
     while ($row = $result->fetch_assoc()) {
-        $studentId = $row['resolved_student_id'] ?? null;
+        $accountId = $row['resolved_student_id'] ?? null;
+        $universityId = (string) ($row['university_student_id'] ?? '');
         $placements[] = [
             'placement_id' => isset($row['id']) ? (int) $row['id'] : null,
-            'student_id' => $studentId !== null ? (int) $studentId : ($row['official_id_number'] ?? null),
-            'id_number' => $row['id_number'] ?? $row['official_id_number'] ?? null,
-            'official_id_number' => $row['official_id_number'] ?? $row['id_number'] ?? null,
+            'account_id' => $accountId !== null ? (int) $accountId : null,
+            'student_id' => $universityId,
+            'university_student_id' => $universityId,
+            'id_number' => $universityId,
             'first_name' => (string) ($row['first_name'] ?? ''),
             'last_name' => (string) ($row['last_name'] ?? ''),
             'dept_name' => $row['dept_name'],

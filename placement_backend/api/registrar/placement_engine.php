@@ -505,10 +505,8 @@ function loadPlacementWeights(mysqli $db, array $inputRules): array
         }
     }
 
-    if (abs($weights['generalQuotaPercent'] + $weights['reservedFemaleQuotaPercent'] - 100.0) > 0.00001) {
-        $weights['generalQuotaPercent'] = 80.0;
-        $weights['reservedFemaleQuotaPercent'] = 20.0;
-    }
+    $weights['generalQuotaPercent'] = 80.0;
+    $weights['reservedFemaleQuotaPercent'] = 20.0;
     if ($weights['minGpa'] > 4.0) {
         $weights['minGpa'] = 1.75;
     }
@@ -1580,6 +1578,7 @@ function computeMeritScore(array $student, array $rules): float
         }
         $officialStudentQuery = $db->prepare(
             "SELECT u.id AS account_id, {$admissionExpression} AS admission_number,
+                    {$universityStudentIdExpression} AS university_student_id,
                     {$firstName} AS given_name, {$fatherName} AS father_name,
                     {$grandfatherName} AS grand_father_name, {$region} AS region,
                     {$gender} AS sex, {$disability} AS disability, {$minority} AS minority,
@@ -1631,6 +1630,9 @@ function computeMeritScore(array $student, array $rules): float
         $student['id'] = !empty($officialStudent['account_id']) ? (int) $officialStudent['account_id'] : null;
         $student['admission_number'] = (string) ($officialStudent['admission_number'] ?? $requestedAdmission);
         $student['id_number'] = $student['admission_number'];
+        $student['university_student_id'] = trim((string) (
+            $officialStudent['university_student_id'] ?? $requestedUniversityStudentId
+        ));
         $student['name'] = trim(
             $officialStudent['given_name'] . ' ' . $officialStudent['father_name'] . ' ' . $officialStudent['grand_father_name']
         );
@@ -2345,7 +2347,9 @@ function computeMeritScore(array $student, array $rules): float
             $alreadyPlacedCount++;
             $placements[] = [
                 'studentId' => $student['id'],
-                'id_number' => $existingPlacement['id_number'] ?: ($existingPlacement['admission_number'] ?: $student['id_number']),
+                'student_id' => $student['university_student_id'] ?? '',
+                'university_student_id' => $student['university_student_id'] ?? '',
+                'id_number' => $student['university_student_id'] ?? '',
                 'studentName' => $student['name'],
                 'department' => $existingPlacement['dept_name'],
                 'college' => $existingPlacement['college_name'],
@@ -2465,7 +2469,10 @@ function computeMeritScore(array $student, array $rules): float
 
             $placements[] = [
                 'studentId' => $student['id'],
-                'id_number' => $student['id_number'],
+                'student_id' => $student['university_student_id'] ?? '',
+                'university_student_id' => $student['university_student_id'] ?? '',
+                'id_number' => $student['university_student_id'] ?? '',
+                'notification_admission_number' => $student['admission_number'],
                 'studentName' => $student['name'],
                 'department' => $department['name'],
                 'college' => $department['college_name'],
@@ -2684,7 +2691,10 @@ function computeMeritScore(array $student, array $rules): float
                 $pendingPlacementCount++;
                 $placements[] = [
                     'studentId' => $student['id'],
-                    'id_number' => $student['id_number'],
+                    'student_id' => $student['university_student_id'] ?? '',
+                    'university_student_id' => $student['university_student_id'] ?? '',
+                    'id_number' => $student['university_student_id'] ?? '',
+                    'notification_admission_number' => $student['admission_number'],
                     'studentName' => $student['name'],
                     'department' => null,
                     'college' => $pendingCollege,
@@ -2727,7 +2737,10 @@ function computeMeritScore(array $student, array $rules): float
                 $pendingPlacementCount++;
                 $placements[] = [
                     'studentId' => $student['id'],
-                    'id_number' => $student['id_number'],
+                    'student_id' => $student['university_student_id'] ?? '',
+                    'university_student_id' => $student['university_student_id'] ?? '',
+                    'id_number' => $student['university_student_id'] ?? '',
+                    'notification_admission_number' => $student['admission_number'],
                     'studentName' => $student['name'],
                     'department' => null,
                     'college' => $pendingCollege,
@@ -2834,7 +2847,10 @@ function computeMeritScore(array $student, array $rules): float
 
             $placements[] = [
                 'studentId' => $student['id'],
-                'id_number' => $student['id_number'],
+                'student_id' => $student['university_student_id'] ?? '',
+                'university_student_id' => $student['university_student_id'] ?? '',
+                'id_number' => $student['university_student_id'] ?? '',
+                'notification_admission_number' => $student['admission_number'],
                 'studentName' => $student['name'],
                 'department' => null,
                 'college' => $unassignedCollege,
@@ -2918,7 +2934,7 @@ function computeMeritScore(array $student, array $rules): float
         $nextSemester = 2;
     }
 
-    foreach ($placements as $placement) {
+    foreach ($placements as $placementIndex => $placement) {
         $placementState = strtolower(trim((string) ($placement['status'] ?? '')));
         if ($placementState === 'already_placed') {
             continue;
@@ -2927,7 +2943,9 @@ function computeMeritScore(array $student, array $rules): float
         $studentId = $studentId !== false && $studentId !== null && $studentId > 0
             ? $studentId
             : null;
-        $admissionNumber = trim((string) ($placement['id_number'] ?? ''));
+        $admissionNumber = trim((string) (
+            $placement['notification_admission_number'] ?? $placement['id_number'] ?? ''
+        ));
         if ($studentId === null && $admissionNumber === '') {
             continue;
         }
@@ -2954,7 +2972,12 @@ function computeMeritScore(array $student, array $rules): float
             $message,
             isset($placement['placementResultId']) ? (int) $placement['placementResultId'] : null
         );
+        unset($placements[$placementIndex]['notification_admission_number']);
     }
+    foreach ($placements as &$placement) {
+        unset($placement['notification_admission_number']);
+    }
+    unset($placement);
 
     if (!$db->commit()) {
         throw new Exception('Unable to commit placement results');

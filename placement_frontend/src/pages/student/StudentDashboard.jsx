@@ -1132,13 +1132,20 @@ const StudentDashboard = () => {
     }
     const loadNotifications = async () => {
       setNotificationsLoading(true);
+      setNotificationsFeedback('');
       try {
         const identity = getStudentRequestIdentity(student, profile);
         const response = await api.get('api/student/get_student_notifications.php', { params: identity });
+        if (response.data?.success === false) {
+          throw new Error(response.data.message || 'Unable to load student notifications.');
+        }
         const list = response.data?.notifications || response.data?.data || [];
         if (active) setNotifications(Array.isArray(list) ? list : []);
       } catch (error) {
-        if (active) console.error('Unable to load student notifications:', error);
+        if (active) {
+          console.error('Unable to load student notifications:', error);
+          setNotificationsFeedback(error.response?.data?.message || error.message || 'Unable to load student notifications.');
+        }
       } finally {
         if (active) setNotificationsLoading(false);
       }
@@ -1922,7 +1929,7 @@ const StudentDashboard = () => {
                   )}
                 </article>
               ))}
-              {!notificationsLoading && notifications.length === 0 && (
+              {!notificationsLoading && notifications.length === 0 && !notificationsFeedback && (
                 <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600" role="status">
                   You have no notifications.
                 </p>

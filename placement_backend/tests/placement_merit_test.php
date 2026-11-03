@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/placement_scoring.php';
+require_once __DIR__ . '/../config/placement_semester.php';
 
 $students = sortPlacementStudentsByMerit([
     ['id' => 'lower', 'final_merit_score' => 99.99998, 'cgpa' => 4.0],
@@ -29,6 +30,16 @@ if (array_column($equalMeritStudents, 'id') !== ['first', 'second']) {
 
 if (!placementIsFemale('Female') || !placementIsFemale('F') || placementIsFemale('Male')) {
     throw new RuntimeException('Female quota eligibility must recognize common female gender labels.');
+}
+
+$quotaPools = placementQuotaCapacityPools(5, 20.0);
+if ($quotaPools !== ['general' => 4, 'female_reserved' => 1]) {
+    throw new RuntimeException('A five-seat department must reserve one seat for female candidates and keep four open.');
+}
+
+$singleSeatQuotaPools = placementQuotaCapacityPools(1, 20.0);
+if ($singleSeatQuotaPools !== ['general' => 0, 'female_reserved' => 1]) {
+    throw new RuntimeException('A department with one seat must preserve the female reservation.');
 }
 
 echo "Placement merit checks passed.\n";

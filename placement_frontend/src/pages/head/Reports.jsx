@@ -49,7 +49,16 @@ const Reports = ({ leader, department, students = [] }) => {
     const studentList = Array.isArray(students) ? students.filter(Boolean) : [];
     const search = studentSearch.trim().toLowerCase();
     if (!search) return studentList;
-    return studentList.filter((student) => [student.id, student.student_id, student.username, student.name, student.full_name, student.email].some((value) => String(value || '').toLowerCase().includes(search)));
+    return studentList.filter((student) => [
+      student.account_id,
+      student.id,
+      student.student_id,
+      student.university_student_id,
+      student.username,
+      student.name,
+      student.full_name,
+      student.email,
+    ].some((value) => String(value || '').toLowerCase().includes(search)));
   }, [students, studentSearch]);
 
   const sendMessage = async (event) => {
@@ -176,11 +185,15 @@ const Reports = ({ leader, department, students = [] }) => {
                 <select className="form-select" value={studentId} onChange={(event) => setStudentId(event.target.value)} disabled={sending}>
                   <option value="">Select a student</option>
                   {filteredStudents.map((student, index) => {
-                    const id = student.student_id ?? student.id;
+                    const studentIdValue = String(student.student_id ?? '');
+                    const id = student.account_id
+                      ?? student.id
+                      ?? (/^\d+$/.test(studentIdValue) ? studentIdValue : '');
                     const studentLabel = student.username || student.name || student.full_name || student.email || `Student ${index + 1}`;
+                    const displayedId = student.university_student_id || student.id_number || student.student_id;
                     return (
                       <option key={`${id ?? 'student'}-${index}`} value={id ?? ''}>
-                        {studentLabel}{id !== null && id !== undefined && id !== '' ? ` (ID: ${id})` : ''}
+                        {studentLabel}{displayedId !== null && displayedId !== undefined && displayedId !== '' ? ` (ID: ${displayedId})` : ''}
                       </option>
                     );
                   })}

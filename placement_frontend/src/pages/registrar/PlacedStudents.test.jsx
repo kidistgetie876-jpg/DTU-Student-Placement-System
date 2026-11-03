@@ -23,8 +23,10 @@ jest.mock('xlsx', () => ({
 
 const placedStudents = [
   {
-    student_id: 10,
-    id_number: 'DTU16R2001',
+    account_id: 10,
+    student_id: 'DTU16R2001',
+    university_student_id: 'DTU16R2001',
+    id_number: 'MOE-001',
     name: 'Abebe Kebede',
     stream: 'Natural Science',
     college: 'College of Natural & Computational Sciences',
@@ -35,8 +37,10 @@ const placedStudents = [
     placement_semester: 1,
   },
   {
-    student_id: 11,
-    id_number: 'DTU16R2002',
+    account_id: 11,
+    student_id: 'DTU16R2002',
+    university_student_id: 'DTU16R2002',
+    id_number: 'MOE-002',
     name: 'Mekdes Alemu',
     stream: 'Social Science',
     college: 'College of Business & Economics',
@@ -69,6 +73,8 @@ describe('PlacedStudents', () => {
     expect(screen.getByText('Pending Approval')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Placed Students', level: 1 })).toHaveClass('text-2xl', 'text-slate-800');
     expect(screen.getByText('Track and export student placement allocations by semester.')).toBeInTheDocument();
+    expect(screen.getByText('DTU16R2001')).toBeInTheDocument();
+    expect(screen.queryByText('MOE-001')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('2 of 2 students');
     expect(within(screen.getByRole('table', { name: '1st Semester placed students' })).getByText('Abebe Kebede')).toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: '2nd Semester placed students' })).getByText('Mekdes Alemu')).toBeInTheDocument();

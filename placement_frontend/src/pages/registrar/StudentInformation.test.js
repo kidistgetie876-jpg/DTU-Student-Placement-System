@@ -26,7 +26,7 @@ afterEach(() => {
 describe('StudentInformation', () => {
   it('paginates student records five at a time and supports page navigation', () => {
     const students = Array.from({ length: 12 }, (_, index) => ({
-      admission_number: `DTU-${index + 1}`,
+      student_id: `DTU16R${2001 + index}`,
       given_name: `Student${index + 1}`,
       father_name: 'Test',
       grandfather_name: 'Student',
@@ -65,14 +65,14 @@ describe('StudentInformation', () => {
         <StudentInformation
           students={[
             {
-              admission_number: 'DTU-001',
+              student_id: 'DTU16R2001',
               given_name: 'Aster',
               father_name: 'Mekonnen',
               grandfather_name: 'Kebede',
               field_of_study: 'Natural Science',
             },
             {
-              admission_number: 'DTU-002',
+              student_id: 'DTU16R2002',
               given_name: 'Sara',
               father_name: 'Kebede',
               grandfather_name: 'Tadesse',
@@ -83,8 +83,8 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const firstStudentRow = screen.getByRole('row', { name: /DTU-001/ });
-    const secondStudentRow = screen.getByRole('row', { name: /DTU-002/ });
+    const firstStudentRow = screen.getByRole('row', { name: /DTU16R2001/ });
+    const secondStudentRow = screen.getByRole('row', { name: /DTU16R2002/ });
     expect(within(firstStudentRow).getByText('Aster')).toBeInTheDocument();
     expect(within(firstStudentRow).getByText('Mekonnen')).toBeInTheDocument();
     expect(within(firstStudentRow).getByText('Kebede')).toBeInTheDocument();
@@ -98,8 +98,8 @@ describe('StudentInformation', () => {
       target: { value: 'naturalscience' },
     });
 
-    expect(screen.getByRole('row', { name: /DTU-001/ })).toBeInTheDocument();
-    expect(screen.queryByRole('row', { name: /DTU-002/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /DTU16R2001/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /DTU16R2002/ })).not.toBeInTheDocument();
   });
 
   it('does not expose delete or unrestricted edit actions for student rows', () => {
@@ -107,7 +107,7 @@ describe('StudentInformation', () => {
       <MemoryRouter>
         <StudentInformation
           students={[{
-            admission_number: 'DTU-001',
+            student_id: 'DTU16R2001',
             given_name: 'Aster',
             father_name: 'Mekonnen',
             grandfather_name: 'Kebede',
@@ -116,7 +116,7 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const studentRow = screen.getByRole('row', { name: /DTU-001/ });
+    const studentRow = screen.getByRole('row', { name: /DTU16R2001/ });
     expect(studentRow).toBeInTheDocument();
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent.trim());
     const minorityIndex = headers.indexOf('Minority');
@@ -127,8 +127,8 @@ describe('StudentInformation', () => {
     ]);
     const studentCells = within(studentRow).getAllByRole('cell');
     expect(studentCells[11]).toHaveTextContent('No');
-    expect(studentCells[13]).toHaveTextContent('0.00');
-    expect(studentCells[14]).toHaveTextContent('Pending');
+    expect(studentCells[12]).toHaveTextContent('0.00');
+    expect(studentCells[13]).toHaveTextContent('Pending');
     expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
@@ -136,12 +136,13 @@ describe('StudentInformation', () => {
     expect(api.delete).not.toHaveBeenCalled();
   });
 
-  it('fetches and displays the official admission-number student fields', async () => {
+  it('fetches and displays University Student ID with official student fields', async () => {
     api.get.mockResolvedValueOnce({
       data: {
         success: true,
         students: [{
-          admission_number: 'DTU-2026-001',
+          student_id: 'DTU16R2001',
+          admission_number: 'MOE-2026-001',
           given_name: 'Aster',
           father_name: 'Mekonnen',
           grandfather_name: 'Kebede',
@@ -181,8 +182,9 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('DTU-2026-001')).toBeInTheDocument();
-    const studentRow = screen.getByRole('row', { name: /DTU-2026-001/ });
+    expect(await screen.findByText('DTU16R2001')).toBeInTheDocument();
+    expect(screen.queryByText('MOE-2026-001')).not.toBeInTheDocument();
+    const studentRow = screen.getByRole('row', { name: /DTU16R2001/ });
     expect(within(studentRow).getByText('Aster')).toBeInTheDocument();
     expect(screen.getByText('Amhara')).toBeInTheDocument();
     expect(within(studentRow).getByText('Mekonnen')).toBeInTheDocument();
@@ -196,7 +198,6 @@ describe('StudentInformation', () => {
     expect(screen.getByText('Yes')).toBeInTheDocument();
     [
       'University Student ID',
-      'Ministry Admission Number',
       'First Name',
       'Father Name',
       'Grandfather Name',
@@ -215,9 +216,9 @@ describe('StudentInformation', () => {
       expect(screen.getByRole('columnheader', { name: heading })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show score breakdown for DTU-2026-001' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show score breakdown for DTU16R2001' }));
     const breakdown = screen.getByRole('region', {
-      name: 'Cumulative score breakdown for DTU-2026-001',
+      name: 'Cumulative score breakdown for DTU16R2001',
     });
     expect(within(breakdown).getByText('Base total: 88.88')).toBeInTheDocument();
     expect(within(breakdown).getByText('Female: Yes')).toBeInTheDocument();
@@ -239,14 +240,14 @@ describe('StudentInformation', () => {
     render(
       <MemoryRouter>
         <StudentInformation students={[{
-          admission_number: 'DTU-004',
+          student_id: 'DTU16R2004',
           given_name: 'Liya',
           cumulative_score: null,
         }]} />
       </MemoryRouter>,
     );
 
-    const studentRow = screen.getByRole('row', { name: /DTU-004/ });
+    const studentRow = screen.getByRole('row', { name: /DTU16R2004/ });
     expect(within(studentRow).getByRole('cell', { name: '0.00' })).toBeInTheDocument();
   });
 
@@ -254,7 +255,7 @@ describe('StudentInformation', () => {
     render(
       <MemoryRouter>
         <StudentInformation students={[{
-          admission_number: 'DTU-006',
+          student_id: 'DTU16R2006',
           given_name: 'Mahi',
           cgpa: 3.5,
           coc_score: null,
@@ -262,30 +263,30 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const cells = within(screen.getByRole('row', { name: /DTU-006/ })).getAllByRole('cell');
-    expect(cells[9]).toHaveTextContent('3.50');
-    expect(cells[10]).toHaveTextContent('—');
+    const cells = within(screen.getByRole('row', { name: /DTU16R2006/ })).getAllByRole('cell');
+    expect(cells[8]).toHaveTextContent('3.50');
+    expect(cells[9]).toHaveTextContent('—');
   });
 
   it('clamps cumulative scores above 100 in the student table', () => {
     render(
       <MemoryRouter>
         <StudentInformation students={[{
-          admission_number: 'DTU-005',
+          student_id: 'DTU16R2005',
           given_name: 'Alem',
           cumulative_score: 100.63,
         }]} />
       </MemoryRouter>,
     );
 
-    const studentRow = screen.getByRole('row', { name: /DTU-005/ });
+    const studentRow = screen.getByRole('row', { name: /DTU16R2005/ });
     expect(within(studentRow).getByText('100.00')).toBeInTheDocument();
   });
 
   it('accepts a direct student array response from the API', async () => {
     api.get.mockResolvedValueOnce({
       data: [{
-        admission_number: 'DTU-2026-002',
+        student_id: 'DTU16R2002',
         given_name: 'Mimi',
         father_name: 'Kebede',
       }],
@@ -297,7 +298,7 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('DTU-2026-002')).toBeInTheDocument();
+    expect(await screen.findByText('DTU16R2002')).toBeInTheDocument();
     expect(screen.getByText('Mimi')).toBeInTheDocument();
   });
 
@@ -307,7 +308,7 @@ describe('StudentInformation', () => {
       <MemoryRouter>
         <StudentInformation
           students={[{
-            admission_number: 'DTU-003',
+            admission_number: 'MOE-003',
             student_id: 'DTU16R2003',
             given_name: 'Hana',
             father_name: 'Abebe',
@@ -319,13 +320,13 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const row = screen.getByRole('row', { name: /DTU-003/ });
+    const row = screen.getByRole('row', { name: /DTU16R2003/ });
     expect(within(row).getByRole('cell', { name: '3.20' })).toBeInTheDocument();
     fireEvent.click(within(row).getByRole('button', { name: 'Update Scores' }));
-    expect(onEditScores).toHaveBeenCalledWith(expect.objectContaining({ admission_number: 'DTU-003' }));
+    expect(onEditScores).toHaveBeenCalledWith(expect.objectContaining({ admission_number: 'MOE-003' }));
   });
 
-  it('searches by admission number, given name, and father name', () => {
+  it('searches by University Student ID, given name, and father name without exposing Ministry numbers', () => {
     render(
       <MemoryRouter>
         <StudentInformation students={[
@@ -349,14 +350,16 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const searchInput = screen.getByPlaceholderText('Search university ID, Ministry number, name...');
+    const searchInput = screen.getByPlaceholderText('Search university ID or name...');
     fireEvent.change(searchInput, { target: { value: 'mekonnen' } });
     expect(screen.getByRole('row', { name: /DTU16R2001/ })).toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /DTU16R2002/ })).not.toBeInTheDocument();
 
     fireEvent.change(searchInput, { target: { value: 'MOE-002' } });
-    expect(screen.getByRole('row', { name: /DTU16R2002/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /DTU16R2002/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /DTU16R2001/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('MOE-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('MOE-002')).not.toBeInTheDocument();
   });
 
   it('lets the registrar assign a University Student ID to an imported record', async () => {
@@ -371,7 +374,7 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText('University Student ID for MOE-007'), {
+    fireEvent.change(screen.getByLabelText('University Student ID for student'), {
       target: { value: 'DTU16R2007' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Assign ID' }));
@@ -386,7 +389,7 @@ describe('StudentInformation', () => {
     render(
       <MemoryRouter>
         <StudentInformation students={[{
-          admission_number: 'DTU-004',
+          student_id: 'DTU16R2004',
           given_name: 'Mimi',
           father_name: 'Abebe',
           Region: 'Tigray',
@@ -395,7 +398,7 @@ describe('StudentInformation', () => {
       </MemoryRouter>,
     );
 
-    const row = screen.getByRole('row', { name: /DTU-004/ });
+    const row = screen.getByRole('row', { name: /DTU16R2004/ });
     expect(within(row).getByText('Tigray')).toBeInTheDocument();
     expect(within(row).getByText('Social Science')).toBeInTheDocument();
   });

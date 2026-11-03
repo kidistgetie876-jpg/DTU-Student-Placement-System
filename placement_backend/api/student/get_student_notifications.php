@@ -19,7 +19,7 @@ require_once __DIR__ . '/student_notification_reads.php';
 
 function studentNotificationsResponse(array $payload, int $status = 200): void
 {
-    http_response_code(200);
+    http_response_code($status);
     echo json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
@@ -70,6 +70,46 @@ try {
         }
         $admissionNumber = trim((string) ($identity->get_result()->fetch_assoc()['id_number'] ?? ''));
         $identity->close();
+    }
+
+    $universityStudentId = '';
+    if ($admissionNumber !== '' && in_array(
+        'student_id',
+        studentPlacementTableColumns($db, 'student_data'),
+        true
+    )) {
+        $studentColumns = studentPlacementTableColumns($db, 'student_data');
+        $profileIdentityColumns = array_values(array_intersect(
+            ['moe_admission_number', 'admission_number', 'id_number'],
+            $studentColumns
+        ));
+        if ($profileIdentityColumns) {
+            $profileConditions = array_map(
+                static fn (string $column): string => "TRIM(COALESCE(`{$column}`, '')) = TRIM(?)",
+                $profileIdentityColumns
+            );
+            $profileStatement = $db->prepare(
+                'SELECT student_id FROM student_data WHERE (' . implode(' OR ', $profileConditions) . ') LIMIT 1'
+            );
+            if (!$profileStatement) {
+                throw new RuntimeException('Unable to prepare University Student ID lookup: ' . $db->error);
+            }
+            $profileValues = array_fill(0, count($profileIdentityColumns), $admissionNumber);
+            $profileBindings = [str_repeat('s', count($profileValues))];
+            foreach (array_keys($profileValues) as $index) {
+                $profileBindings[] = &$profileValues[$index];
+            }
+            if (!call_user_func_array([$profileStatement, 'bind_param'], $profileBindings)
+                || !$profileStatement->execute()) {
+                $error = $profileStatement->error;
+                $profileStatement->close();
+                throw new RuntimeException('Unable to load University Student ID: ' . $error);
+            }
+            $universityStudentId = trim((string) (
+                $profileStatement->get_result()->fetch_assoc()['student_id'] ?? ''
+            ));
+            $profileStatement->close();
+        }
     }
 
     if (!isStudentNotificationSession($db, $studentSession) || ($studentId <= 0 && $admissionNumber === '')) {
@@ -156,7 +196,6 @@ try {
 
     if (($studentId > 0 || $admissionNumber !== '') && studentNotificationTableExists($db, 'student_notifications')) {
         ensureStudentPlacementNotificationSchema($db);
-        ensureStudentMeetingNotificationSchema($db);
         $meetingColumns = studentPlacementTableColumns($db, 'student_notifications');
         $notificationTypeExpression = in_array('notification_type', $meetingColumns, true)
             ? "COALESCE(notification_type, 'meeting')"
@@ -165,19 +204,33 @@ try {
             ? 'placement_semester'
             : 'NULL';
 
+        $notificationIdentities = array_values(array_unique(array_filter(
+            [$admissionNumber, $universityStudentId],
+            static fn (string $identifier): bool => $identifier !== ''
+        )));
+        $identityCondition = $notificationIdentities
+            ? ' OR admission_number IN (' . implode(', ', array_fill(0, count($notificationIdentities), '?')) . ')'
+            : '';
         $meetingStatement = $db->prepare(
             "SELECT id, 'registrar' AS sender_role, title, message, is_read, created_at,
                     {$notificationTypeExpression} AS notification_type,
                     {$placementSemesterExpression} AS placement_semester,
                     meeting_date, meeting_time, location
              FROM student_notifications
-             WHERE student_id = ? OR admission_number = ?
+             WHERE student_id = ?{$identityCondition}
              ORDER BY created_at DESC"
         );
         if (!$meetingStatement) {
             throw new RuntimeException('Unable to prepare meeting notification query.');
         }
-        $meetingStatement->bind_param('is', $studentId, $admissionNumber);
+        $meetingBindings = ['i' . str_repeat('s', count($notificationIdentities)), $studentId];
+        foreach ($notificationIdentities as $index => $identifier) {
+            $meetingBindings[] = &$notificationIdentities[$index];
+        }
+        if (!call_user_func_array([$meetingStatement, 'bind_param'], $meetingBindings)) {
+            $meetingStatement->close();
+            throw new RuntimeException('Unable to bind student notification identity.');
+        }
         if (!$meetingStatement->execute()) {
             $meetingStatement->close();
             throw new RuntimeException('Unable to load meeting notifications.');
