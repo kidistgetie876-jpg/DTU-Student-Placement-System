@@ -5,12 +5,21 @@ import api from '../../services/api.js';
 const normalizeHeader = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export const parseSourceImportGrid = (grid, columns) => {
-  const requiredHeaders = columns.map(({ header, aliases = [] }) => (
-    [header, ...aliases].map(normalizeHeader)
+  const requiredHeaders = columns
+    .filter(({ required = true, requiredGroup }) => required && !requiredGroup)
+    .map(({ header, aliases = [] }) => (
+      [header, ...aliases].map(normalizeHeader)
   ));
+  const requiredGroups = [...new Set(columns
+    .map(({ requiredGroup }) => requiredGroup)
+    .filter(Boolean))]
+    .map((group) => columns
+      .filter(({ requiredGroup }) => requiredGroup === group)
+      .flatMap(({ header, aliases = [] }) => [header, ...aliases].map(normalizeHeader)));
   const headerIndex = grid.slice(0, 10).findIndex((row) => {
     const found = new Set(row.map(normalizeHeader));
-    return requiredHeaders.every((aliases) => aliases.some((header) => found.has(header)));
+    return requiredHeaders.every((aliases) => aliases.some((header) => found.has(header)))
+      && requiredGroups.every((aliases) => aliases.some((header) => found.has(header)));
   });
 
   if (headerIndex < 0) return { headersFound: false, rows: [] };
@@ -20,7 +29,7 @@ export const parseSourceImportGrid = (grid, columns) => {
     [header, ...aliases]
       .map(normalizeHeader)
       .map((normalizedHeader) => headers.indexOf(normalizedHeader))
-      .find((index) => index >= 0)
+      .find((index) => index >= 0) ?? -1
   ));
   const headerRow = grid[headerIndex];
   const expectedColumnCount = headerRow.reduce(
@@ -38,7 +47,7 @@ export const parseSourceImportGrid = (grid, columns) => {
     }
     rows.push(Object.fromEntries(columns.map(({ header }, columnIndex) => [
       header,
-      String(row[indices[columnIndex]] ?? '').trim(),
+      String(indices[columnIndex] >= 0 ? row[indices[columnIndex]] ?? '' : '').trim(),
     ])));
   });
 
@@ -74,7 +83,7 @@ export const parseSourceImportCsv = (csvText, columns) => {
   return { headersFound: false, rows: [] };
 };
 
-const SourceImport = ({ title, endpoint, columns, onImportSuccess }) => {
+const SourceImport = ({ title, endpoint, columns, normalizeRows = (sourceRows) => sourceRows, onImportSuccess }) => {
   const fileInputRef = useRef(null);
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState(null);
@@ -109,8 +118,9 @@ const SourceImport = ({ title, endpoint, columns, onImportSuccess }) => {
         throw new Error(`Required columns: ${columns.map(({ header }) => header).join(', ')}.`);
       }
       if (!parsed.rows.length) throw new Error('No data rows were found below the header row.');
-      setRows(parsed.rows);
-      setStatus({ type: 'info', message: `Preview ready: ${parsed.rows.length} row(s).` });
+      const normalizedRows = normalizeRows(parsed.rows);
+      setRows(normalizedRows);
+      setStatus({ type: 'info', message: `Preview ready: ${normalizedRows.length} row(s).` });
     } catch (error) {
       setRows([]);
       setStatus({ type: 'danger', message: error.message || 'Unable to read this spreadsheet.' });
@@ -123,12 +133,19 @@ const SourceImport = ({ title, endpoint, columns, onImportSuccess }) => {
     setStatus(null);
     try {
       const response = await api.post(endpoint, { students: rows });
+      const rowErrors = Array.isArray(response.data?.row_errors) ? response.data.row_errors : [];
+      const rowErrorDetails = rowErrors
+        .map(({ row, message }) => `Row ${row}: ${message}`)
+        .join(' ');
       if (response.data?.success !== true) {
-        throw new Error(response.data?.message || 'Import failed.');
+        throw new Error([response.data?.message, rowErrorDetails].filter(Boolean).join(' '));
       }
       setStatus({
         type: 'success',
-        message: response.data.message || `Imported ${response.data.imported_count ?? rows.length} row(s).`,
+        message: [
+          response.data.message || `Imported ${response.data.imported_count ?? rows.length} row(s).`,
+          rowErrorDetails,
+        ].filter(Boolean).join(' '),
       });
       setRows([]);
       if (fileInputRef.current) fileInputRef.current.value = '';

@@ -1410,7 +1410,11 @@ function computeMeritScore(array $student, array $rules): float
         }
 
         $admissionExpression = studentPlacementTextExpression($studentDataColumns, 'sd', ['moe_admission_number', 'admission_number', 'id_number']);
-        $universityStudentIdExpression = studentPlacementTextExpression($studentDataColumns, 'sd', ['student_id']);
+        $profileUniversityStudentIdExpression = studentPlacementTextExpression(
+            $studentDataColumns,
+            'sd',
+            ['student_id']
+        );
         if (in_array('id_number', $userColumns, true)) {
             $admissionExpression = "COALESCE(NULLIF({$admissionExpression}, ''), NULLIF(u.id_number, ''), '')";
         }
@@ -1422,10 +1426,13 @@ function computeMeritScore(array $student, array $rules): float
         }
         $simsJoin = in_array('student_id', $simsColumns, true)
             ? " LEFT JOIN sims_students s ON TRIM(s.student_id) = TRIM({$admissionExpression})"
-                . ($universityStudentIdExpression !== 'NULL'
-                    ? " OR TRIM(s.student_id) = TRIM({$universityStudentIdExpression})"
+                . ($profileUniversityStudentIdExpression !== 'NULL'
+                    ? " OR TRIM(s.student_id) = TRIM({$profileUniversityStudentIdExpression})"
                     : '')
             : '';
+        $universityStudentIdExpression = $simsJoin !== ''
+            ? "COALESCE(NULLIF({$profileUniversityStudentIdExpression}, ''), NULLIF(s.student_id, ''), '')"
+            : $profileUniversityStudentIdExpression;
         $firstName = studentPlacementTextExpression($studentDataColumns, 'sd', ['given_name', 'first_name']);
         $fatherName = studentPlacementTextExpression($studentDataColumns, 'sd', ['father_name', 'last_name']);
         if ($mosheJoin !== '') {
@@ -1578,6 +1585,7 @@ function computeMeritScore(array $student, array $rules): float
         }
         $officialStudentQuery = $db->prepare(
             "SELECT u.id AS account_id, {$admissionExpression} AS admission_number,
+                    {$universityStudentIdExpression} AS student_id,
                     {$universityStudentIdExpression} AS university_student_id,
                     {$firstName} AS given_name, {$fatherName} AS father_name,
                     {$grandfatherName} AS grand_father_name, {$region} AS region,
@@ -1631,8 +1639,11 @@ function computeMeritScore(array $student, array $rules): float
         $student['admission_number'] = (string) ($officialStudent['admission_number'] ?? $requestedAdmission);
         $student['id_number'] = $student['admission_number'];
         $student['university_student_id'] = trim((string) (
-            $officialStudent['university_student_id'] ?? $requestedUniversityStudentId
+            $officialStudent['university_student_id'] ?? $officialStudent['student_id'] ?? ''
         ));
+        if ($student['university_student_id'] === '') {
+            $student['university_student_id'] = $requestedUniversityStudentId;
+        }
         $student['name'] = trim(
             $officialStudent['given_name'] . ' ' . $officialStudent['father_name'] . ' ' . $officialStudent['grand_father_name']
         );
@@ -1978,9 +1989,15 @@ function computeMeritScore(array $student, array $rules): float
         $gpa = (float) ($student['cgpa'] ?? $student['gpa'] ?? 0);
         $grade12 = (float) ($student['grade12'] ?? $student['grade_12_result'] ?? 0);
         $coc = (float) ($student['coc'] ?? $student['coc_result'] ?? 0);
+        $universityStudentId = trim((string) ($student['university_student_id'] ?? ''));
+        if ($universityStudentId === '') {
+            $universityStudentId = trim((string) ($student['student_id'] ?? ''));
+        }
 
         $allStudents[] = [
             'id' => $student['id'],
+            'student_id' => $universityStudentId,
+            'university_student_id' => $universityStudentId,
             'admission_number' => $admissionIdentifier,
             'id_number' => trim((string) ($student['id_number'] ?? $student['official_id_number'] ?? '')),
             'name' => (string) ($student['name'] ?? $student['fullname'] ?? 'Student'),

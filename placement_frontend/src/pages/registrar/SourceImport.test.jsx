@@ -1,6 +1,6 @@
 import { parseSourceImportCsv, parseSourceImportGrid } from './SourceImport.jsx';
 import { ministryImportColumns } from './MinistryImport.jsx';
-import { simsImportColumns } from './SIMSImport.jsx';
+import { normalizeSimsImportRows, simsImportColumns } from './SIMSImport.jsx';
 
 describe('source import spreadsheet formats', () => {
   it('parses the official MoSHE columns, ignoring title rows and header casing', () => {
@@ -88,13 +88,14 @@ describe('source import spreadsheet formats', () => {
 
   it('parses the required SIMS score fields without optional registrar columns', () => {
     const parsed = parseSourceImportGrid([
-      simsImportColumns.map(({ header }) => header),
+      ['Student ID', 'CGPA', 'COC Score'],
       ['DTU/001', '3.5', '24'],
     ], simsImportColumns);
 
     expect(parsed.headersFound).toBe(true);
     expect(parsed.rows[0]).toEqual({
       'Student ID': 'DTU/001',
+      'Admission Number': '',
       CGPA: '3.5',
       'COC Score': '24',
     });
@@ -103,9 +104,65 @@ describe('source import spreadsheet formats', () => {
       ['DTU/002', '3.2', '21'],
     ], simsImportColumns)).toEqual({
       headersFound: true,
-      rows: [{ 'Student ID': 'DTU/002', CGPA: '3.2', 'COC Score': '21' }],
+      rows: [{ 'Student ID': '', 'Admission Number': 'DTU/002', CGPA: '3.2', 'COC Score': '21' }],
     });
     expect(parseSourceImportGrid([['Student ID', 'CGPA']], simsImportColumns))
       .toEqual({ headersFound: false, rows: [] });
+  });
+
+  it('keeps University and Ministry identifiers separate for partial SIMS imports', () => {
+    const parsed = parseSourceImportGrid([
+      ['student_id', 'admission_number', 'CGPA', 'COC Score'],
+      ['DTU16R2021', 'MOE10021', '3.2', '21'],
+    ], simsImportColumns);
+
+    expect(parsed.rows).toEqual([{
+      'Student ID': 'DTU16R2021',
+      'Admission Number': 'MOE10021',
+      CGPA: '3.2',
+      'COC Score': '21',
+    }]);
+  });
+
+  it('does not treat a University Student ID as a Ministry Admission Number', () => {
+    const parsed = parseSourceImportGrid([
+      ['Student ID', 'CGPA', 'COC Score'],
+      ['DTU16R2021', '3.2', '21'],
+    ], simsImportColumns);
+
+    expect(parsed.rows).toEqual([{
+      'Student ID': 'DTU16R2021',
+      'Admission Number': '',
+      CGPA: '3.2',
+      'COC Score': '21',
+    }]);
+  });
+
+  it('moves a University ID mislabeled as admission_number into the Student ID preview field', () => {
+    const parsed = parseSourceImportGrid([
+      ['admission_number', 'CGPA', 'COC Score'],
+      ['DTU16R2021', '3.2', '21'],
+    ], simsImportColumns);
+
+    expect(normalizeSimsImportRows(parsed.rows)).toEqual([{
+      'Student ID': 'DTU16R2021',
+      'Admission Number': '',
+      CGPA: '3.2',
+      'COC Score': '21',
+    }]);
+  });
+
+  it('preserves actual Ministry admission numbers in the admission column', () => {
+    const parsed = parseSourceImportGrid([
+      ['admission_number', 'CGPA', 'COC Score'],
+      ['MOE10021', '3.2', '21'],
+    ], simsImportColumns);
+
+    expect(normalizeSimsImportRows(parsed.rows)).toEqual([{
+      'Student ID': '',
+      'Admission Number': 'MOE10021',
+      CGPA: '3.2',
+      'COC Score': '21',
+    }]);
   });
 });

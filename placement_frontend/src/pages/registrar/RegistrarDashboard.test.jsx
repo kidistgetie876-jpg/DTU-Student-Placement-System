@@ -27,6 +27,10 @@ describe('getPlacementCandidatePrimaryIdentifier', () => {
       admission_number: 'MOE10001',
     })).toBe('DTU16R2001');
     expect(getPlacementCandidatePrimaryIdentifier({
+      university_student_id: 'DTU16R2002',
+      student_id: 'MOE10002',
+    })).toBe('DTU16R2002');
+    expect(getPlacementCandidatePrimaryIdentifier({
       id_number: 'MOE10001',
       admission_number: 'MOE10001',
     })).toBe('');
