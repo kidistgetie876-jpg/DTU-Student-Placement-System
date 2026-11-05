@@ -123,12 +123,8 @@ try {
         'INSERT INTO users (id_number, first_name, last_name, username, password, email, phone_number, role)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    $insertStudent = $db->prepare(
-        "INSERT INTO student_data
-            (user_id, id_number, first_name, last_name, username, email, phone, gender, gpa, status, department, stream)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'Pending', 'Not assigned', ?)"
-    );
-    if (!$findExisting || !$insertUser || !$insertStudent) {
+    $insertStudent = null;
+    if (!$findExisting || !$insertUser) {
         throw new RuntimeException('Unable to prepare user import statements: ' . $db->error);
     }
 
@@ -195,6 +191,16 @@ try {
                 'reason' => 'Password must be at least 8 characters long.',
             ]);
             continue;
+        }
+        if ($role === 'student' && !$insertStudent) {
+            $insertStudent = $db->prepare(
+                "INSERT INTO student_data
+                    (user_id, id_number, first_name, last_name, username, email, phone, gender, gpa, status, department, stream)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 'Pending', 'Not assigned', ?)"
+            );
+            if (!$insertStudent) {
+                throw new RuntimeException('Unable to prepare student profile import: ' . $db->error);
+            }
         }
         $temporaryPassword = $providedPassword !== '' ? $providedPassword : bin2hex(random_bytes(12));
         $hashedPassword = password_hash($temporaryPassword, PASSWORD_DEFAULT);
@@ -274,7 +280,9 @@ try {
 
     $findExisting->close();
     $insertUser->close();
-    $insertStudent->close();
+    if ($insertStudent instanceof mysqli_stmt) {
+        $insertStudent->close();
+    }
     if ($inserted === 0) {
         $db->rollback();
         $transactionStarted = false;
