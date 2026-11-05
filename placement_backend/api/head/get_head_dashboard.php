@@ -180,6 +180,7 @@ try {
         'status' => ['status'],
         'placed_at' => ['placed_at'],
         'approved_at' => ['approved_at'],
+        'quota_category' => ['quota_category'],
     ] as $alias => $candidates) {
         $sourceColumns = in_array($candidates[0], $placementColumnNames, true)
             ? $placementColumnNames

@@ -535,6 +535,32 @@ function placementQuotaCapacityPools(int $capacity, float $reservedFemaleQuotaPe
     ];
 }
 
+function placementDepartmentQuotaScopeKey(array $department): string
+{
+    $departmentId = (int) ($department['id'] ?? $department['department_id'] ?? 0);
+    if ($departmentId > 0) {
+        return 'department:id:' . $departmentId;
+    }
+
+    $departmentName = strtolower(preg_replace(
+        '/[^a-z0-9]/i',
+        '',
+        (string) ($department['name'] ?? $department['dept_name'] ?? '')
+    ));
+    return $departmentName !== '' ? 'department:name:' . $departmentName : '';
+}
+
+function placementQuotaCategory(bool $isFemaleApplicant, int $generalOpen, int $femaleReservedOpen): ?string
+{
+    if ($generalOpen > 0) {
+        return 'Merit';
+    }
+    if ($isFemaleApplicant && $femaleReservedOpen > 0) {
+        return 'Affirmative Action';
+    }
+    return null;
+}
+
 function placementQuotaScopeKey(array $department): string
 {
     $group = placementDepartmentGroup($department);

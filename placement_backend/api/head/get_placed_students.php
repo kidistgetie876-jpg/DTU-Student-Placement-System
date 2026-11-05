@@ -136,6 +136,7 @@ try {
         studentPlacementTextExpression($placementColumns, 'pr', ['dept_name', 'department_name']) . ' AS dept_name',
         studentPlacementColumnExpression($placementColumns, 'pr', ['final_score', 'cumulative_score']) . ' AS final_score',
         studentPlacementColumnExpression($placementColumns, 'pr', ['choice_rank', 'priority'], '0') . ' AS choice_rank',
+        studentPlacementTextExpression($placementColumns, 'pr', ['quota_category']) . ' AS quota_category',
         studentPlacementTextExpression($placementColumns, 'pr', ['status'], "'placed'") . ' AS status',
         studentPlacementColumnExpression($placementColumns, 'pr', ['placed_at']) . ' AS placed_at',
     ];

@@ -5477,6 +5477,7 @@ const RegistrarDashboard = () => {
                                 <th>College</th>
                                 <th>Stream</th>
                                 <th>Choice Rank</th>
+                                <th>Quota Pool</th>
                                 <th>Status</th>
                               </tr>
                             </thead>
@@ -5494,6 +5495,7 @@ const RegistrarDashboard = () => {
                                     <td>{placement.college || '—'}</td>
                                     <td>{placement.stream || '—'}</td>
                                     <td className="text-center text-nowrap">{placement.choiceRank || '—'}</td>
+                                    <td>{placement.quotaCategory || '—'}</td>
                                     <td>
                                       <span className={`badge text-nowrap ${assigned ? 'bg-success' : deferred ? 'bg-info text-dark' : 'bg-secondary'}`}>
                                         {assigned ? 'Assigned' : deferred ? 'Pending 2nd Semester' : 'Unassigned'}
@@ -5571,6 +5573,7 @@ const RegistrarDashboard = () => {
                           <th>Department</th>
                           <th>Final Score</th>
                           <th>Choice Rank</th>
+                          <th>Quota Pool</th>
                           <th>Status</th>
                         </tr>
                       </thead>
@@ -5587,6 +5590,7 @@ const RegistrarDashboard = () => {
                             <td>{result.dept_name}</td>
                             <td>{Number(result.final_score).toFixed(2)}</td>
                             <td>{result.choice_rank}</td>
+                            <td>{result.quota_category || '—'}</td>
                             <td><span className="badge bg-warning text-dark">{result.status}</span></td>
                           </tr>
                         ))}

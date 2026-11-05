@@ -175,6 +175,7 @@ try {
             'dept_name' => $row['dept_name'],
             'final_score' => (float) $row['final_score'],
             'choice_rank' => (int) $row['choice_rank'],
+            'quota_category' => (string) ($row['quota_category'] ?? ''),
             'status' => $row['status'],
         ];
     }

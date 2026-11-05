@@ -2242,7 +2242,9 @@ function computeMeritScore(array $student, array $rules): float
     $preferenceGroupCapacityMap = $preferenceCapacityMaps['group'];
     $quotaCapacityByScope = [];
     foreach ($departmentMap as $departmentKey => $department) {
-        $quotaScope = placementQuotaScopeKey($department);
+        $quotaScope = $activeSemester === 1
+            ? placementDepartmentQuotaScopeKey($department)
+            : placementQuotaScopeKey($department);
         if ($quotaScope === '') {
             continue;
         }
@@ -2318,7 +2320,7 @@ function computeMeritScore(array $student, array $rules): float
         // Check for duplicates within the active semester while the transaction is active.
         $existingPlacement = null;
         $existingSelectColumns = [];
-        foreach (['id_number', 'admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'final_score', 'choice_rank'] as $column) {
+        foreach (['id_number', 'admission_number', 'dept_id', 'dept_name', 'stream', 'college_name', 'final_score', 'choice_rank', 'quota_category'] as $column) {
             $existingSelectColumns[] = $placementHas($column) ? "`{$column}`" : "NULL AS `{$column}`";
         }
         $existingConditions = [];
@@ -2375,6 +2377,7 @@ function computeMeritScore(array $student, array $rules): float
                 'stream' => $existingPlacement['stream'] ?: $student['stream'],
                 'score' => $existingPlacement['final_score'],
                 'choiceRank' => $existingPlacement['choice_rank'],
+                'quotaCategory' => $existingPlacement['quota_category'],
                 'status' => 'already_placed',
             ];
             continue;
@@ -2451,17 +2454,20 @@ function computeMeritScore(array $student, array $rules): float
             $collegeOpenCapacity = (int) ($collegeCapacityMap[$collegeKey] ?? 0);
             $departmentGroup = placementDepartmentGroup($department);
             $groupOpenCapacity = (int) ($groupCapacityMap[$departmentGroup] ?? 0);
-            $quotaScope = placementQuotaScopeKey($department);
+            $quotaScope = $activeSemester === 1
+                ? placementDepartmentQuotaScopeKey($department)
+                : placementQuotaScopeKey($department);
             $femaleReserve = (int) ($femaleQuotaMap[$quotaScope] ?? 0);
             $generalOpen = (int) ($generalQuotaMap[$quotaScope] ?? 0);
             $isFemaleApplicant = placementIsFemale($student['gender'] ?? '');
+            $quotaCategory = placementQuotaCategory($isFemaleApplicant, $generalOpen, $femaleReserve);
 
-            if ($generalOpen > 0 && $openCapacity > 0 && $collegeOpenCapacity > 0 && $groupOpenCapacity > 0) {
+            if ($quotaCategory === 'Merit' && $openCapacity > 0 && $collegeOpenCapacity > 0 && $groupOpenCapacity > 0) {
                 $generalQuotaMap[$quotaScope] = $generalOpen - 1;
                 $capacityMap[$deptKey] = max(0, $openCapacity - 1);
                 $collegeCapacityMap[$collegeKey] = max(0, $collegeOpenCapacity - 1);
                 $groupCapacityMap[$departmentGroup] = max(0, $groupOpenCapacity - 1);
-            } elseif ($isFemaleApplicant && $femaleReserve > 0 && $openCapacity > 0 && $collegeOpenCapacity > 0 && $groupOpenCapacity > 0) {
+            } elseif ($quotaCategory === 'Affirmative Action' && $openCapacity > 0 && $collegeOpenCapacity > 0 && $groupOpenCapacity > 0) {
                 $femaleQuotaMap[$quotaScope] = $femaleReserve - 1;
                 $capacityMap[$deptKey] = max(0, $openCapacity - 1);
                 $collegeCapacityMap[$collegeKey] = max(0, $collegeOpenCapacity - 1);
@@ -2509,6 +2515,7 @@ function computeMeritScore(array $student, array $rules): float
                 'stream' => $department['stream'],
                 'score' => $student['final_merit_score'],
                 'choiceRank' => (int) ($preference['priority'] ?? ($priorityIndex + 1)),
+                'quotaCategory' => $quotaCategory,
                 'status' => 'placed',
             ];
 
@@ -2525,6 +2532,7 @@ function computeMeritScore(array $student, array $rules): float
                     'college_name' => $department['college_name'],
                     'final_score' => (float) $student['final_merit_score'],
                     'choice_rank' => (int) ($preference['priority'] ?? ($priorityIndex + 1)),
+                    'quota_category' => $quotaCategory,
                     'status' => 'Pending',
                     'placement_semester' => $activeSemester,
                 ];

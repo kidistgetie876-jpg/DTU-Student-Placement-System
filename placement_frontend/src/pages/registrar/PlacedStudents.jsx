@@ -96,13 +96,14 @@ const SemesterTable = ({ semester, students }) => {
               <th scope="col" className="px-4 py-3">Final Cumulative Score</th>
               <th scope="col" className="px-4 py-3">Assigned Department</th>
               <th scope="col" className="px-4 py-3">Matched Preference</th>
+              <th scope="col" className="px-4 py-3">Quota Pool</th>
               <th scope="col" className="px-4 py-3">Placement Status</th>
             </tr>
           </thead>
           <tbody>
             {students.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan="7" className="px-4 py-8 text-center text-sm text-slate-500">
                   No students in this semester.
                 </td>
               </tr>
@@ -129,6 +130,7 @@ const SemesterTable = ({ semester, students }) => {
                       ? <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">Choice {choiceRank}</span>
                       : '—'}
                   </td>
+                  <td className="px-4 py-3.5">{student.quota_category || '—'}</td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(student.status)}`}>
                       {displayStatus(student.status)}
@@ -290,6 +292,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
       'Final Cumulative Score',
       'Assigned Department',
       'Matched Choice',
+      'Quota Pool',
       'Placement Status',
     ];
     const rows = filteredStudents.map((student) => [
@@ -301,6 +304,7 @@ const PlacedStudents = ({ refreshToken = 0 }) => {
       student.final_score ?? student.cumulativeScore ?? '',
       student.department || '',
       Number(student.choice_rank) > 0 ? `Choice ${student.choice_rank}` : '',
+      student.quota_category || '',
       displayStatus(student.status),
     ]);
     const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);

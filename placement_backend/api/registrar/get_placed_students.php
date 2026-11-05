@@ -131,6 +131,7 @@ try {
     }
     $scoreExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['final_score', 'cumulative_score']);
     $choiceExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['choice_rank', 'priority'], '0');
+    $quotaCategoryExpression = studentPlacementTextExpression($placementColumns, 'pr', ['quota_category']);
     $statusExpression = studentPlacementTextExpression($placementColumns, 'pr', ['status'], "'Placed'");
     $semesterExpression = studentPlacementColumnExpression($placementColumns, 'pr', ['placement_semester'], '1');
     $storedSemesterExpression = "CAST(
@@ -164,6 +165,7 @@ try {
                 {$departmentExpression} AS department,
                 {$scoreExpression} AS final_score,
                 {$choiceExpression} AS choice_rank,
+                {$quotaCategoryExpression} AS quota_category,
                 {$statusExpression} AS status,
                 {$normalizedSemesterExpression} AS placement_semester
          FROM placement_results pr
@@ -197,6 +199,7 @@ try {
             'final_score' => $row['final_score'] !== null ? (float) $row['final_score'] : null,
             'cumulativeScore' => $row['final_score'] !== null ? (float) $row['final_score'] : null,
             'choice_rank' => (int) ($row['choice_rank'] ?? 0),
+            'quota_category' => (string) ($row['quota_category'] ?? ''),
             'placement_semester' => (int) ($row['placement_semester'] ?? 1),
         ];
     }

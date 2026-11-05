@@ -42,4 +42,14 @@ if ($singleSeatQuotaPools !== ['general' => 0, 'female_reserved' => 1]) {
     throw new RuntimeException('A department with one seat must preserve the female reservation.');
 }
 
+if (placementDepartmentQuotaScopeKey(['id' => 10, 'name' => 'Medicine'])
+    === placementDepartmentQuotaScopeKey(['id' => 11, 'name' => 'Computer Science'])) {
+    throw new RuntimeException('Semester-one department quota pools must be isolated by department.');
+}
+if (placementQuotaCategory(false, 0, 1) !== null
+    || placementQuotaCategory(true, 1, 1) !== 'Merit'
+    || placementQuotaCategory(true, 0, 1) !== 'Affirmative Action') {
+    throw new RuntimeException('Only female applicants may use reserved seats, and open merit seats must be used first.');
+}
+
 echo "Placement merit checks passed.\n";

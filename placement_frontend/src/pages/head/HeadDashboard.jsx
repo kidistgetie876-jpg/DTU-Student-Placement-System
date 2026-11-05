@@ -142,7 +142,7 @@ const HeadDashboard = () => {
     doc.setLineWidth(1);
     doc.line(14, 35, pageWidth - 14, 35);
 
-    const headers = ['#', 'Student ID', 'Full Name', 'Gender', 'GPA', 'Final Score', 'Choice Rank', 'Disability', 'Status'];
+    const headers = ['#', 'Student ID', 'Full Name', 'Gender', 'GPA', 'Final Score', 'Choice Rank', 'Quota Pool', 'Disability', 'Status'];
     const rows = placedStudents.map((student, index) => {
       const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
       const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
@@ -154,6 +154,7 @@ const HeadDashboard = () => {
         Number.isFinite(Number(student.gpa)) ? Number(student.gpa).toFixed(2) : '—',
         Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—',
         student.choice_rank ? `Choice #${student.choice_rank}` : '—',
+        student.quota_category || '—',
         hasDisability ? 'Yes' : 'No',
         student.status || 'Pending',
       ];
@@ -1009,6 +1010,7 @@ const HeadDashboard = () => {
                           <th scope="col">Student ID</th>
                           <th scope="col">Department</th>
                           <th scope="col">Score</th>
+                          <th scope="col">Quota Pool</th>
                           <th scope="col">Status</th>
                           <th scope="col">Actions</th>
                         </tr>
@@ -1029,6 +1031,7 @@ const HeadDashboard = () => {
                                 <td>{student.id_number || student.admission_number || student.student_id || '—'}</td>
                                 <td>{student.dept_name || department.name || '—'}</td>
                                 <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
+                                <td>{student.quota_category || '—'}</td>
                                 <td><span className="badge bg-warning text-dark">Pending Approval</span></td>
                                 <td>
                                   <div className="d-flex flex-wrap gap-2">
@@ -1210,6 +1213,7 @@ const HeadDashboard = () => {
                           <th>GPA</th>
                           <th>FINAL SCORE</th>
                           <th>CHOICE RANK</th>
+                          <th>QUOTA POOL</th>
                           <th>DISABILITY</th>
                           <th>STATUS</th>
                         </tr>
@@ -1245,6 +1249,7 @@ const HeadDashboard = () => {
                               <td><span className="badge bg-primary">{Number.isFinite(Number(student.gpa)) ? Number(student.gpa).toFixed(2) : '—'}</span></td>
                               <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
                               <td>{student.choice_rank ? <span className="badge badge-choice">Choice {student.choice_rank}</span> : '—'}</td>
+                              <td>{student.quota_category || '—'}</td>
                               <td><span className={`badge ${hasDisability ? 'badge-disability' : 'bg-secondary'}`}>{hasDisability ? 'Yes' : 'No'}</span></td>
                               <td><span className={`badge ${approved ? 'bg-success' : 'bg-warning text-dark'}`}>{student.status || 'Pending'}</span></td>
                             </tr>
