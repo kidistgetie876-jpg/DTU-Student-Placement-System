@@ -1142,14 +1142,18 @@ const HeadDashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {placedStudents.map((student) => {
+                        {placedStudents.map((student, index) => {
                           const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
                           const gender = String(student.gender || '').toLowerCase();
                           const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
                           const approved = ['approved', 'published', 'placed'].includes(String(student.status || '').toLowerCase());
+                          const placementId = Number(student.placement_id);
+                          const rowKey = Number.isFinite(placementId) && placementId > 0
+                            ? `placement-${placementId}`
+                            : `${student.student_id || 'unknown'}-${student.email || 'no-email'}-${index}`;
 
                           return (
-                            <tr key={`${student.student_id}-${student.email}`}>
+                            <tr key={rowKey}>
                               <td><span className="badge bg-primary-subtle text-primary px-3 py-2">{student.id_number || student.student_id}</span></td>
                               <td className="fw-semibold">{fullName}</td>
                               <td>

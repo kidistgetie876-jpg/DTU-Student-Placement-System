@@ -897,9 +897,11 @@ const RegistrarDashboard = () => {
   const [departmentStatusMessage, setDepartmentStatusMessage] = useState('');
   const [departmentStatusError, setDepartmentStatusError] = useState('');
   const [appeals, setAppeals] = useState([]);
+  const [appealResponseDrafts, setAppealResponseDrafts] = useState({});
   const [expandedAppealId, setExpandedAppealId] = useState(null);
   const [appealSavingId, setAppealSavingId] = useState(null);
   const [appealDeletingId, setAppealDeletingId] = useState(null);
+  const [appealResponseDeletingId, setAppealResponseDeletingId] = useState(null);
   const [appealFeedback, setAppealFeedback] = useState(null);
   const [reportDistributionStatus, setReportDistributionStatus] = useState('');
   const [reportDistributionStatusType, setReportDistributionStatusType] = useState('danger');
@@ -1582,21 +1584,53 @@ const RegistrarDashboard = () => {
     setAppealSavingId(appeal.id);
     setAppealFeedback(null);
     try {
+      const responseText = String(appealResponseDrafts[appeal.id] || '').trim();
       const response = await api.post('api/student/submit_appeal.php', {
         action: 'update',
         appeal_id: appeal.id,
         status: appeal.status,
-        response: appeal.response || '',
+        response: responseText,
       });
 
       if (!response.data?.success) {
         throw new Error(response.data?.message || 'Unable to update appeal.');
       }
-      setAppealFeedback({ id: appeal.id, type: 'success', message: 'Appeal response saved.' });
+      if (response.data.response) {
+        setAppeals((current) => current.map((item) => (
+          item.id === appeal.id
+            ? { ...item, responses: [...(item.responses || []), response.data.response], response: responseText }
+            : item
+        )));
+        setAppealResponseDrafts((current) => ({ ...current, [appeal.id]: '' }));
+      }
+      setAppealFeedback({ id: appeal.id, type: 'success', message: response.data.message || 'Appeal updated.' });
     } catch (error) {
       setAppealFeedback({ id: appeal.id, type: 'danger', message: error.response?.data?.message || error.message || 'Unable to update appeal.' });
     } finally {
       setAppealSavingId(null);
+    }
+  };
+
+  const deleteAppealResponse = async (appeal, response) => {
+    if (!window.confirm('Are you sure you want to delete this response?')) return;
+
+    setAppealResponseDeletingId(response.id);
+    setAppealFeedback(null);
+    try {
+      const result = await api.delete(`api/registrar/delete_appeal_response.php?id=${encodeURIComponent(response.id)}`);
+      if (!result.data?.success) {
+        throw new Error(result.data?.message || 'Unable to delete appeal response.');
+      }
+      setAppeals((current) => current.map((item) => {
+        if (item.id !== appeal.id) return item;
+        const responses = (item.responses || []).filter((entry) => entry.id !== response.id);
+        return { ...item, responses, response: responses[responses.length - 1]?.message || '' };
+      }));
+      setAppealFeedback({ id: appeal.id, type: 'success', message: 'Appeal response deleted.' });
+    } catch (error) {
+      setAppealFeedback({ id: appeal.id, type: 'danger', message: error.response?.data?.message || error.message || 'Unable to delete appeal response.' });
+    } finally {
+      setAppealResponseDeletingId(null);
     }
   };
 
@@ -5801,17 +5835,49 @@ const RegistrarDashboard = () => {
                                     id={`appeal-response-${appeal.id}`}
                                     className="form-control form-control-sm"
                                     rows="4"
-                                    value={appeal.response || ''}
+                                    value={appealResponseDrafts[appeal.id] || ''}
                                     onChange={(event) => {
-                                      const response = event.target.value;
-                                      setAppeals((current) => current.map((item) => (
-                                        item.id === appeal.id ? { ...item, response } : item
-                                      )));
+                                      const responseText = event.target.value;
+                                      setAppealResponseDrafts((current) => ({ ...current, [appeal.id]: responseText }));
                                     }}
-                                    placeholder="Write a response to the student"
+                                    placeholder="Write a new response to the student"
                                   />
                                 </div>
                               </div>
+                              <section className="mt-4" aria-label={`Appeal history for ${appeal.subject || 'placement appeal'}`}>
+                                <h6 className="fw-semibold">Appeal History</h6>
+                                {(appeal.responses || []).length === 0 ? (
+                                  <p className="small text-muted mb-0">No registrar responses yet.</p>
+                                ) : (
+                                  <div className="d-flex flex-column gap-2">
+                                    {appeal.responses.map((response) => (
+                                      <article key={response.id} className="rounded border bg-white p-3">
+                                        <div className="d-flex align-items-start justify-content-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="small fw-semibold">
+                                              {response.sender_role === 'registrar' ? 'Registrar Response' : response.sender_name}
+                                              {response.sender_name && response.sender_role === 'registrar' ? ` · ${response.sender_name}` : ''}
+                                            </div>
+                                            <div className="small text-muted">{response.created_at || 'Date unavailable'}</div>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            className="btn btn-outline-danger btn-sm"
+                                            aria-label={`Delete response from ${response.sender_name || 'Registrar'}`}
+                                            onClick={() => deleteAppealResponse(appeal, response)}
+                                            disabled={appealSavingId === appeal.id || appealResponseDeletingId === response.id}
+                                          >
+                                            {appealResponseDeletingId === response.id
+                                              ? 'Deleting...'
+                                              : <FaTrash aria-hidden="true" />}
+                                          </button>
+                                        </div>
+                                        <p className="mb-0 mt-2 text-break" style={{ whiteSpace: 'pre-wrap' }}>{response.message}</p>
+                                      </article>
+                                    ))}
+                                  </div>
+                                )}
+                              </section>
                               {appealFeedback?.id === appeal.id && (
                                 <div
                                   className={`alert alert-${appealFeedback.type} mt-3 py-2 px-3 small mb-0`}
@@ -5825,7 +5891,7 @@ const RegistrarDashboard = () => {
                                   type="button"
                                   className="btn btn-outline-danger btn-sm"
                                   onClick={() => deleteAppeal(appeal)}
-                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
+                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id || appealResponseDeletingId !== null}
                                 >
                                   {appealDeletingId === appeal.id ? 'Deleting...' : 'Delete'}
                                 </button>
@@ -5833,7 +5899,7 @@ const RegistrarDashboard = () => {
                                   type="button"
                                   className="btn btn-primary btn-sm"
                                   onClick={() => updateAppeal(appeal)}
-                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id}
+                                  disabled={appealSavingId === appeal.id || appealDeletingId === appeal.id || appealResponseDeletingId !== null}
                                 >
                                   {appealSavingId === appeal.id ? 'Saving...' : 'Save'}
                                 </button>

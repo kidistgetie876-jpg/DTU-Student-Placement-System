@@ -240,7 +240,22 @@ const StudentAppeal = ({ studentId, placement }) => {
                 </div>
               </div>
               <p className="mb-2 whitespace-pre-wrap text-sm text-slate-700">{appeal.message}</p>
-              {appeal.response && <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900"><strong>Registrar response:</strong> {appeal.response}</div>}
+              {(appeal.responses || []).length > 0 ? (
+                <section className="mb-2 space-y-2" aria-label="Appeal response history">
+                  <h4 className="mb-1 text-sm font-bold text-slate-800">Registrar responses</h4>
+                  {appeal.responses.map((response) => (
+                    <article key={response.id} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                      <div className="mb-1 flex flex-wrap justify-between gap-2">
+                        <strong>{response.sender_role === 'registrar' ? 'Registrar Response' : response.sender_name}</strong>
+                        <small className="text-blue-700">{response.created_at}</small>
+                      </div>
+                      <p className="mb-0 whitespace-pre-wrap">{response.message}</p>
+                    </article>
+                  ))}
+                </section>
+              ) : (
+                appeal.response && <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900"><strong>Registrar response:</strong> {appeal.response}</div>
+              )}
               <small className="text-xs text-slate-500">Submitted {appeal.created_at}</small>
             </article>
           ))}

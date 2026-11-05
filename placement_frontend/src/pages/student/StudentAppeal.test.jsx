@@ -98,4 +98,37 @@ describe('StudentAppeal', () => {
     expect(screen.getByRole('button', { name: 'Submit Appeal' })).toBeDisabled();
     expect(api.post).not.toHaveBeenCalled();
   });
+
+  it('renders registrar response history with sender and timestamp', async () => {
+    localStorage.setItem('user', JSON.stringify({
+      id: 15,
+      admission_number: 'DTU16R2001',
+      role: 'student',
+    }));
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        appeals: [{
+          id: 9,
+          subject: 'Placement review',
+          message: 'Please review my placement.',
+          status: 'Under Review',
+          created_at: '2026-11-05 10:00:00',
+          responses: [{
+            id: 11,
+            sender_role: 'registrar',
+            sender_name: 'Registrar User',
+            message: 'Your appeal is being reviewed.',
+            created_at: '2026-11-05 11:00:00',
+          }],
+        }],
+      },
+    });
+
+    render(<StudentAppeal />);
+
+    expect(await screen.findByText('Your appeal is being reviewed.')).toBeInTheDocument();
+    expect(screen.getByText('Registrar Response')).toBeInTheDocument();
+    expect(screen.getByText('2026-11-05 11:00:00')).toBeInTheDocument();
+  });
 });
