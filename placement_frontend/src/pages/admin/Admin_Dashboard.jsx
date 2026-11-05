@@ -12,7 +12,6 @@ import ContactMessages from './ContactMessages.jsx';
 import './AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import Sidebar from '../../components/layout/Sidebar.jsx';
-import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { useRolePermissions } from '../../contexts/RolePermissionsContext.jsx';
 
@@ -278,15 +277,6 @@ const AdminDashboard = () => {
         <Sidebar role="admin" activeItem={tab} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
-          <DashboardHeader
-            variant="welcome"
-            username={admin.username}
-            role="Admin"
-            subtitle="Use the navigation panel to review users, departments, and dashboard insights."
-            dashboardPath="/admin-dashboard"
-            onSelectTab={setTab}
-          />
-
           {tab === 'dashboard' ? (
             <>
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">

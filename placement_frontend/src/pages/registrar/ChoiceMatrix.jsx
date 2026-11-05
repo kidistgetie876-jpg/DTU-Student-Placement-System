@@ -54,9 +54,9 @@ const collegeChoiceStyle = (choice) => {
   }
   if (college.includes('gafat') || college.includes('technology')) {
     return {
-      container: 'bg-indigo-50/90 border-indigo-200 text-indigo-900',
-      title: 'text-indigo-600',
-      department: 'text-indigo-950',
+      container: 'bg-sky-50/90 border-sky-200 text-sky-900',
+      title: 'text-sky-600',
+      department: 'text-sky-950',
       label: collegeName(choice) || streamName,
     };
   }
@@ -388,9 +388,9 @@ export default function ChoiceMatrix({
       {deleteError && <div className="alert alert-danger py-2" role="alert">{deleteError}</div>}
       <div className="table-responsive choice-matrix-table-wrap">
         <table className="table table-bordered table-hover align-middle mb-0 min-w-max">
-          <thead className="border-b-2 border-indigo-950 bg-indigo-950 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-white shadow-sm">
+          <thead className="border-b-2 border-sky-950 bg-sky-950 px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-white shadow-sm">
             <tr>
-              <th rowSpan="2" className="!border-r !border-indigo-900 !bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">
+              <th rowSpan="2" className="!border-r !border-sky-900 !bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">
                 <input
                   ref={selectAllRef}
                   type="checkbox"
@@ -400,14 +400,14 @@ export default function ChoiceMatrix({
                   disabled={loading || selectableStudentIds.length === 0}
                 />
               </th>
-              <th rowSpan="2" className="!border-r !border-indigo-900 !bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STUDENT ID</th>
-              <th rowSpan="2" className="!border-r !border-indigo-900 !bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STUDENT NAME</th>
-              <th rowSpan="2" className="!border-r !border-indigo-900 !bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STREAM</th>
-              <th rowSpan="2" className="!border-r !border-indigo-900 !bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STATUS</th>
-              <th colSpan={semesterChoiceCounts[0]} className="!border-b-2 !border-r-4 !border-r-slate-300 !bg-indigo-700 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 1 PREFERENCES</th>
-              <th colSpan={semesterChoiceCounts[1]} className="!border-b-2 !border-indigo-800 !bg-indigo-600 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 2 PREFERENCES</th>
-              <th rowSpan="2" className="!bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">DETAILS</th>
-              <th rowSpan="2" className="!bg-indigo-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">ACTIONS</th>
+              <th rowSpan="2" className="!border-r !border-sky-900 !bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STUDENT ID</th>
+              <th rowSpan="2" className="!border-r !border-sky-900 !bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STUDENT NAME</th>
+              <th rowSpan="2" className="!border-r !border-sky-900 !bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STREAM</th>
+              <th rowSpan="2" className="!border-r !border-sky-900 !bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">STATUS</th>
+              <th colSpan={semesterChoiceCounts[0]} className="!border-b-2 !border-r-4 !border-r-slate-300 !bg-sky-700 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 1 PREFERENCES</th>
+              <th colSpan={semesterChoiceCounts[1]} className="!border-b-2 !border-sky-800 !bg-sky-600 px-3 py-2 text-center !text-xs !font-extrabold uppercase !tracking-wider !text-white shadow-inner">SEMESTER 2 PREFERENCES</th>
+              <th rowSpan="2" className="!bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">DETAILS</th>
+              <th rowSpan="2" className="!bg-sky-950 px-4 py-3.5 !text-xs !font-bold !tracking-wider !text-white align-middle">ACTIONS</th>
             </tr>
             <tr>
               {[1, 2].flatMap((semester) => Array.from(
@@ -415,7 +415,7 @@ export default function ChoiceMatrix({
                 (_, index) => (
                   <th
                     key={`semester-${semester}-rank-${index + 1}`}
-                    className={`min-w-[180px] whitespace-nowrap rounded border !border-indigo-900 !bg-indigo-900 px-3 py-2 text-center !text-xs !font-bold uppercase !tracking-wider !text-white shadow-sm ${semester === 1 && index === semesterChoiceCounts[0] - 1 ? '!border-r-4 !border-r-slate-300' : ''}`}
+                    className={`min-w-[180px] whitespace-nowrap rounded border !border-sky-900 !bg-sky-900 px-3 py-2 text-center !text-xs !font-bold uppercase !tracking-wider !text-white shadow-sm ${semester === 1 && index === semesterChoiceCounts[0] - 1 ? '!border-r-4 !border-r-slate-300' : ''}`}
                   >
                     {ordinal(index + 1)} Choice
                   </th>

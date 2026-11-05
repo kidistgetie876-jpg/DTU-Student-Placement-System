@@ -16,7 +16,6 @@ import autoTable from 'jspdf-autotable';
 import dtuLogo from '../../assets/images6.jpg';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import Sidebar from '../../components/layout/Sidebar.jsx';
-import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { FaTrash } from 'react-icons/fa';
 import { FiCalendar } from 'react-icons/fi';
@@ -2557,9 +2556,11 @@ const RegistrarDashboard = () => {
         pending: Number(summary.pendingStudents ?? 0),
         alreadyPlaced: Number(summary.alreadyPlacedStudents ?? result.already_placed ?? 0),
         total: Number(summary.totalStudents ?? result.total_processed ?? 0),
+        semester: activeSemester,
       };
       const placementRun = {
         id: Date.now(),
+        semester: activeSemester,
         summary: outcome,
         placements: Array.isArray(result.placements) ? result.placements : [],
         createdAt: new Date().toISOString(),
@@ -2575,6 +2576,7 @@ const RegistrarDashboard = () => {
       localStorage.setItem('studentPlacementSummary', JSON.stringify({
         studentId: registrar?.id || 'registrar-run',
         batch: placementBatch,
+        semester: activeSemester,
         date: placementRun.createdAt,
         placementRuns: placementRun.placements,
         status: 'run-complete',
@@ -2597,7 +2599,11 @@ const RegistrarDashboard = () => {
   };
 
   const handleClearPlacements = async () => {
-    const confirmed = window.confirm('This will clear all placement allocations, reset student placement status, and restore capacity data. Continue?');
+    const semesterToClear = placementMode;
+    const confirmed = window.confirm(
+      `Are you sure you want to clear Semester ${semesterToClear} placement results only?`
+      + ' Other semester results and allocations will be preserved.',
+    );
     if (!confirmed) {
       return;
     }
@@ -2605,21 +2611,38 @@ const RegistrarDashboard = () => {
     setClearingPlacements(true);
     setPlacementError('');
     try {
-      const response = await api.post('api/registrar/clear_placements.php', { clear_placements: true }, { withCredentials: true });
+      const response = await api.post(
+        'api/registrar/clear_placements.php',
+        { clear_placements: true, semester: semesterToClear },
+        { withCredentials: true },
+      );
       const result = response.data || {};
       if (!result.success) {
         throw new Error(result.message || 'Unable to clear placements.');
       }
 
-      setPendingResults([]);
-      setRunResult(null);
+      setPendingResults((current) => current.filter((placementRun) => (
+        Number(placementRun.semester) !== semesterToClear
+      )));
+      setRunResult((current) => (
+        Number(current?.semester) === semesterToClear ? null : current
+      ));
       setSelectedStudentIds([]);
-      setHasPublishedPlacementResults(false);
-      setHasUnpublishedPlacementResults(false);
-      setForceRerunAvailable(false);
+      if (semesterToClear === activeSemester) {
+        setHasPublishedPlacementResults(false);
+        setHasUnpublishedPlacementResults(false);
+        setForceRerunAvailable(false);
+      }
       setUnassignedStudentsRefreshToken((token) => token + 1);
       setStudentRecordsRefreshToken((token) => token + 1);
-      localStorage.removeItem('studentPlacementSummary');
+      try {
+        const savedSummary = JSON.parse(localStorage.getItem('studentPlacementSummary') || 'null');
+        if (Number(savedSummary?.semester) === semesterToClear) {
+          localStorage.removeItem('studentPlacementSummary');
+        }
+      } catch {
+        localStorage.removeItem('studentPlacementSummary');
+      }
       setCapacityLoading(true);
       try {
         await fetchDepartments();
@@ -2873,10 +2896,10 @@ const RegistrarDashboard = () => {
   const publicRuleTextField = (section, field, label, multiline = false) => {
     const id = `public-rule-${section}-${field}`;
     const value = placementRules.publicRules?.[section]?.[field] ?? '';
-    const controlClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
+    const controlClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
     return (
       <div key={id}>
-        <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+        <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={id}>{label}</label>
         {multiline ? (
           <textarea
             id={id}
@@ -2903,10 +2926,10 @@ const RegistrarDashboard = () => {
     const value = (placementRules.publicRules?.[section]?.[field] || []).join('\n');
     return (
       <div key={id}>
-        <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+        <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={id}>{label}</label>
         <textarea
           id={id}
-          className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm leading-6 text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm leading-6 text-slate-900 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           rows={5}
           value={value}
           onChange={(event) => updatePublicRuleList(section, field, event.target.value)}
@@ -3076,17 +3099,6 @@ const RegistrarDashboard = () => {
         <Sidebar role="registrar" activeItem={activeSidebarItem} onSelect={setTab} />
 
         <main className="col-md-10 p-5 main-content">
-          {tab !== 'placed-students' && (
-            <DashboardHeader
-              variant="welcome"
-              username={registrar.username}
-              role="Registrar"
-              subtitle="Debre Tabor University registrar workflow: department review, placement approval, and publishing decisions."
-              dashboardPath="/registrar-dashboard/overview"
-              onSelectTab={setTab}
-            />
-          )}
-
           {tab === 'overview' ? (
             <>
               <div className="row g-4 mb-4">
@@ -4296,9 +4308,9 @@ const RegistrarDashboard = () => {
               </div>
             </div>
           ) : tab === 'settings' ? (
-            <section className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <section className="rounded-xl border border-sky-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-6">
-                <h4 className="mb-1 text-2xl font-bold text-indigo-950 dark:text-slate-100">Placement Settings</h4>
+                <h4 className="mb-1 text-2xl font-bold text-sky-950 dark:text-slate-100">Placement Settings</h4>
                 <p className="mb-0 text-sm text-slate-600 dark:text-slate-300">
                   Manage registrar controls for student placement and preference access.
                 </p>
@@ -4310,12 +4322,12 @@ const RegistrarDashboard = () => {
             <div className="placement-rules-page rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900">
               <div>
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                  <h4 className="mb-0 text-2xl font-bold text-indigo-950 dark:text-slate-100">Placement Rules</h4>
+                  <h4 className="mb-0 text-2xl font-bold text-sky-950 dark:text-slate-100">Placement Rules</h4>
                   <div className="flex gap-2">
                     {!isEditingPlacementRules && (
                       <button
                         type="button"
-                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
                         aria-label="Edit placement rules"
                         title="Edit placement rules"
                         onClick={startPlacementRulesEdit}
@@ -4324,14 +4336,14 @@ const RegistrarDashboard = () => {
                         <span className="ml-1">Edit Rules</span>
                       </button>
                     )}
-                    <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => window.print()}>
+                    <button type="button" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-sky-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => window.print()}>
                       Print
                     </button>
                   </div>
                 </div>
                 <form onSubmit={savePlacementRules}>
                   <section className="mb-8">
-                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Academic Criteria</h5>
+                    <h5 className="mb-4 text-lg font-semibold text-sky-950 dark:text-slate-100">Academic Criteria</h5>
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                       {[
                         ['placement-g12-weight', 'Grade 12 Weight (%)', placementRules.grade12Weight, 'grade12Weight'],
@@ -4341,12 +4353,12 @@ const RegistrarDashboard = () => {
                         ['placement-min-gpa', 'Minimum GPA', placementRules.minGpa, 'minGpa'],
                         ['placement-max-cumulative-score', 'Maximum Cumulative Score', placementRules.maxScoreCap, 'maxScoreCap'],
                       ].map(([id, label, value, stateKey]) => (
-                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
-                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+                        <div className="rounded-xl border border-sky-100 bg-white p-5 shadow-sm transition-all hover:border-sky-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
+                          <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={id}>{label}</label>
                           <input
                             id={id}
                             type="number"
-                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-sky-950 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                             value={value}
                             onChange={stateKey ? (event) => setPlacementRules((current) => ({ ...current, [stateKey]: Number(event.target.value) })) : undefined}
                             min={stateKey === 'g12TotalBase' ? 0.01 : 0}
@@ -4364,7 +4376,7 @@ const RegistrarDashboard = () => {
                   </section>
 
                   <section className="mb-8">
-                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Affirmative Action Bonus Points</h5>
+                    <h5 className="mb-4 text-lg font-semibold text-sky-950 dark:text-slate-100">Affirmative Action Bonus Points</h5>
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                       {[
                         ['femaleBonusPoints', 'Female Bonus Points', 5],
@@ -4374,12 +4386,12 @@ const RegistrarDashboard = () => {
                         ['minorityDisabilityBonusPoints', 'Minority / Developing Region (Disability) Bonus Points', 10],
                         ['femaleDisabilityMinorityBonusPoints', 'Female + Disability + Minority Bonus Points', 15],
                       ].map(([key, label, defaultValue]) => (
-                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={key}>
-                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`placement-${key}`}>{label}</label>
+                        <div className="rounded-xl border border-sky-100 bg-white p-5 shadow-sm transition-all hover:border-sky-200 dark:border-slate-800 dark:bg-slate-900" key={key}>
+                          <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={`placement-${key}`}>{label}</label>
                           <input
                             id={`placement-${key}`}
                             type="number"
-                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-sky-950 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                             value={placementRules[key]}
                             placeholder={String(defaultValue)}
                             onChange={(event) => setPlacementRules((current) => ({ ...current, [key]: Number(event.target.value) }))}
@@ -4395,18 +4407,18 @@ const RegistrarDashboard = () => {
                   </section>
 
                   <section className="mb-8">
-                    <h5 className="mb-4 text-lg font-semibold text-indigo-950 dark:text-slate-100">Quota Allocation</h5>
+                    <h5 className="mb-4 text-lg font-semibold text-sky-950 dark:text-slate-100">Quota Allocation</h5>
                     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                       {[
                         ['placement-open-quota', 'General / Open Competition (%)', 'generalQuotaPercent'],
                         ['placement-female-quota', 'Reserved Female Quota (%)', 'reservedFemaleQuotaPercent'],
                       ].map(([id, label, stateKey]) => (
-                        <div className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
-                          <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+                        <div className="rounded-xl border border-sky-100 bg-white p-5 shadow-sm transition-all hover:border-sky-200 dark:border-slate-800 dark:bg-slate-900" key={id}>
+                          <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={id}>{label}</label>
                           <input
                             id={id}
                             type="number"
-                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-indigo-950 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                            className="placement-rules-input w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-lg font-bold text-sky-950 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                             value={placementRules[stateKey]}
                             onChange={(event) => setPlacementRules((current) => ({ ...current, [stateKey]: Number(event.target.value) }))}
                             min={0}
@@ -4422,8 +4434,8 @@ const RegistrarDashboard = () => {
                       Quota total: {Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent)}%
                     </div>
                   </section>
-                  <section className="mb-8 rounded-2xl border border-violet-200 bg-violet-50/50 p-5 dark:border-slate-700 dark:bg-slate-800/50">
-                    <h5 className="mb-2 text-lg font-semibold text-indigo-950 dark:text-slate-100">Public Rules &amp; Criteria</h5>
+                  <section className="mb-8 rounded-2xl border border-sky-200 bg-sky-50/50 p-5 dark:border-slate-700 dark:bg-slate-800/50">
+                    <h5 className="mb-2 text-lg font-semibold text-sky-950 dark:text-slate-100">Public Rules &amp; Criteria</h5>
                     <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">
                       These database-backed descriptions are shown to students on the Placement Information page.
                     </p>
@@ -4434,7 +4446,7 @@ const RegistrarDashboard = () => {
                     ) : (
                       <div className="space-y-6">
                         <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Overview</h6>
+                          <h6 className="mb-4 font-semibold text-sky-900 dark:text-slate-100">Overview</h6>
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             {publicRuleTextField('overview', 'title', 'Rules page title')}
                             {publicRuleTextField('overview', 'summary', 'Rules page summary', true)}
@@ -4442,7 +4454,7 @@ const RegistrarDashboard = () => {
                         </section>
 
                         <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Formula</h6>
+                          <h6 className="mb-4 font-semibold text-sky-900 dark:text-slate-100">Formula</h6>
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             {publicRuleTextField('formula', 'title', 'Formula card title')}
                             {publicRuleTextField('formula', 'bonus_note', 'Formula explanation')}
@@ -4450,12 +4462,12 @@ const RegistrarDashboard = () => {
                           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                             {(placementRules.publicRules.formula.components || []).map((component, index) => (
                               <div key={component.weight_key}>
-                                <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`public-formula-component-${index}`}>
+                                <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={`public-formula-component-${index}`}>
                                   Formula component {index + 1}
                                 </label>
                                 <input
                                   id={`public-formula-component-${index}`}
-                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                                   value={component.label}
                                   onChange={(event) => updatePublicRuleEntry('formula', 'components', index, 'label', event.target.value)}
                                   readOnly={!isEditingPlacementRules}
@@ -4466,7 +4478,7 @@ const RegistrarDashboard = () => {
                         </section>
 
                         <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Affirmative Action</h6>
+                          <h6 className="mb-4 font-semibold text-sky-900 dark:text-slate-100">Affirmative Action</h6>
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             {publicRuleTextField('affirmative_action', 'title', 'Bonus card title')}
                             {publicRuleTextField('affirmative_action', 'description', 'Bonus explanation', true)}
@@ -4474,12 +4486,12 @@ const RegistrarDashboard = () => {
                           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                             {(placementRules.publicRules.affirmative_action.bonus_points || []).map((bonus, index) => (
                               <div key={bonus.value_key}>
-                                <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`public-bonus-label-${index}`}>
+                                <label className="mb-2 block text-sm font-medium text-sky-950 dark:text-slate-200" htmlFor={`public-bonus-label-${index}`}>
                                   Bonus label {index + 1}
                                 </label>
                                 <input
                                   id={`public-bonus-label-${index}`}
-                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                                   value={bonus.label}
                                   onChange={(event) => updatePublicRuleEntry('affirmative_action', 'bonus_points', index, 'label', event.target.value)}
                                   readOnly={!isEditingPlacementRules}
@@ -4523,7 +4535,7 @@ const RegistrarDashboard = () => {
                           },
                         ].map(({ section, title, text = [], lists = [] }) => (
                           <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900" key={section}>
-                            <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">{title}</h6>
+                            <h6 className="mb-4 font-semibold text-sky-900 dark:text-slate-100">{title}</h6>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                               {publicRuleTextField(section, 'title', 'Section title')}
                               {text.map(([field, label]) => publicRuleTextField(section, field, label, true))}
@@ -4538,7 +4550,7 @@ const RegistrarDashboard = () => {
                     {isEditingPlacementRules && (
                       <>
                         <button
-                          className={`rounded-lg px-6 py-2.5 font-semibold text-white shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${rulesSaving || !placementRulesChanged ? 'cursor-not-allowed bg-indigo-300 opacity-80' : 'cursor-pointer bg-indigo-600 hover:bg-indigo-700'}`}
+                          className={`rounded-lg px-6 py-2.5 font-semibold text-white shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${rulesSaving || !placementRulesChanged ? 'cursor-not-allowed bg-sky-300 opacity-80' : 'cursor-pointer bg-sky-600 hover:bg-sky-700'}`}
                           type="submit"
                           disabled={rulesSaving || !placementRulesChanged}
                           aria-busy={rulesSaving}
@@ -4548,10 +4560,10 @@ const RegistrarDashboard = () => {
                             {rulesSaving ? 'Saving placement rules...' : 'Save Placement Rules'}
                           </span>
                         </button>
-                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={cancelPlacementRulesEdit}>
+                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-sky-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={cancelPlacementRulesEdit}>
                           Cancel
                         </button>
-                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={() => {
+                        <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-sky-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={() => {
                           const defaults = { gpaWeight: 50, grade12Weight: 20, g12TotalBase: 600, cocWeight: 30, femaleBonusPoints: 5, disabilityBonusPoints: 5, minorityMaleBonusPoints: 5, minorityFemaleBonusPoints: 10, minorityDisabilityBonusPoints: 10, femaleDisabilityMinorityBonusPoints: 15, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75, publicRules: placementRules.publicRules };
                           setPlacementRules(defaults);
                           setRulesError('');
@@ -4612,9 +4624,9 @@ const RegistrarDashboard = () => {
                 >
                   <button
                     type="button"
-                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
                       placementMode === 1
-                        ? 'bg-indigo-700 text-white shadow-sm'
+                        ? 'bg-sky-700 text-white shadow-sm'
                         : 'bg-transparent text-slate-700 hover:bg-white'
                     }`}
                     aria-pressed={placementMode === 1}
@@ -4625,9 +4637,9 @@ const RegistrarDashboard = () => {
                   </button>
                   <button
                     type="button"
-                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 ${
                       placementMode === 2
-                        ? 'bg-indigo-700 text-white shadow-sm'
+                        ? 'bg-sky-700 text-white shadow-sm'
                         : 'bg-transparent text-slate-700 hover:bg-white'
                     }`}
                     aria-pressed={placementMode === 2}
@@ -4668,7 +4680,7 @@ const RegistrarDashboard = () => {
                         className={`rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60 ${
                           hasPublishedPlacementResults
                             ? 'border-rose-300 text-rose-700 hover:bg-rose-50'
-                            : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50'
+                            : 'border-sky-300 text-sky-700 hover:bg-sky-50'
                         }`}
                         onClick={() => {
                           setPlacementError('');
@@ -4827,7 +4839,7 @@ const RegistrarDashboard = () => {
                                     return previous.filter((id) => !visibleIds.includes(id));
                                   });
                                 }}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                               />
                               Select all visible candidates
                             </label>
@@ -4846,7 +4858,7 @@ const RegistrarDashboard = () => {
                                 key={`${student.id}-${student.email || student.name}`}
                                 className={`rounded-xl border p-3 transition-colors ${
                                   checked
-                                    ? 'border-indigo-300 bg-indigo-50/70 shadow-sm'
+                                    ? 'border-sky-300 bg-sky-50/70 shadow-sm'
                                     : 'border-slate-200 bg-white hover:border-slate-300'
                                 }`}
                               >
@@ -4865,7 +4877,7 @@ const RegistrarDashboard = () => {
                                           : [...prev, studentId];
                                       });
                                     }}
-                                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                                   />
                                   <div className="min-w-0">
                                     <div className="truncate font-semibold text-slate-900">
@@ -4912,7 +4924,7 @@ const RegistrarDashboard = () => {
                                       <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800">
                                         CGPA: {student.cgpa ?? '—'}
                                       </span>
-                                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-800">
+                                      <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800">
                                         Cumulative score: {formatCumulativeScore(calculateCumulativeScore({
                                         cgpa: student.cgpa,
                                         grade12: student.g12,
@@ -5064,7 +5076,7 @@ const RegistrarDashboard = () => {
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
                     type="button"
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                     onClick={async () => {
                       if (!isActivePlacementMode) {
                         setPlacementError(`Semester ${activeSemester} is currently active. The selected semester is available for preview only.`);
@@ -5254,6 +5266,7 @@ const RegistrarDashboard = () => {
                           alreadyPlaced,
                           total: Number(summary.totalStudents ?? students.length),
                           skipped,
+                          semester: activeSemester,
                         };
 
                         setRunResult(outcome);
@@ -5270,13 +5283,20 @@ const RegistrarDashboard = () => {
                         localStorage.setItem('dtuPlacementBatch', currentBatch);
                         setPendingResults((prev) => stageAdvanced
                           ? []
-                          : [{ id: Date.now(), summary: outcome, placements: result.placements || [], createdAt: new Date().toISOString() }, ...prev]);
+                          : [{
+                            id: Date.now(),
+                            semester: activeSemester,
+                            summary: outcome,
+                            placements: result.placements || [],
+                            createdAt: new Date().toISOString(),
+                          }, ...prev]);
                         setHasUnpublishedPlacementResults(!stageAdvanced);
                         if (stageAdvanced) setHasPublishedPlacementResults(false);
                         if (Array.isArray(result.placements)) {
                           localStorage.setItem('studentPlacementSummary', JSON.stringify({
                             studentId: registrar?.id || 'registrar-run',
                             batch: currentBatch,
+                            semester: activeSemester,
                             date: new Date().toISOString(),
                             placementRuns: result.placements,
                             status: 'run-complete',
@@ -5942,12 +5962,12 @@ const RegistrarDashboard = () => {
                         return (
                           <article
                             key={report.id}
-                            className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${!Number(report.is_read) ? 'border-l-4 border-l-indigo-500' : ''}`}
+                            className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${!Number(report.is_read) ? 'border-l-4 border-l-sky-500' : ''}`}
                           >
                             <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                               <div className="min-w-0 flex-grow-1">
                                 <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
-                                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">From Admin</span>
+                                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">From Admin</span>
                                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                                     {report.file_path ? 'Report' : 'Message'}
                                   </span>
@@ -5965,7 +5985,7 @@ const RegistrarDashboard = () => {
                               </div>
                               <button
                                 type="button"
-                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
+                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-sky-600 transition-colors hover:bg-sky-50"
                                 aria-expanded={isExpanded}
                                 aria-controls={`admin-report-details-${report.id}`}
                                 onClick={() => {
@@ -6064,7 +6084,7 @@ const RegistrarDashboard = () => {
                             <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                               <div className="min-w-0 flex-grow-1">
                                 <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
-                                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">From Registrar</span>
+                                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">From Registrar</span>
                                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                                     {report.file_path ? 'Report' : 'Message'}
                                   </span>
@@ -6082,7 +6102,7 @@ const RegistrarDashboard = () => {
                               </div>
                               <button
                                 type="button"
-                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
+                                className="inline-flex flex-shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-sky-600 transition-colors hover:bg-sky-50"
                                 aria-expanded={isExpanded}
                                 aria-controls={`sent-report-details-${report.id}`}
                                 onClick={() => setExpandedReportId(isExpanded ? null : reportKey)}

@@ -53,11 +53,11 @@ const SecondSemToggle = () => {
 
   return (
     <section
-      className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-indigo-100 bg-indigo-50 p-5 dark:border-slate-700 dark:bg-slate-800"
+      className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-sky-100 bg-sky-50 p-5 dark:border-slate-700 dark:bg-slate-800"
       aria-labelledby="second-sem-choice-heading"
     >
       <div>
-        <h5 id="second-sem-choice-heading" className="mb-1 text-lg font-semibold text-indigo-950 dark:text-slate-100">
+        <h5 id="second-sem-choice-heading" className="mb-1 text-lg font-semibold text-sky-950 dark:text-slate-100">
           2nd Semester Department Choice Portal
         </h5>
         <div className="flex flex-wrap items-center gap-2">

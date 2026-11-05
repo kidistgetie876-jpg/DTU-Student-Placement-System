@@ -221,10 +221,10 @@ const LoginPage = () => {
   };
 
   return (
-    <section className="login-page relative isolate flex w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/30 to-slate-100 px-4 sm:px-6 lg:px-8">
-      <div aria-hidden="true" className="pointer-events-none absolute -left-24 top-8 h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl" />
+    <section className="login-page relative isolate flex w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-cyan-50/30 to-slate-50 px-4 sm:px-6 lg:px-8">
+      <div aria-hidden="true" className="pointer-events-none absolute -left-24 top-8 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl" />
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 -right-16 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(129,140,248,0.10),transparent_45%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(34,211,238,0.10),transparent_45%)]" />
 
       <div className="relative z-10 mx-auto w-full max-w-sm sm:max-w-md lg:max-w-lg">
         <div className="login-card w-full animate-login-enter rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/15 motion-reduce:animate-none">
@@ -232,9 +232,9 @@ const LoginPage = () => {
             <img
               src={dtuLogo}
               alt="Debre Tabor University logo"
-              className="login-logo mx-auto mb-2 rounded-2xl border border-amber-300/70 bg-white p-1 shadow-lg shadow-indigo-950/10"
+              className="login-logo mx-auto mb-2 rounded-2xl border border-amber-300/70 bg-white p-1 shadow-lg shadow-cyan-900/10"
             />
-            <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-indigo-700">
+            <p className="mb-1 text-xs font-bold uppercase tracking-[0.2em] text-sky-800">
               Debre Tabor University
             </p>
             <h2 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
@@ -260,7 +260,7 @@ const LoginPage = () => {
                 type="text"
                 autoComplete="username"
                 placeholder="Enter admission ID or email"
-                className="login-form-input block w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                className="login-form-input block w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
                 required
@@ -277,7 +277,7 @@ const LoginPage = () => {
                 type={isEmailIdentifier(identifier) ? 'password' : 'text'}
                 autoComplete={isEmailIdentifier(identifier) ? 'current-password' : 'given-name'}
                 placeholder="Enter first name or password"
-                className="login-form-input block w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                className="login-form-input block w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500"
                 value={credential}
                 onChange={(event) => setCredential(event.target.value)}
                 required
@@ -288,7 +288,7 @@ const LoginPage = () => {
               <button
                 type="button"
                 onClick={openResetDialog}
-                className="cursor-pointer text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                className="cursor-pointer text-sm font-medium text-sky-700 transition-colors hover:text-sky-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
               >
                 Forgot Password?
               </button>
@@ -296,7 +296,7 @@ const LoginPage = () => {
 
             <button
               type="submit"
-              className="login-sign-in-button group flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              className="login-sign-in-button group flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-cyan-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               disabled={loading}
             >
               <span className="text-white">{loading ? 'Signing in…' : 'Sign In'}</span>

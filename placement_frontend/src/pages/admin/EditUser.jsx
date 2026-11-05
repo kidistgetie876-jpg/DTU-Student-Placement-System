@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import api from '../../services/api.js';
 import Sidebar from '../../components/layout/Sidebar.jsx';
-import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import './AdminDashboard.css';
 import './EditUser.css';
 
@@ -149,14 +148,6 @@ const EditUser = () => {
           onSelect={(tab) => navigate(`/admin-dashboard?tab=${encodeURIComponent(tab)}`)}
         />
         <main className="col-md-10 p-4 main-content">
-          <DashboardHeader
-            variant="welcome"
-            username={user?.username}
-            role="Admin"
-            subtitle="Edit the selected staff account."
-            dashboardPath="/admin-dashboard"
-            onSelectTab={(tab) => navigate(`/admin-dashboard?tab=${encodeURIComponent(tab)}`)}
-          />
           <div className="edit-user-page container-fluid px-0">
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h3 className="m-0">Edit User</h3>

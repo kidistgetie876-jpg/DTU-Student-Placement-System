@@ -60,7 +60,6 @@ const DashboardHeader = ({
   fullName,
   email,
   role,
-  greeting = 'Welcome back',
   profileDetail,
   dashboardPath,
 }) => {
@@ -101,8 +100,6 @@ const DashboardHeader = ({
   })[rawRole] || rawRole;
   const displayRole = t(profileRole);
   const avatarUrl = getProfilePhotoUrl(activeProfile);
-  const showControls = variant !== 'welcome';
-  const showGreeting = variant !== 'navigation';
   const unreadNotifications = notifications.filter((notification) => (
     Number(notification.is_read) === 0 || notification.is_read === false || notification.read === false
   )).length;
@@ -126,7 +123,7 @@ const DashboardHeader = ({
   useEffect(() => {
     const storedUser = readStoredUser();
     const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
-    if (!showControls || !hasStoredUser || !api || typeof api.get !== 'function') return undefined;
+    if (!hasStoredUser || !api || typeof api.get !== 'function') return undefined;
 
     let isCurrent = true;
     const profileRequest = api.get('api/common/get_profile.php');
@@ -171,13 +168,13 @@ const DashboardHeader = ({
       isCurrent = false;
       window.removeEventListener('user-profile-updated', syncProfile);
     };
-  }, [navigate, showControls]);
+  }, [navigate]);
 
   useEffect(() => {
     const storedUser = readStoredUser();
     const hasStoredUser = !!storedUser && Object.keys(storedUser).length > 0;
     const identity = rawRole === 'student' ? getStudentNotificationIdentity() : {};
-    if (!showControls || (!hasStoredUser && !identity.student_id && !identity.admission_number)
+    if ((!hasStoredUser && !identity.student_id && !identity.admission_number)
       || !api || typeof api.get !== 'function') return undefined;
 
     let isCurrent = true;
@@ -230,10 +227,10 @@ const DashboardHeader = ({
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshOnFocus);
     };
-  }, [showControls, rawRole]);
+  }, [rawRole]);
 
   useEffect(() => {
-    if (!showControls || (!openMenu && !modal)) return undefined;
+    if (!openMenu && !modal) return undefined;
 
     const closeOnOutsideClick = (event) => {
       if (!actionsRef.current?.contains(event.target)) setOpenMenu(null);
@@ -253,7 +250,7 @@ const DashboardHeader = ({
       document.removeEventListener('mousedown', closeOnOutsideClick);
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, [modal, openMenu, showControls]);
+  }, [modal, openMenu]);
 
   const signOut = () => {
     localStorage.removeItem('user');
@@ -397,22 +394,11 @@ const DashboardHeader = ({
   return (
     <>
       {profileToast && <div className="dashboard-profile-save-toast" role="status" aria-live="polite">{profileToast}</div>}
-      {showGreeting && (
-        <header className={`dashboard-topbar${variant === 'welcome' ? ' dashboard-welcome-banner' : ''} mb-4`}>
-          <div className="dashboard-topbar-copy">
-            <h2 className="fw-bold mb-0">
-              {t(greeting)}, <span>{username || activeProfile.username || displayName}</span>!
-            </h2>
-          </div>
-        </header>
-      )}
-
-      {showControls && (
         <div className={variant === 'navigation' ? 'dashboard-header-navigation' : 'dashboard-topbar-actions'} ref={actionsRef}>
           <div className="dashboard-header-menu-anchor">
             <button
               type="button"
-              className="dashboard-control-button dashboard-language-trigger dashboard-accent-indigo"
+              className="dashboard-control-button dashboard-language-trigger dashboard-accent-sky"
               aria-label={t('Select language')}
               aria-expanded={openMenu === 'language'}
               aria-haspopup="menu"
@@ -514,7 +500,7 @@ const DashboardHeader = ({
 
           <button
             type="button"
-            className="dashboard-control-button dashboard-theme-button dashboard-accent-purple"
+            className="dashboard-control-button dashboard-theme-button dashboard-accent-cyan"
             onClick={toggleTheme}
             aria-label={t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}
             title={t(isDarkMode ? 'Switch to light mode' : 'Switch to dark mode')}
@@ -595,7 +581,6 @@ const DashboardHeader = ({
             )}
           </div>
         </div>
-      )}
 
       {modal === 'profile' && (
         createPortal(

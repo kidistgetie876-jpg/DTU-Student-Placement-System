@@ -12,6 +12,7 @@ require_once __DIR__ . '/../../config/placement_semester.php';
 require_once __DIR__ . '/../common/student_placement_schema.php';
 require_once __DIR__ . '/../common/student_placement_allocation.php';
 require_once __DIR__ . '/../common/student_placement_notifications.php';
+require_once __DIR__ . '/../common/student_placement_reset.php';
 header('Content-Type: application/json');
 
 function clearPlacementUnassignedRecord(mysqli $db, ?int $studentId, string $admissionNumber): void
@@ -45,75 +46,6 @@ function clearPlacementUnassignedRecord(mysqli $db, ?int $studentId, string $adm
         throw new RuntimeException('Unable to clean up unassigned student record: ' . $error);
     }
     $statement->close();
-}
-
-function resetPlacementStateForFreshRun(mysqli $db): void
-{
-    $db->begin_transaction();
-
-    foreach (['placement_results', 'unassigned_students', 'placement_college_allocations'] as $table) {
-        if (!studentPlacementTableExists($db, $table)) {
-            continue;
-        }
-        if (!$db->query('DELETE FROM `' . $table . '`')) {
-            throw new RuntimeException("Unable to clear {$table}: " . $db->error);
-        }
-    }
-
-    $studentColumns = studentPlacementTableColumns($db, 'student_data');
-    if ($studentColumns) {
-        $statusColumns = array_values(array_filter(
-            ['placement_status', 'status'],
-            static fn(string $column): bool => in_array($column, $studentColumns, true)
-        ));
-        if ($statusColumns) {
-            $setClauses = array_map(static fn(string $column): string => "`{$column}` = 'Pending'", $statusColumns);
-            $eligibleClauses = array_map(
-                static fn(string $column): string => "LOWER(TRIM(COALESCE(`{$column}`, ''))) NOT IN ('excluded', 'inactive', 'disabled')",
-                $statusColumns
-            );
-            if (!$db->query(
-                'UPDATE `student_data` SET ' . implode(', ', $setClauses)
-                . ' WHERE ' . implode(' AND ', $eligibleClauses)
-            )) {
-                throw new RuntimeException('Unable to reset student placement statuses: ' . $db->error);
-            }
-        }
-    }
-
-    $departmentColumns = studentPlacementTableColumns($db, 'departments');
-    if ($departmentColumns) {
-        $sourceColumn = in_array('total_capacity', $departmentColumns, true)
-            ? 'total_capacity'
-            : (in_array('capacity', $departmentColumns, true) ? 'capacity' : '');
-        $targetColumn = in_array('available_capacity', $departmentColumns, true)
-            ? 'available_capacity'
-            : (in_array('remaining_capacity', $departmentColumns, true) ? 'remaining_capacity' : '');
-        if ($sourceColumn !== '' && $targetColumn !== '') {
-            if (!$db->query("UPDATE `departments` SET `{$targetColumn}` = `{$sourceColumn}`")) {
-                throw new RuntimeException('Unable to restore department capacities: ' . $db->error);
-            }
-        }
-    }
-
-    $collegeColumns = studentPlacementTableColumns($db, 'colleges');
-    if ($collegeColumns) {
-        $sourceColumn = in_array('original_second_sem_capacity', $collegeColumns, true)
-            ? 'original_second_sem_capacity'
-            : (in_array('original_second_semester_capacity', $collegeColumns, true) ? 'original_second_semester_capacity' : '');
-        $targetColumn = in_array('second_sem_capacity', $collegeColumns, true)
-            ? 'second_sem_capacity'
-            : (in_array('second_semester_capacity', $collegeColumns, true) ? 'second_semester_capacity' : '');
-        if ($sourceColumn !== '' && $targetColumn !== '') {
-            if (!$db->query("UPDATE `colleges` SET `{$targetColumn}` = `{$sourceColumn}`")) {
-                throw new RuntimeException('Unable to restore college capacities: ' . $db->error);
-            }
-        }
-    }
-
-    if (!$db->commit()) {
-        throw new RuntimeException('Unable to commit placement reset: ' . $db->error);
-    }
 }
 
 function savePendingSemesterPlacementResult(
@@ -372,11 +304,18 @@ $clearPlacementsRequest = filter_var(
     FILTER_VALIDATE_BOOLEAN
 );
 if ($clearPlacementsRequest || (($input['action'] ?? '') === 'clear_placements')) {
+    $clearSemester = filter_var($input['semester'] ?? null, FILTER_VALIDATE_INT);
+    if (!in_array($clearSemester, [1, 2], true)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'A valid semester (1 or 2) is required to clear placement data.']);
+        exit;
+    }
+
     try {
-        resetPlacementStateForFreshRun($db);
+        resetPlacementStateForFreshRun($db, $clearSemester);
         echo json_encode([
             'success' => true,
-            'message' => 'Placement data has been cleared and capacities restored.',
+            'message' => 'Semester ' . $clearSemester . ' placement data has been cleared and capacities restored.',
         ]);
         exit;
     } catch (Throwable $error) {
@@ -2798,6 +2737,7 @@ function computeMeritScore(array $student, array $rules): float
                 'student_id' => $student['id'],
                 'id_number' => $student['id_number'],
                 'admission_number' => $student['admission_number'],
+                'placement_semester' => $activeSemester,
                 'full_name' => $student['name'],
                 'email' => $student['email'],
                 'stream' => $unassignedStream,

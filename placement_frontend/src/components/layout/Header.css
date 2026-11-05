@@ -1,14 +1,14 @@
 :root {
-  --dtu-blue: #1d4ed8;
-  --dtu-blue-dark: #1e3a8a;
-  --dtu-blue-light: #3730a3;
+  --dtu-blue: #0ea5e9;
+  --dtu-blue-dark: #0369a1;
+  --dtu-blue-light: #0ea5e9;
   --dtu-gold: #f4c95d;
   --dtu-gold-hover: #e5b840;
   --nav-bg: #e9eff7; /* ነጭ ያልሆነ ዘመናዊና ውብ Slate-Ice tint */
 }
 
 .main-header-container {
-  box-shadow: 0 8px 25px rgba(10, 45, 109, 0.12);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   width: 100%;
   position: fixed;
   top: 0;
@@ -19,40 +19,53 @@
 
 /* Tier 1 Styling: University Branding */
 .top-branding-tier {
-  background: #4f46e5;
+  background: #ffffff;
   padding: 0.55rem 0;
-  color: white;
-  border-bottom: 1px solid rgba(224, 231, 255, 0.35);
+  color: #1e293b;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .top-branding-content {
   display: flex;
+  min-height: 3rem;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
 }
 
+.top-branding-content > a {
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.brand-text-wrapper {
+  min-width: 0;
+}
+
 .top-branding-tier.has-dashboard-utilities {
   padding: 0.45rem 0;
-  border-bottom: 1px solid rgba(224, 231, 255, 0.35);
-  background: #4f46e5;
+  min-height: var(--dtu-header-height, 64px);
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 
 .top-branding-tier.has-dashboard-utilities.admin-dashboard-header {
-  min-height: 76px;
+  min-height: var(--dtu-header-height, 64px);
   display: flex;
   align-items: center;
-  background: #4f46e5;
+  background: #ffffff;
 }
 
 .university-logo {
-  height: 48px;
+  height: 44px;
   width: auto;
   border-radius: 12px;
-  border: 2px solid rgba(96, 165, 250, 0.5);
+  border: 1px solid #e2e8f0;
   padding: 3px;
-  background: rgba(255, 255, 255, 0.08);
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.25));
+  background: #ffffff;
+  filter: none;
   transition: transform 0.3s ease;
 }
 
@@ -65,14 +78,14 @@
   font-weight: 800;
   margin: 0;
   letter-spacing: 1.2px;
-  color: #ffffff;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+  color: #0f172a;
+  text-shadow: none;
 }
 
 .system-subtitle {
   font-size: 0.78rem;
   margin: 0;
-  color: #dbeafe;
+  color: #64748b;
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -124,14 +137,14 @@
 }
 
 .navigation-tier .public-nav-link:hover {
-  color: #4f46e5;
+  color: #0369a1;
   transform: scale(1.05);
 }
 
 .navigation-tier .public-nav-link[aria-current="page"] {
-  background: #4f46e5;
+  background: #0369a1;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.22);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.18);
 }
 
 .navigation-tier .public-nav-link[aria-current="page"]:hover {
@@ -139,7 +152,7 @@
 }
 
 .navigation-tier .public-nav-link:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid #0ea5e9;
   outline-offset: 2px;
 }
 
@@ -159,14 +172,14 @@
 /* Nav Link Hover & Active Effects */
 .navigation-tier .nav-link:hover {
   color: var(--dtu-blue) !important;
-  background-color: rgba(10, 45, 109, 0.08);
+  background-color: rgba(14, 165, 233, 0.08);
   transform: translateY(-2px);
 }
 
 .navigation-tier .nav-link.active {
   color: #ffffff !important;
-  background: var(--dtu-blue) !important;
-  box-shadow: 0 4px 12px rgba(10, 45, 109, 0.25);
+  background: linear-gradient(135deg, #0ea5e9 0%, #00b4d8 100%) !important;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.18);
 }
 
 .navigation-tier .nav-link::after {
@@ -296,53 +309,53 @@
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button,
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger {
-  border-color: rgba(224, 231, 255, 0.45);
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button:hover,
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger:hover,
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-control-button[aria-expanded="true"],
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger[aria-expanded="true"] {
-  border-color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  border-color: #7dd3fc;
+  background: #f0f9ff;
+  color: #075985;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-trigger-copy small {
-  color: #eef2ff;
+  color: #64748b;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-profile-avatar {
-  border: 1px solid rgba(224, 231, 255, 0.65);
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  border: 1px solid #bae6fd;
+  background: #e0f2fe;
+  color: #0369a1;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-notification-badge {
-  border-color: #1e3a8a;
+  border-color: #ffffff;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown {
-  border-color: rgba(96, 165, 250, 0.45);
-  background: #172554;
-  color: #f8fafc;
+  border-color: #e2e8f0;
+  background: #ffffff;
+  color: #1e293b;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button {
-  color: #e2e8f0;
+  color: #334155;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button:hover,
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-dropdown button[aria-checked="true"] {
-  background: #1d4ed8;
-  color: #fff;
+  background: #e0f2fe;
+  color: #075985;
 }
 
 .top-branding-tier.has-dashboard-utilities .dashboard-header-navigation .dashboard-role-pill {
-  border: 1px solid rgba(224, 231, 255, 0.5);
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  border: 1px solid #bae6fd;
+  background: #e0f2fe;
+  color: #075985;
 }

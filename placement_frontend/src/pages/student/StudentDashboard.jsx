@@ -18,7 +18,6 @@ import api from '../../services/api.js';
 import '../admin/AdminDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import Sidebar from '../../components/layout/Sidebar.jsx';
-import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
 import StudentAppeal from './StudentAppeal.jsx';
 import SubmitPreferences, {
   hasDuplicateDepartmentChoices,
@@ -1536,7 +1535,7 @@ const StudentDashboard = () => {
   const overviewIsPlaced = /approved|completed|published/i.test(overviewPlacementStatus);
   const overviewScore = profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A';
   const studentAcademicMetrics = [
-    { label: 'CGPA', value: profile?.cgpa ?? profile?.gpa ?? '0.00', icon: GraduationCap, cardClass: 'from-blue-600 to-indigo-700', cardBackground: 'linear-gradient(135deg, #2563eb 0%, #3730a3 100%)' },
+    { label: 'CGPA', value: profile?.cgpa ?? profile?.gpa ?? '0.00', icon: GraduationCap, cardClass: 'from-blue-600 to-sky-700', cardBackground: 'linear-gradient(135deg, #2563eb 0%, #0369a1 100%)' },
     { label: 'Grade 12', value: profile?.grade_12_result ?? profile?.total_mark ?? 'N/A', icon: BookOpen, cardClass: 'from-emerald-600 to-teal-700', cardBackground: 'linear-gradient(135deg, #059669 0%, #0f766e 100%)' },
     { label: 'COC score', value: profile?.coc_result ?? profile?.coc_score ?? 'N/A', icon: Award, cardClass: 'from-amber-500 to-orange-600', cardBackground: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)' },
   ];
@@ -1553,17 +1552,10 @@ const StudentDashboard = () => {
       <div className="row g-0 flex-grow-1">
         <Sidebar role="student" activeItem={tab} onSelect={setTab} notificationCount={unreadNotifications} />
         <main className="col-md-10 p-4 main-content">
-          <DashboardHeader
-            variant="welcome"
-            username={student?.username}
-            role="Student"
-            greeting="Welcome"
-            profileDetail={`ID: ${primaryStudentId}`}
-          />
           {tab === 'overview' && (
             <section className="mx-auto w-full max-w-7xl space-y-5 px-0 py-2 sm:px-2">
               <h1 className="sr-only">Student dashboard</h1>
-              <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-800 via-blue-800 to-cyan-700 p-6 text-white shadow-xl shadow-indigo-950/20 sm:p-8" style={{ backgroundImage: 'linear-gradient(135deg, #3730a3 0%, #1e40af 52%, #0e7490 100%)' }}>
+              <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-sky-800 via-blue-800 to-cyan-700 p-6 text-white shadow-xl shadow-sky-950/20 sm:p-8" style={{ backgroundImage: 'linear-gradient(135deg, #075985 0%, #0369a1 52%, #0e7490 100%)' }}>
                 <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
                 <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(240px,.7fr)] lg:items-center">
                   <div>
@@ -1607,7 +1599,7 @@ const StudentDashboard = () => {
                     type="button"
                     aria-label={`View ${label} details`}
                     onClick={openFinalScoreDetails}
-                    className={`group w-full rounded-2xl bg-gradient-to-br ${cardClass} p-5 text-left text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
+                    className={`group w-full rounded-2xl bg-gradient-to-br ${cardClass} p-5 text-left text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2`}
                     style={{ backgroundImage: cardBackground, color: '#fff' }}
                   >
                     <div className="mb-6 flex items-center justify-between">
@@ -1623,8 +1615,8 @@ const StudentDashboard = () => {
                   type="button"
                   aria-label="View placement status"
                   onClick={() => setTab('result')}
-                  className="group w-full rounded-2xl bg-gradient-to-br from-purple-600 to-pink-700 p-5 text-left text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
-                  style={{ backgroundImage: 'linear-gradient(135deg, #9333ea 0%, #be185d 100%)', color: '#fff' }}
+                  className="group w-full rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 p-5 text-left text-slate-900 shadow-lg shadow-cyan-200 transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
+                  style={{ backgroundImage: 'linear-gradient(90deg, #0ea5e9 0%, #00b4d8 100%)', color: '#0f172a' }}
                 >
                   <div className="mb-5 flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-white">Placement stage</span>
@@ -1650,7 +1642,7 @@ const StudentDashboard = () => {
           {tab === 'preferences' && (
             <section className="mx-auto w-full max-w-5xl space-y-5">
               <header className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Placement preferences</span>
+                <span className="text-xs font-bold uppercase tracking-[.18em] text-sky-700">Placement preferences</span>
                 <h1 className="mb-0 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">{hasActiveAssignedPlacement ? 'Placement Result' : 'Rank Your Department Preferences'}</h1>
                 {!hasActiveAssignedPlacement && <p className="mb-0 text-sm leading-6 text-slate-600">{preferenceSemester === 2
                   ? 'Rank the active departments available in your assigned college.'
@@ -1663,7 +1655,7 @@ const StudentDashboard = () => {
                     ? <p className="text-sm text-slate-700">Assigned department: <strong className="text-slate-900">{latestPlacementDepartment || resultDepartment || 'Not available'}</strong></p>
                     : <p className="text-sm leading-6 text-slate-700">Your department placement is pending approval by the Registrar.</p>}
                   <p className="text-sm text-slate-600">Status: <strong className="text-slate-900">{currentPlacementStatus?.placement_status || profilePlacementStatus || placementResultStatus || 'Pending Approval'}</strong></p>
-                  {isPlacementApproved && <button type="button" className="mt-2 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2" onClick={() => setTab('result')}>
+                  {isPlacementApproved && <button type="button" className="mt-2 inline-flex items-center justify-center rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2" onClick={() => setTab('result')}>
                     View official placement result
                   </button>}
                 </div>
@@ -1698,7 +1690,7 @@ const StudentDashboard = () => {
                         <ol className="m-0 grid list-none gap-2 p-0" aria-label={`Semester ${semester} department preferences`}>
                           {rows.map((row, index) => (
                             <li className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:gap-4" key={`${row.college}-${row.name}-${row.priority}-${index}`}>
-                              <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-indigo-700">Choice #{row.priority}</span>
+                              <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-sky-700">Choice #{row.priority}</span>
                               <span className="font-semibold text-slate-900">{row.name}</span>
                               {row.college && <span className="text-sm text-slate-500 sm:ml-auto">{row.college}</span>}
                             </li>
@@ -1718,7 +1710,7 @@ const StudentDashboard = () => {
                             setEditingPreferences(true);
                             setPrefError('');
                             setPrefSuccess('');
-                          }} className="inline-flex items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">Update Preferences</button>
+                          }} className="inline-flex items-center justify-center rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2">Update Preferences</button>
                         )}
                       </section>
                     );
@@ -1785,7 +1777,7 @@ const StudentDashboard = () => {
                   {prefSuccess && <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{prefSuccess}</div>}
                   {!isPreferenceWindowClosed && <button
                     data-testid="submit-preferences-button"
-                    className="mt-4 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-4 inline-flex items-center justify-center rounded-lg bg-sky-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
                     onClick={handleSave}
                     disabled={isPreferenceWindowClosed || isSecondSemesterChoiceFormLocked || hasDuplicateSelections}
@@ -1807,7 +1799,7 @@ const StudentDashboard = () => {
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="print:hidden inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
+                  className="print:hidden inline-flex w-full items-center justify-center gap-2 rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 sm:w-auto"
                 >
                   <Printer size={17} aria-hidden="true" />
                   Print Placement Slip
@@ -1877,7 +1869,7 @@ const StudentDashboard = () => {
                       <p className="mb-0 break-words text-lg font-semibold text-slate-900">
                         {label === 'Merit Score' && typeof value === 'number' ? value.toFixed(2) : value}
                       </p>
-                      {label === 'Merit Score' && <Award className="mt-3 text-indigo-600" size={19} aria-hidden="true" />}
+                      {label === 'Merit Score' && <Award className="mt-3 text-sky-600" size={19} aria-hidden="true" />}
                     </article>
                   ))}
                 </div>

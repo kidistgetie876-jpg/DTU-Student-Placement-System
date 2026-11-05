@@ -93,7 +93,7 @@ describe('ChoiceMatrix', () => {
       'uppercase',
     );
     expect(screen.getByText('SEMESTER 2 PREFERENCES')).toHaveClass(
-      '!bg-indigo-700',
+      '!bg-sky-700',
       '!text-white',
       '!border-b-2',
       '!font-extrabold',

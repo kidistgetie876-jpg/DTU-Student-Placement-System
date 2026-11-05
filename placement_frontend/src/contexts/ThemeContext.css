@@ -149,17 +149,19 @@
 }
 
 .dark-mode .role-sidebar {
-  background: #4f46e5 !important;
-  border-color: rgba(224, 231, 255, 0.24) !important;
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
 
 .dark-mode .role-sidebar-item {
-  color: #fff !important;
+  color: #475569 !important;
 }
 
 .dark-mode .role-sidebar-item:hover,
 .dark-mode .role-sidebar-item.active {
-  color: #fff;
+  border-color: #bae6fd !important;
+  background: #e0f2fe !important;
+  color: #075985 !important;
 }
 
 html.eye-care-mode,

@@ -153,10 +153,10 @@ function Header() {
                       <NavLink
                         to={link.path}
                         end={link.path === '/'}
-                        className={({ isActive }) => `public-nav-link inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        className={({ isActive }) => `public-nav-link inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
                           isActive
-                            ? 'bg-indigo-600 text-white shadow-md hover:text-white'
-                            : 'text-slate-700 hover:text-indigo-600'
+                            ? 'bg-sky-600 text-white shadow-md hover:text-white'
+                            : 'text-slate-700 hover:text-sky-600'
                         }`}
                       >
                         {t(link.label)}

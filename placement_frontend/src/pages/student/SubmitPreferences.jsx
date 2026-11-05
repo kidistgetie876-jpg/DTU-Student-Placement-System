@@ -235,9 +235,9 @@ const SubmitPreferences = ({
           : null)
         : Array.from({ length: semesterTwoChoiceCount }, (_, index) => (
           <label className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700 shadow-sm sm:p-5" key={`semester-two-choice-${index}`} htmlFor={`semester-two-choice-${index}`}>
-            <span className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-800">{index + 1}</span> Choice #{index + 1}</span>
+            <span className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-sky-100 text-xs font-bold text-sky-800">{index + 1}</span> Choice #{index + 1}</span>
             <select
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
               id={`semester-two-choice-${index}`}
               aria-label={`Choice #${index + 1}`}
               value={semesterTwoPreferences[index] || ''}
@@ -300,7 +300,7 @@ const SubmitPreferences = ({
         return (
           <section key={`preference-choice-${index}`} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-100 font-bold text-indigo-800">{index + 1}</span>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sky-100 font-bold text-sky-800">{index + 1}</span>
               <div>
                 <h3 className="mb-0 text-base font-bold text-slate-900">Choice #{index + 1}</h3>
                 <p className="mb-0 text-sm text-slate-500">{choice.group ? groupLabel(choice.group) : 'Choose a college or placement group'}</p>
@@ -309,7 +309,7 @@ const SubmitPreferences = ({
             <label className="grid gap-2 text-sm font-semibold text-slate-700" htmlFor={`preference-choice-${index}`}>
               <span>College or placement group</span>
             <select
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
               id={`preference-choice-${index}`}
               aria-label={`Choice #${index + 1}`}
               value={choice.group}
@@ -331,7 +331,7 @@ const SubmitPreferences = ({
             </select>
             </label>
             {loadingGroups[choice.group] && (
-              <span className="text-sm font-medium text-indigo-700" role="status">Loading available departments...</span>
+              <span className="text-sm font-medium text-sky-700" role="status">Loading available departments...</span>
             )}
             {isDynamicGroup && (
               <div className="space-y-3 rounded-xl bg-slate-50 p-4">
@@ -344,9 +344,9 @@ const SubmitPreferences = ({
                   const selected = choice.departments || [];
                   return (
                     <label className="grid gap-2 text-sm font-semibold text-slate-700" key={`${choice.group}-${department.id}`} htmlFor={`department-${index}-${departmentIndex}`}>
-                      <span className="flex items-center gap-2"><span className="grid h-6 w-6 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-800">{suffix}</span> Choice #{index + 1}{suffix}</span>
+                      <span className="flex items-center gap-2"><span className="grid h-6 w-6 place-items-center rounded-full bg-sky-100 text-xs font-bold text-sky-800">{suffix}</span> Choice #{index + 1}{suffix}</span>
                       <select
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                         id={`department-${index}-${departmentIndex}`}
                         aria-label={`Choice #${index + 1}${suffix} Department`}
                         value={selected[departmentIndex] || ''}
@@ -388,7 +388,7 @@ const SubmitPreferences = ({
               <label className="grid gap-2 text-sm font-semibold text-slate-700" htmlFor={`department-${index}-law`}>
                 <span>Department ({activeDepartments.length} active)</span>
                 <select
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                   id={`department-${index}-law`}
                   aria-label={`Choice #${index + 1} Department`}
                   value={choice.department || ''}

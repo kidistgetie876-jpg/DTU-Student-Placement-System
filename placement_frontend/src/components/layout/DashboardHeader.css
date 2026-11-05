@@ -33,16 +33,8 @@
   font-size: clamp(1.25rem, 2vw, 1.65rem);
 }
 
-.dashboard-welcome-banner .dashboard-topbar-copy h2 {
-  color: #1e293b;
-}
-
-.dashboard-welcome-banner .dashboard-topbar-copy h2 span {
-  color: #3730a3;
-}
-
 .dashboard-topbar-copy h2 span {
-  color: #4338ca;
+  color: #0369a1;
 }
 
 .dashboard-topbar-copy p {
@@ -814,7 +806,7 @@
 
 .dashboard-topbar {
   border-color: rgba(224, 231, 255, 0.35);
-  background: #4f46e5;
+  background: #0ea5e9;
   color: #fff;
 }
 

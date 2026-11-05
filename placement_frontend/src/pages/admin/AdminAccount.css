@@ -18,8 +18,8 @@
 .admin-account-header {
   padding: 1.5rem;
   border: 0;
-  background: linear-gradient(110deg, #6d28d9 0%, #4f46e5 100%);
-  color: #fff;
+  background: linear-gradient(110deg, #0ea5e9 0%, #00b4d8 100%);
+  color: #0f172a;
 }
 
 .admin-account-header h4 {
@@ -75,39 +75,39 @@
 }
 
 .admin-account-input:focus {
-  border-color: #7c3aed;
+  border-color: #0ea5e9;
   background-color: #fff;
-  box-shadow: 0 0 0 0.2rem rgba(124, 58, 237, 0.16);
+  box-shadow: 0 0 0 0.2rem rgba(14, 165, 233, 0.18);
 }
 
 .admin-account-password-section {
-  border-color: #e8e6f2 !important;
-  background: #f8f7fc;
+  border-color: #bae6fd !important;
+  background: #f0f9ff;
 }
 
 .admin-account-primary-button,
 .admin-account-primary-button.btn {
   padding: 0.7rem 1.5rem;
-  border: 1px solid #6d28d9;
+  border: 1px solid #0ea5e9;
   border-radius: 0.75rem;
-  background: #6d28d9;
-  color: #fff;
+  background: linear-gradient(90deg, #0ea5e9 0%, #00b4d8 100%);
+  color: #0f172a;
   font-weight: 650;
-  box-shadow: 0 6px 14px rgba(109, 40, 217, 0.2);
+  box-shadow: 0 6px 14px rgba(14, 165, 233, 0.2);
   transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .admin-account-primary-button:hover:not(:disabled) {
-  border-color: #5b21b6;
-  background: #5b21b6;
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(91, 33, 182, 0.24);
+  border-color: #0284c7;
+  background: linear-gradient(90deg, #0284c7 0%, #0891b2 100%);
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.24);
   transform: translateY(-1px);
 }
 
 .admin-account-primary-button:focus-visible,
 .admin-account-cancel-button:focus-visible {
-  outline: 3px solid rgba(124, 58, 237, 0.3);
+  outline: 3px solid rgba(14, 165, 233, 0.3);
   outline-offset: 2px;
 }
 

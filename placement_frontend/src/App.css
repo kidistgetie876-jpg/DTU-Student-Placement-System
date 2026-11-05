@@ -83,9 +83,9 @@
 :root{
   --dtu-bg: #f8fafc;
   --dtu-surface: #ffffff;
-  --dtu-primary: #1e1b4b;
-  --dtu-primary-600: #4338ca;
-  --dtu-accent: #4f46e5;
+  --dtu-primary: #0f172a;
+  --dtu-primary-600: #075985;
+  --dtu-accent: #0369a1;
   --dtu-muted: #6c757d;
   --dtu-success: #198754;
   --dtu-danger: #dc3545;

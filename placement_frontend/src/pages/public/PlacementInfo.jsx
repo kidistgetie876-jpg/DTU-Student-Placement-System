@@ -89,24 +89,24 @@ const formatPlacementDate = (value) => {
 };
 
 const guidanceTabs = [
-  { id: "rules", label: "Rules & Criteria", inactiveStyle: "border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100" },
+  { id: "rules", label: "Rules & Criteria", inactiveStyle: "border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100" },
   { id: "capacity", label: "Capacity Overview", inactiveStyle: "border-blue-200 bg-blue-50 text-blue-900 hover:bg-blue-100" },
   { id: "login", label: "Login Guide", inactiveStyle: "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100" },
-  { id: "preferences", label: "Rank Preferences", inactiveStyle: "border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100" },
+  { id: "preferences", label: "Rank Preferences", inactiveStyle: "border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100" },
   { id: "results", label: "Results & Appeal", inactiveStyle: "border-rose-200 bg-rose-50 text-rose-900 hover:bg-rose-100" },
   { id: "schedule", label: "Schedule", inactiveStyle: "border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100" },
 ];
 
-function RuleCard({ icon: Icon, title, children, accent = 'indigo' }) {
+function RuleCard({ icon: Icon, title, children, accent = 'sky' }) {
   const accentStyles = {
-    indigo: { border: 'border-l-indigo-600', icon: 'text-indigo-700', iconBg: 'bg-indigo-100' },
+    sky: { border: 'border-l-sky-600', icon: 'text-sky-700', iconBg: 'bg-sky-100' },
     emerald: { border: 'border-l-emerald-600', icon: 'text-emerald-700', iconBg: 'bg-emerald-100' },
     blue: { border: 'border-l-blue-600', icon: 'text-blue-700', iconBg: 'bg-blue-100' },
     amber: { border: 'border-l-amber-500', icon: 'text-amber-700', iconBg: 'bg-amber-100' },
     rose: { border: 'border-l-rose-600', icon: 'text-rose-700', iconBg: 'bg-rose-100' },
     teal: { border: 'border-l-teal-600', icon: 'text-teal-700', iconBg: 'bg-teal-100' },
   };
-  const styles = accentStyles[accent] || accentStyles.indigo;
+  const styles = accentStyles[accent] || accentStyles.sky;
 
   return (
     <section className={`h-full rounded-xl border border-slate-200 border-l-4 ${styles.border} bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6`} aria-label={title}>
@@ -135,12 +135,12 @@ function PlacementRulesContent({ rules }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <div className="lg:col-span-2">
-        <RuleCard icon={Calculator} title={formula.title} accent="indigo">
+        <RuleCard icon={Calculator} title={formula.title} accent="sky">
           <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {formula.components.map((component) => (
-              <div className="rounded-lg bg-indigo-50 px-4 py-3" key={component.weight_key}>
-                <p className="mb-1 text-sm font-bold text-indigo-950">{component.label}</p>
-                <p className="mb-0 text-sm text-indigo-900">
+              <div className="rounded-lg bg-sky-50 px-4 py-3" key={component.weight_key}>
+                <p className="mb-1 text-sm font-bold text-sky-950">{component.label}</p>
+                <p className="mb-0 text-sm text-sky-900">
                   {component.denominator ? `Score / ${component.denominator} × ` : ''}
                   {component.weight}%
                 </p>
@@ -222,7 +222,7 @@ const placementGuidance = {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {settings.capacityDepartments.map((department) => (
-                  <tr className="transition-colors hover:bg-indigo-50/50" key={department.id}>
+                  <tr className="transition-colors hover:bg-sky-50/50" key={department.id}>
                     <td className="whitespace-nowrap px-4 py-3">{department.id}</td>
                     <td className="px-4 py-3">
                       <div>{department.stream || '—'}</div>
@@ -231,7 +231,7 @@ const placementGuidance = {
                       )}
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-900">{department.name}</td>
-                    <td className="px-4 py-3 text-right font-bold text-indigo-900">{department.capacity}</td>
+                    <td className="px-4 py-3 text-right font-bold text-sky-900">{department.capacity}</td>
                   </tr>
                 ))}
               </tbody>
@@ -249,7 +249,7 @@ const placementGuidance = {
         <ol className="space-y-3">
           {[settings.loginStep1, settings.loginStep2, settings.loginStep3, settings.loginStep4, settings.loginStep5].map((step, index) => (
             <li className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm" key={step}>
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-800">{index + 1}</span>
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sky-100 text-xs font-bold text-sky-800">{index + 1}</span>
               <span>{step}</span>
             </li>
           ))}
@@ -270,10 +270,10 @@ const placementGuidance = {
             settings.preferenceStep4,
           ].map((step, index) => (
             <div key={step}>
-              <div className="h-full rounded-xl border border-slate-200 bg-gradient-to-br from-white to-indigo-50/70 p-5 shadow-sm">
+              <div className="h-full rounded-xl border border-slate-200 bg-gradient-to-br from-white to-sky-50/70 p-5 shadow-sm">
                 <div className="mb-3 flex items-center gap-3">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-700 text-sm font-bold text-white">{index + 1}</span>
-                  <strong className="text-indigo-950">Step {index + 1}</strong>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-700 text-sm font-bold text-white">{index + 1}</span>
+                  <strong className="text-sky-950">Step {index + 1}</strong>
                 </div>
                 <p className="mb-0 text-sm leading-6 text-slate-700">{step}</p>
               </div>
@@ -444,7 +444,7 @@ function PlacementInfo() {
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
       <header className="mb-8 text-center">
-        <span className="mb-4 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-800">Student Guidance</span>
+        <span className="mb-4 inline-flex rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-bold text-sky-800">Student Guidance</span>
         <h1 className="mb-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{placementSettings.guideTitle}</h1>
         <p className="mx-auto mb-0 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
           {placementSettings.guideDescription}
@@ -459,14 +459,14 @@ function PlacementInfo() {
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
-        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-indigo-100 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-100 p-4 sm:gap-3 sm:p-5" role="group" aria-label="Placement information sections">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-sky-100 bg-gradient-to-r from-slate-50 via-blue-50 to-sky-100 p-4 sm:gap-3 sm:p-5" role="group" aria-label="Placement information sections">
             {guidanceTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2.5 text-sm font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${activeTab === tab.id ? 'border-transparent bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-900/25' : `${tab.inactiveStyle} shadow-sm hover:-translate-y-0.5 hover:shadow-md`}`}
+                className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2.5 text-sm font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${activeTab === tab.id ? 'border-transparent bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-sky-900/25' : `${tab.inactiveStyle} shadow-sm hover:-translate-y-0.5 hover:shadow-md`}`}
                 style={activeTab === tab.id
-                  ? { backgroundImage: "linear-gradient(to right, #2563eb, #4f46e5)", color: "#ffffff" }
+                  ? { backgroundImage: "linear-gradient(to right, #0ea5e9, #00b4d8)", color: "#0f172a" }
                   : undefined}
                 aria-pressed={activeTab === tab.id}
                 onClick={() => setActiveTab(tab.id)}

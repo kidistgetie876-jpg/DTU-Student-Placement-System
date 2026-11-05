@@ -309,7 +309,7 @@ const Reports = ({ leader, department, students = [] }) => {
                     </div>
                     <button
                       type="button"
-                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                       aria-expanded={isExpanded}
                       aria-controls={`report-details-${report.id}`}
                       onClick={() => {
@@ -336,7 +336,7 @@ const Reports = ({ leader, department, students = [] }) => {
                       {report.file_path && (
                           <button
                             type="button"
-                            className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
+                            className="rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
                             onClick={() => handleOpenAttachment(report.file_path, report.id)}
                           >
                             Open attachment

@@ -153,7 +153,7 @@ const StudentAppeal = ({ studentId, placement }) => {
     <section className="mx-auto w-full max-w-5xl space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" aria-labelledby="student-appeal-title">
       <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <span className="text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Registrar support</span>
+          <span className="text-xs font-bold uppercase tracking-[.18em] text-sky-700">Registrar support</span>
           <h2 id="student-appeal-title" className="mb-1 mt-1 text-2xl font-extrabold text-slate-900">Submit Appeal</h2>
           <p className="mb-0 text-sm text-slate-600">Share a placement concern with the Registrar.</p>
         </div>
@@ -177,7 +177,7 @@ const StudentAppeal = ({ studentId, placement }) => {
           <label className="text-sm font-semibold text-slate-700" htmlFor="appeal-subject">Subject</label>
           <input
             id="appeal-subject"
-            className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+            className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
             maxLength={255}
@@ -188,7 +188,7 @@ const StudentAppeal = ({ studentId, placement }) => {
           <label className="text-sm font-semibold text-slate-700" htmlFor="appeal-message">Complaint details</label>
           <textarea
             id="appeal-message"
-            className="w-full resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+            className="w-full resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
             rows={5}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
@@ -197,7 +197,7 @@ const StudentAppeal = ({ studentId, placement }) => {
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" className="rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting || !hasStudentIdentity}>
+          <button type="submit" className="rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting || !hasStudentIdentity}>
             {submitting ? 'Submitting...' : 'Submit Appeal'}
           </button>
           {feedback && (

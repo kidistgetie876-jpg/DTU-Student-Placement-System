@@ -47,7 +47,7 @@
   width: 2.35rem;
   height: 2.35rem;
   place-items: center;
-  border: 1px solid rgba(10, 45, 109, 0.1);
+  border: 1px solid rgba(14, 116, 144, 0.12);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.94);
   color: #334155;
@@ -58,12 +58,12 @@
 
 .login-modal-close:hover {
   transform: rotate(90deg);
-  background: #0a2d6d;
+  background: #0369a1;
   color: #fff;
 }
 
 .login-modal-close:focus-visible {
-  outline: 3px solid #f4c95d;
+  outline: 3px solid #0ea5e9;
   outline-offset: 2px;
 }
 
@@ -75,8 +75,8 @@
   min-height: auto;
   padding: 2rem 1rem;
   background:
-    radial-gradient(ellipse at 15% 10%, rgba(47, 102, 177, 0.12), transparent 38%),
-    linear-gradient(145deg, #f1f5fa 0%, #e7edf5 100%);
+    radial-gradient(ellipse at 15% 10%, rgba(14, 165, 233, 0.1), transparent 38%),
+    linear-gradient(145deg, #f8fafc 0%, #effaff 100%);
 }
 
 .login-page-dialog {
@@ -110,13 +110,13 @@
 }
 
 .login-page-tabs button.active {
-  border-bottom-color: #0a2d6d;
+  border-bottom-color: #0ea5e9;
   background: #fff;
-  color: #0a2d6d;
+  color: #075985;
 }
 
 .login-page-tabs button:focus-visible {
-  outline: 3px solid rgba(10, 45, 109, 0.3);
+  outline: 3px solid rgba(14, 165, 233, 0.3);
   outline-offset: -3px;
 }
 

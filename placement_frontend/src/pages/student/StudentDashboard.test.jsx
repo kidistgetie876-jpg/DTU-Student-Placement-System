@@ -58,18 +58,18 @@ describe('StudentDashboard', () => {
   it('shows the student overview and opens the preference form', async () => {
     render(<StudentDashboard />);
 
-    expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
-    expect(screen.getByText('CGPA')).toBeInTheDocument();
+    expect(await screen.findByText('CGPA')).toBeInTheDocument();
+    expect(screen.queryByText(/Welcome, /i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View CGPA details' }))
-      .toHaveClass('bg-gradient-to-br', 'from-blue-600', 'to-indigo-700');
+      .toHaveClass('bg-gradient-to-br', 'from-blue-600', 'to-sky-700');
     expect(screen.getByRole('button', { name: 'View CGPA details' }))
-      .toHaveStyle({ backgroundImage: 'linear-gradient(135deg, #2563eb 0%, #3730a3 100%)', color: 'rgb(255, 255, 255)' });
+      .toHaveStyle({ backgroundImage: 'linear-gradient(135deg, #2563eb 0%, #0369a1 100%)', color: 'rgb(255, 255, 255)' });
     expect(screen.getByRole('button', { name: 'View Grade 12 details' }))
       .toHaveClass('bg-gradient-to-br', 'from-emerald-600', 'to-teal-700');
     expect(screen.getByRole('button', { name: 'View COC score details' }))
       .toHaveClass('bg-gradient-to-br', 'from-amber-500', 'to-orange-600');
     expect(screen.getByRole('button', { name: 'View placement status' }))
-      .toHaveClass('bg-gradient-to-br', 'from-purple-600', 'to-pink-700');
+      .toHaveClass('bg-gradient-to-r', 'from-sky-500', 'to-cyan-500');
     expect(screen.getByText(/Stream/i)).toBeInTheDocument();
     expect(screen.getByText('Placement status')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Your placement overview' })).toBeInTheDocument();
@@ -2777,8 +2777,8 @@ describe('StudentDashboard', () => {
 
     render(<StudentDashboard />);
 
-    expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
-    expect(screen.getByText(/GPA/i)).toBeInTheDocument();
+    expect(await screen.findByText(/GPA/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Welcome, /i)).not.toBeInTheDocument();
     expect(screen.getAllByText('0.00').length).toBeGreaterThan(0);
   });
 });

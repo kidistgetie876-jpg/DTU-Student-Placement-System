@@ -31,7 +31,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #4f46e5;
+  color: #0369a1;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -39,13 +39,13 @@
 }
 
 .login-forgot-link button:hover {
-  color: #3730a3;
+  color: #075985;
   text-decoration: underline;
 }
 
 .login-forgot-link button:focus-visible {
   border-radius: 0.25rem;
-  outline: 2px solid #6366f1;
+  outline: 2px solid #0284c7;
   outline-offset: 2px;
 }
 
@@ -73,20 +73,24 @@
 }
 
 .login-page .login-form-input:focus {
-  border-color: #6366f1;
+  border-color: #0ea5e9;
   background-color: #fff;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.28);
 }
 
 .login-page .login-sign-in-button {
   appearance: none;
   border: 0;
-  background: linear-gradient(90deg, #4f46e5 0%, #2563eb 100%);
-  color: #ffffff;
+  background: linear-gradient(90deg, #0ea5e9 0%, #00b4d8 100%);
+  color: #0f172a;
+}
+
+.login-page .login-sign-in-button :is(span, svg) {
+  color: #0f172a !important;
 }
 
 .login-page .login-sign-in-button:hover:not(:disabled) {
-  background: linear-gradient(90deg, #4338ca 0%, #1d4ed8 100%);
+  background: linear-gradient(90deg, #0284c7 0%, #0891b2 100%);
 }
 
 .login-page .login-sign-in-button:disabled {
@@ -163,7 +167,7 @@
 .login-reset-close:focus-visible,
 .login-reset-secondary:focus-visible,
 .login-reset-submit:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid #0284c7;
   outline-offset: 2px;
 }
 
@@ -240,10 +244,10 @@
 }
 
 .login-reset-input:focus {
-  border-color: #6366f1;
+  border-color: #0ea5e9;
   outline: none;
   background: #fff;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.28);
 }
 
 .login-reset-submit,
@@ -262,13 +266,13 @@
 .login-reset-submit {
   width: 100%;
   border: 0;
-  background: linear-gradient(90deg, #4f46e5, #2563eb);
-  color: #fff;
-  box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.2);
+  background: linear-gradient(90deg, #0ea5e9 0%, #00b4d8 100%);
+  color: #0f172a;
+  box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.2);
 }
 
 .login-reset-submit:hover {
-  background: linear-gradient(90deg, #4338ca, #1d4ed8);
+  background: linear-gradient(90deg, #0284c7, #0891b2);
 }
 
 .login-reset-submit:disabled {

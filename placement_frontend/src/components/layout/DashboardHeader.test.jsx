@@ -126,8 +126,8 @@ describe('DashboardHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select language' }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'አማርኛ' }));
 
-    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('እንኳን ደህና መጡ, Aster!');
     expect(screen.getByRole('button', { name: 'ቋንቋ ይምረጡ' })).toHaveTextContent('አማርኛ');
+    expect(screen.queryByText(/Welcome back/i)).not.toBeInTheDocument();
     expect(document.documentElement).toHaveAttribute('lang', 'am');
     expect(localStorage.getItem('language')).toBe('am');
   });
@@ -379,13 +379,12 @@ describe('DashboardHeader', () => {
     expect(api.post.mock.calls[0][1].get('profile_photo')).toBe(photo);
   });
 
-  it('renders a clean greeting without controls in dashboard content', () => {
-    renderDashboardHeader({ variant: 'welcome' });
+  it('renders dashboard controls without a welcome banner', () => {
+    renderDashboardHeader();
 
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Welcome back, Aster!');
+    expect(screen.queryByText(/Welcome back/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Review placements, departments, and approvals.')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Select language' })).not.toBeInTheDocument();
-    expect(api.get).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Select language' })).toBeInTheDocument();
   });
 
   it('places dashboard controls alongside university branding in one top bar', async () => {

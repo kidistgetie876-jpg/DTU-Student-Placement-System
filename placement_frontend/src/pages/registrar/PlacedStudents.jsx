@@ -127,7 +127,7 @@ const SemesterTable = ({ semester, students }) => {
                   <td className="px-4 py-3.5 text-slate-700">{student.department || '—'}</td>
                   <td className="px-4 py-3.5">
                     {choiceRank > 0
-                      ? <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">Choice {choiceRank}</span>
+                      ? <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">Choice {choiceRank}</span>
                       : '—'}
                   </td>
                   <td className="px-4 py-3.5">{student.quota_category || '—'}</td>
