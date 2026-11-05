@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import api from '../../services/api.js';
 import '../admin/AdminDashboard.css';
-import './StudentDashboard.css';
 import OfficialPrintLetterhead from '../../components/common/OfficialPrintLetterhead.jsx';
 import Sidebar from '../../components/layout/Sidebar.jsx';
 import DashboardHeader from '../../components/layout/DashboardHeader.jsx';
@@ -178,12 +177,25 @@ const getPlacementGroupFromCollege = (collegeName) => {
   return '';
 };
 
-const filterSecondSemesterDepartments = (departments, assignedStream) => {
-  const normalizedStream = normalizeStream(assignedStream);
-  if (!normalizedStream) return [];
+const normalizeCollegeName = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, ' ')
+  .replace(/&/g, 'and')
+  .replace(/^(college|school) of /, '')
+  .replace(/sciences\b/g, 'science')
+  .replace(/^(social science|social sciences)$/, 'other social science')
+  .replace(/other social sciences/g, 'other social science')
+  .replace(/other natural sciences/g, 'other natural science');
+
+const filterSecondSemesterDepartments = (departments, assignedCollege = '') => {
+  const normalizedCollege = normalizeCollegeName(assignedCollege);
+  if (!normalizedCollege) return [];
   return departments.filter((department) => (
     isAvailableInSecondSemester(department)
-    && normalizeStream(getDepartmentStream(department)) === normalizedStream
+    && normalizeCollegeName(
+      department.college_name || department.college || department.faculty,
+    ) === normalizedCollege
   ));
 };
 
@@ -262,6 +274,16 @@ const getInitialFirstSemesterPreferences = (choices, departments) => {
   return rows;
 };
 
+const getSavedSemesterChoices = (preferences, semester, fallbackSemester = 0) => {
+  const key = `semester${semester}_choices`;
+  const rows = Array.isArray(preferences?.[key])
+    ? preferences[key]
+    : Number(preferences?.semester || fallbackSemester) === semester
+      ? preferences?.choices || preferences?.data || []
+      : [];
+  return [...rows].sort((left, right) => Number(left.priority || 0) - Number(right.priority || 0));
+};
+
 const getDepartmentStream = (department) => {
   const rawStream = department?.stream || department?.academic_stream || department?.category;
   const normalizedStream = normalizeStream(rawStream);
@@ -320,6 +342,8 @@ const StudentDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [firstSemesterPreferences, setFirstSemesterPreferences] = useState([]);
   const [semesterTwoPreferences, setSemesterTwoPreferences] = useState([]);
+  const [savedSemesterOneChoices, setSavedSemesterOneChoices] = useState([]);
+  const [savedSemesterTwoChoices, setSavedSemesterTwoChoices] = useState([]);
   const [placementResult, setPlacementResult] = useState(null);
   const [currentPlacementStatus, setCurrentPlacementStatus] = useState(null);
   const [preferenceSemester, setPreferenceSemester] = useState(1);
@@ -518,7 +542,7 @@ const StudentDashboard = () => {
         if (resPrefs.data?.assignedStream) {
           setStudent((current) => ({ ...current, stream: current?.stream || resPrefs.data.assignedStream }));
         }
-        setAssignedCollege(statusAllocatedCollege || resPrefs.data?.assignedCollege || '');
+        setAssignedCollege(resPrefs.data?.assignedCollege || statusAllocatedCollege || '');
         setAssignedPlacementGroup(allocatedGroup);
         let serverAllowedDepartments = Array.isArray(resPrefs.data?.allowedDepartments)
           ? resPrefs.data.allowedDepartments
@@ -534,8 +558,18 @@ const StudentDashboard = () => {
           });
           if (activeDepartmentsResponse.data?.success === false
             || !Array.isArray(activeDepartmentsResponse.data?.departments)) {
-            throw new Error(activeDepartmentsResponse.data?.message || 'Unable to load departments for your assigned stream.');
+            throw new Error(activeDepartmentsResponse.data?.message || 'Unable to load departments for your assigned college.');
           }
+          const departmentAllocationCollege = String(
+            activeDepartmentsResponse.data?.allocated_college
+            || resPrefs.data?.assignedCollege
+            || allocatedCollege,
+          );
+          const departmentPlacementGroup = normalizePlacementGroup(
+            activeDepartmentsResponse.data?.placementGroup,
+          ) || allocatedGroup;
+          setAssignedCollege(departmentAllocationCollege);
+          setAssignedPlacementGroup(departmentPlacementGroup);
           const normalizedSecondSemesterDepartments = activeDepartmentsResponse.data.departments.map((department) => ({
             ...department,
             stream: getDepartmentStream(department),
@@ -546,12 +580,7 @@ const StudentDashboard = () => {
           }));
           serverAllowedDepartments = filterSecondSemesterDepartments(
             normalizedSecondSemesterDepartments,
-            activeDepartmentsResponse.data?.assigned_stream
-              || resPrefs.data?.assignedStream
-              || studentData?.field_of_study
-              || studentData?.stream
-              || parsedUser?.stream
-              || '',
+            departmentAllocationCollege,
           );
           setAllDepartments(serverAllowedDepartments);
         }
@@ -584,12 +613,15 @@ const StudentDashboard = () => {
           setSubmissionDeadline(resPrefs.data.submissionDeadline);
         }
 
-        const list = resPrefs.data?.choices || resPrefs.data?.data || [];
+        const semesterOneChoices = getSavedSemesterChoices(resPrefs.data, 1, currentSemester);
+        const semesterTwoChoices = getSavedSemesterChoices(resPrefs.data, 2, currentSemester);
+        setSavedSemesterOneChoices(semesterOneChoices);
+        setSavedSemesterTwoChoices(semesterTwoChoices);
         let savedSecondSemesterChoices = [];
         if (currentSemester === 2) {
           const allowedIds = new Set((serverAllowedDepartments || normalizedDepartments)
             .map((department) => String(department.id)));
-          savedSecondSemesterChoices = list
+          savedSecondSemesterChoices = semesterTwoChoices
             .map((choice) => {
               const id = String(choice.dept_id ?? choice.department_id ?? choice.id ?? '');
               if (id && id !== '0' && allowedIds.has(id)) return `department:${id}`;
@@ -618,16 +650,16 @@ const StudentDashboard = () => {
         } else {
           setSemesterTwoPreferences([]);
         }
-        const hasCurrentSemesterPreferences = currentSemester === 2
-          ? savedSecondSemesterChoices.length > 0
-          : Array.isArray(list) && list.length > 0;
-        if (resPrefs.data?.success && hasCurrentSemesterPreferences) {
-          setFirstSemesterPreferences(currentSemester === 1
-            ? getInitialFirstSemesterPreferences(list, normalizedDepartments)
-            : []);
-          setPreferencesSubmitted(true);
-        } else {
-          setFirstSemesterPreferences([]);
+        const currentSemesterChoices = currentSemester === 2
+          ? savedSecondSemesterChoices
+          : semesterOneChoices;
+        const hasCurrentSemesterPreferences = currentSemesterChoices.length > 0;
+        setFirstSemesterPreferences(resPrefs.data?.success && currentSemester === 1
+          ? getInitialFirstSemesterPreferences(semesterOneChoices, normalizedDepartments)
+          : []);
+        setPreferencesSubmitted(Boolean(resPrefs.data?.success && hasCurrentSemesterPreferences));
+        if (currentSemester !== 2) {
+          setSemesterTwoPreferences([]);
         }
       } catch (error) {
         console.error("Load Error:", error);
@@ -752,22 +784,11 @@ const StudentDashboard = () => {
       const submissionSemester = Number(preferenceSemester);
       const selectedChoices = semesterTwoPreferences.slice(0, semesterTwoChoiceCount);
       if (!selectedChoices.length || selectedChoices.some((choice) => !choice)) {
-        setPrefError('Please rank every active department available in your assigned stream.');
+        setPrefError('Please rank every active department available in your assigned college.');
         return;
       }
       if (new Set(selectedChoices).size !== selectedChoices.length) {
         setPrefError(duplicateSelectionMessage);
-        return;
-      }
-      const selectedWrongStreamChoice = selectedChoices.some((selectedChoice) => {
-        if (selectedChoice.startsWith('college:')) return true;
-        const departmentId = selectedChoice.slice('department:'.length);
-        const department = semesterTwoDepartments.find((item) => String(item.id) === departmentId);
-        return !department
-          || normalizeStream(getDepartmentStream(department)) !== assignedStream;
-      });
-      if (selectedWrongStreamChoice) {
-        setPrefError('Semester 2 preferences must stay within your assigned stream.');
         return;
       }
       const formattedChoices = selectedChoices.map((selectedChoice, index) => {
@@ -791,9 +812,11 @@ const StudentDashboard = () => {
           || Number(response.data.saved_count) !== formattedChoices.length) {
           throw new Error(response.data?.message || 'The server could not verify that all preferences were saved for Semester 2.');
         }
-        setPrefSuccess(`Semester 2 preferences saved and verified (${response.data.saved_count} choices).`);
-        setPreferencesSubmitted(true);
-        setEditingPreferences(false);
+        await finishPreferenceSubmission(
+          submissionSemester,
+          formattedChoices,
+          `Semester 2 preferences saved and verified (${response.data.saved_count} choices).`,
+        );
       } catch (error) {
         setPrefError(error.response?.data?.message || error.message || 'An error occurred while saving your preferences.');
       }
@@ -876,9 +899,11 @@ const StudentDashboard = () => {
           || Number(res.data.saved_count) !== formattedChoices.length) {
           throw new Error(res.data.message || `The server could not verify that all preferences were saved for Semester ${submissionSemester}.`);
         }
-        setPrefSuccess(`Semester ${submissionSemester} preferences saved and verified (${res.data.saved_count} choices).`);
-        setPreferencesSubmitted(true);
-        setEditingPreferences(false);
+        await finishPreferenceSubmission(
+          submissionSemester,
+          formattedChoices,
+          `Semester ${submissionSemester} preferences saved and verified (${res.data.saved_count} choices).`,
+        );
       } else {
         setPrefError(res.data?.message || 'Failed to submit preferences.');
       }
@@ -1017,16 +1042,24 @@ const StudentDashboard = () => {
             ? 'School of Law'
             : department.college_name || department.college || department.faculty || '',
         }));
+        const departmentAllocationCollege = isSecondSemesterStudent
+          ? String(response.data?.allocated_college || preferencesResponse.data?.assignedCollege || allocatedCollege)
+          : allocatedCollege;
+        const departmentPlacementGroup = isSecondSemesterStudent
+          ? normalizePlacementGroup(response.data?.placementGroup) || allocatedGroup
+          : allocatedGroup;
         const departments = isSecondSemesterStudent
           ? filterSecondSemesterDepartments(
             fetchedDepartments,
-            assignedStream,
+            departmentAllocationCollege,
           )
           : fetchedDepartments;
         setAllDepartments(departments);
         if (preferencesResponse.data?.success) {
           const preferencesData = preferencesResponse.data;
           const semester = isSecondSemesterStudent ? 2 : Number(preferencesData.semester || 1);
+          setSavedSemesterOneChoices(getSavedSemesterChoices(preferencesData, 1, semester));
+          setSavedSemesterTwoChoices(getSavedSemesterChoices(preferencesData, 2, semester));
           setActivePlacementSemester(isSecondSemesterStudent ? 2 : activeSemester);
           const allowedDepartmentsFromPreferences = Array.isArray(preferencesData.allowedDepartments)
             ? preferencesData.allowedDepartments
@@ -1039,8 +1072,8 @@ const StudentDashboard = () => {
             ? Number(preferencesData.minimumChoices)
             : null;
           setPreferenceSemester(semester);
-          setAssignedCollege(allocatedCollege);
-          setAssignedPlacementGroup(allocatedGroup);
+          setAssignedCollege(departmentAllocationCollege);
+          setAssignedPlacementGroup(departmentPlacementGroup);
           setAllowedDepartmentIds(allowedDepartments
             ? allowedDepartments.map((department) => Number(department.id))
             : null);
@@ -1134,8 +1167,7 @@ const StudentDashboard = () => {
       setNotificationsLoading(true);
       setNotificationsFeedback('');
       try {
-        const identity = getStudentRequestIdentity(student, profile);
-        const response = await api.get('api/student/get_student_notifications.php', { params: identity });
+        const response = await api.get('api/student/get_student_notifications.php');
         if (response.data?.success === false) {
           throw new Error(response.data.message || 'Unable to load student notifications.');
         }
@@ -1273,12 +1305,80 @@ const StudentDashboard = () => {
       semesterTwoColleges.length ? 1 : 0,
     ),
   );
+  const semesterOneSummaryRows = savedSemesterOneChoices.map((choice, index) => ({
+    name: choice.dept_name || choice.department_name || choice.department || choice.name || 'Department unavailable',
+    college: choice.college_name || choice.college || '',
+    priority: Number(choice.priority) || index + 1,
+  }));
+  const semesterTwoSummaryRows = savedSemesterTwoChoices.map((choice, index) => ({
+    name: choice.dept_name || choice.department_name || choice.department || choice.name || 'Department unavailable',
+    college: choice.college_name || choice.college || '',
+    priority: Number(choice.priority) || index + 1,
+  }));
   const hasDuplicateSelections = hasDuplicateDepartmentChoices(
     preferenceSemester,
     firstSemesterPreferences,
     semesterTwoPreferences,
   );
   const duplicateSelectionMessage = 'Duplicate selection: Each choice must be a unique department.';
+  const finishPreferenceSubmission = async (semester, submittedChoices, successMessage) => {
+    const departmentCatalog = [
+      ...allDepartments,
+      ...semesterTwoDepartments,
+      ...Object.values(dynamicGroupDepartments).flat().filter(Boolean),
+    ];
+    const submittedRows = submittedChoices.map((choice, index) => {
+      const department = departmentCatalog.find((item) => Number(item.id) === Number(choice.dept_id));
+      return {
+        ...choice,
+        dept_name: choice.dept_name || department?.name || 'Department unavailable',
+        college_name: choice.college_name || department?.college_name || department?.college || '',
+        semester,
+        priority: Number(choice.priority) || index + 1,
+      };
+    });
+    if (semester === 1) {
+      setSavedSemesterOneChoices(submittedRows);
+    } else {
+      setSavedSemesterTwoChoices(submittedRows);
+    }
+    setPreferencesSubmitted(true);
+    setEditingPreferences(false);
+    setPrefSuccess(successMessage);
+    setPrefError('');
+
+    try {
+      const identity = getStudentRequestIdentity(student, profile);
+      const admissionNumber = String(
+        profile?.admission_number
+        || profile?.id_number
+        || student?.admission_number
+        || student?.id_number
+        || '',
+      ).trim();
+      const response = await api.get('api/student/student_preferences.php', {
+        params: {
+          ...identity,
+          ...(admissionNumber ? { admission_number: admissionNumber } : {}),
+        },
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'The preferences service did not return the saved choices.');
+      }
+      const refreshedSemesterOneChoices = getSavedSemesterChoices(response.data, 1, semester);
+      const refreshedSemesterTwoChoices = getSavedSemesterChoices(response.data, 2, semester);
+      const refreshedCurrentChoices = semester === 1
+        ? refreshedSemesterOneChoices
+        : refreshedSemesterTwoChoices;
+      if (refreshedCurrentChoices.length < submittedRows.length) {
+        throw new Error(`The server returned ${refreshedCurrentChoices.length} of ${submittedRows.length} saved choices.`);
+      }
+      setSavedSemesterOneChoices(refreshedSemesterOneChoices);
+      setSavedSemesterTwoChoices(refreshedSemesterTwoChoices);
+    } catch (error) {
+      setPrefError(`Preferences were saved, but the latest saved choices could not be refreshed. Reload the page to verify them. ${error.response?.data?.message || error.message || ''}`.trim());
+    }
+  };
   const isSecondSemesterChoicePortalOpen = preferenceSemester === 2 && secondSemesterChoicePortalOpen;
   const isPreferenceSemesterInactive = activePlacementSemester !== null && (
     preferenceSemester === 2 && activePlacementSemester !== 2
@@ -1306,6 +1406,28 @@ const StudentDashboard = () => {
   const normalizedPlacementResultStatus = placementResultStatus.toLowerCase();
   const resultDepartment = String(resultPlacement?.assigned_department || '').trim();
   const isPendingSecondSemesterResult = normalizedPlacementResultStatus === 'pending 2nd semester';
+  const placementApprovalStatus = String(
+    currentPlacementStatus?.approval_status
+      || currentPlacementStatus?.approvalStatus
+      || resultPlacement?.approval_status
+      || resultPlacement?.approvalStatus
+      || resultPlacement?.placement_status
+      || currentPlacementStatus?.placement_status
+      || currentPlacementStatus?.latest_placement?.status
+      || resultStudent?.approval_status
+      || resultStudent?.approvalStatus
+      || resultStudent?.status
+      || currentPlacementStatus?.status
+      || profile?.approval_status
+      || profile?.placement_status
+      || profile?.status
+      || student?.approval_status
+      || student?.placement_status
+      || student?.status
+      || '',
+  ).trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const isPlacementApproved = ['approved', 'published', 'completed', 'finalized'].includes(placementApprovalStatus)
+    || placementResult?.published === true;
   const isUnderReviewResult = !isPendingSecondSemesterResult && (
     normalizedPlacementResultStatus === 'under review'
     || (Boolean(resultPlacement) && (
@@ -1314,6 +1436,7 @@ const StudentDashboard = () => {
     ))
   );
   const isAssignedResult = Boolean(resultDepartment)
+    && isPlacementApproved
     && !isUnderReviewResult
     && !isPendingSecondSemesterResult
     && !(isClosed && !resultPublished);
@@ -1353,11 +1476,16 @@ const StudentDashboard = () => {
     ?? profile?.cumulative_score
     ?? 'Not available';
   const displayedPreferenceAlerts = new Set();
-  const renderPreferenceAlert = (message, className = 'student-preferences-message is-error', role = 'alert') => {
+  const renderPreferenceAlert = (message, tone = 'error', role = 'alert') => {
     const text = String(message || '').trim();
     if (!text || displayedPreferenceAlerts.has(text)) return null;
     displayedPreferenceAlerts.add(text);
-    return <div key={text} className={className} role={role}>{text}</div>;
+    const toneClasses = tone === 'success'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : tone === 'info'
+        ? 'border-blue-200 bg-blue-50 text-blue-900'
+        : 'border-rose-200 bg-rose-50 text-rose-800';
+    return <div key={text} className={`mt-3 rounded-xl border px-4 py-3 text-sm ${toneClasses}`} role={role}>{text}</div>;
   };
   const latestPlacementStatus = String(
     currentPlacementStatus?.placement_status
@@ -1394,6 +1522,7 @@ const StudentDashboard = () => {
     || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed'].includes(latestPlacementStatus)
     || ['assigned', 'pending approval', 'approved', 'published', 'finalized', 'completed'].includes(profilePlacementStatus.toLowerCase())
   );
+  const isPlacementPendingApproval = hasActiveAssignedPlacement && !isPlacementApproved && !isPendingSecondSemester;
   let overviewPlacementStatus = profilePlacementStatus;
   if (isPendingSecondSemester) {
     overviewPlacementStatus = 'Deferred to 2nd Semester - Pending Placement';
@@ -1405,38 +1534,17 @@ const StudentDashboard = () => {
     overviewPlacementStatus = `Placement Completed for Semester ${latestPlacementSemester}`;
   }
   const overviewIsPlaced = /approved|completed|published/i.test(overviewPlacementStatus);
-  let placementStatusMessage = 'Your current placement progress is shown below.';
-  if (isPendingSecondSemester) {
-    placementStatusMessage = 'Your department placement process will take place during the 2nd Semester placement run.';
-  } else if (latestPlacementStatus === 'pending') {
-    const assignedDepartment = latestPlacementDepartment
-      ? `You have been assigned to ${latestPlacementDepartment}. `
-      : '';
-    placementStatusMessage = `${assignedDepartment}Your Semester ${latestPlacementSemester} placement is awaiting approval.`;
-  } else if (latestPlacementStatus === 'approved') {
-    placementStatusMessage = `Your Semester ${latestPlacementSemester} placement has been approved.`;
-  } else if (latestPlacementStatus === 'published') {
-    placementStatusMessage = `Your Semester ${latestPlacementSemester} placement has been published and is complete.`;
-  }
   const overviewScore = profile?.cumulative_avg ?? profile?.cumulative_score ?? 'N/A';
-  const overviewChoices = (firstSemesterPreferences.length ? firstSemesterPreferences : semesterTwoPreferences)
-    .flatMap((choice) => {
-      if (choice?.department || choice?.name) return [choice.department || choice.name];
-      if (Array.isArray(choice?.departments) && choice.departments.length) return choice.departments;
-      return choice?.group ? [preferenceGroupLabel(choice.group)] : [];
-    })
-    .filter(Boolean)
-    .slice(0, 5);
   const studentAcademicMetrics = [
-    { label: 'CGPA', value: profile?.cgpa ?? profile?.gpa ?? '0.00', icon: GraduationCap, iconClass: 'bg-indigo-50 text-indigo-700' },
-    { label: 'Grade 12', value: profile?.grade_12_result ?? profile?.total_mark ?? 'N/A', icon: BookOpen, iconClass: 'bg-blue-50 text-blue-700' },
-    { label: 'COC score', value: profile?.coc_result ?? profile?.coc_score ?? 'N/A', icon: Award, iconClass: 'bg-violet-50 text-violet-700' },
+    { label: 'CGPA', value: profile?.cgpa ?? profile?.gpa ?? '0.00', icon: GraduationCap, cardClass: 'from-blue-600 to-indigo-700', cardBackground: 'linear-gradient(135deg, #2563eb 0%, #3730a3 100%)' },
+    { label: 'Grade 12', value: profile?.grade_12_result ?? profile?.total_mark ?? 'N/A', icon: BookOpen, cardClass: 'from-emerald-600 to-teal-700', cardBackground: 'linear-gradient(135deg, #059669 0%, #0f766e 100%)' },
+    { label: 'COC score', value: profile?.coc_result ?? profile?.coc_score ?? 'N/A', icon: Award, cardClass: 'from-amber-500 to-orange-600', cardBackground: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)' },
   ];
 
   if (loading) return <div className="p-6 text-center">Loading student portal...</div>;
 
   return (
-    <div className="student-dashboard-container min-h-screen d-flex flex-column">
+    <div className="min-h-screen bg-slate-50">
       <OfficialPrintLetterhead
         office="ADMISSIONS & REGISTRAR OFFICE"
         title={tab === 'result' ? 'OFFICIAL STUDENT DEPARTMENT PLACEMENT CONFIRMATION SLIP' : 'OFFICIAL STUDENT DASHBOARD RECORD'}
@@ -1452,113 +1560,79 @@ const StudentDashboard = () => {
             greeting="Welcome"
             profileDetail={`ID: ${primaryStudentId}`}
           />
-          <section
-            className={`mb-4 flex flex-col gap-3 rounded-xl border-l-4 p-4 sm:flex-row sm:items-center sm:justify-between ${
-              overviewIsPlaced
-                ? 'border-emerald-600 bg-emerald-50 text-emerald-950'
-                : 'border-amber-500 bg-amber-50 text-amber-950'
-            }`}
-            aria-label="Placement status update"
-            data-testid="placement-status-banner"
-          >
-            <div>
-              <p className="mb-1 text-xs font-bold uppercase tracking-wider">Your placement status</p>
-              <p className="mb-1 font-bold">{overviewPlacementStatus}</p>
-              <p className="mb-0 text-sm">{placementStatusMessage}</p>
-            </div>
-          </section>
-
           {tab === 'overview' && (
-            <section className="container-fluid student-overview space-y-5">
-              <h1 className="visually-hidden">Student dashboard</h1>
-              <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm sm:p-7">
+            <section className="mx-auto w-full max-w-7xl space-y-5 px-0 py-2 sm:px-2">
+              <h1 className="sr-only">Student dashboard</h1>
+              <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-800 via-blue-800 to-cyan-700 p-6 text-white shadow-xl shadow-indigo-950/20 sm:p-8" style={{ backgroundImage: 'linear-gradient(135deg, #3730a3 0%, #1e40af 52%, #0e7490 100%)' }}>
+                <div className="pointer-events-none absolute -right-10 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
                 <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(240px,.7fr)] lg:items-center">
                   <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Student placement overview</p>
-                    <h2 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Your placement overview</h2>
-                    <p className="mb-4 max-w-2xl text-sm leading-6 text-slate-600">
-                      Review your academic profile and follow your current placement stage.
-                    </p>
-                    <p className="mb-0 text-sm text-slate-600">
-                      <span className="font-semibold text-slate-900">
-                        ID: {primaryStudentId}
-                      </span>
-                      <span className="mx-2 text-slate-300">|</span>
-                      Stream <span className="font-semibold text-slate-900">{assignedStream || 'Not available'}</span>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-[.18em] text-white">Student dashboard</p>
+                    <h2 className="mb-3 text-2xl font-extrabold tracking-tight sm:text-3xl">Your placement overview</h2>
+                    <p className="mb-0 text-sm text-white">
+                      ID <span className="font-semibold text-white">{primaryStudentId}</span>
+                      <span className="mx-2 text-white">·</span>
+                      {assignedStream || 'Stream not available'}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="rounded-2xl border border-white/30 bg-slate-950/25 p-4 shadow-lg sm:p-5">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-slate-700">Current placement status</span>
+                      <span className="text-sm font-semibold text-white">Placement status</span>
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
-                        overviewIsPlaced ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
+                        overviewIsPlaced ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-950'
                       }`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${overviewIsPlaced ? 'bg-emerald-600' : 'bg-amber-600'}`} aria-hidden="true" />
                         {overviewPlacementStatus}
                       </span>
                     </div>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-600">Cumulative merit score</p>
-                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-slate-900">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-white">Cumulative merit score</p>
+                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-white">
                       {typeof overviewScore === 'number' ? overviewScore.toFixed(2) : overviewScore}
                     </p>
                     <button
                       type="button"
                       aria-label="View Final Score details"
                       onClick={openFinalScoreDetails}
-                      className="mt-2 rounded-md text-xs font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-4 transition hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      className="mt-2 rounded-md text-xs font-semibold text-white underline decoration-white underline-offset-4 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     >
                       View score breakdown
                     </button>
-                    <p className="mb-0 mt-1 text-xs text-slate-600">
-                      Active cycle: Semester {currentPlacementStatus?.active_semester || activePlacementSemester || preferenceSemester}
-                    </p>
-                    {overviewChoices.length > 0 && (
-                      <div className="mt-4 border-t border-slate-200 pt-3">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-600">Submitted choices</p>
-                        <div className="flex flex-wrap gap-2">
-                          {overviewChoices.map((choice, index) => (
-                            <span key={`${choice}-${index}`} className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-900">
-                              {index + 1}. {choice}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </section>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {studentAcademicMetrics.map(({ label, value, icon: MetricIcon, iconClass }) => (
+                {studentAcademicMetrics.map(({ label, value, icon: MetricIcon, cardClass, cardBackground }) => (
                   <button
                     key={label}
                     type="button"
                     aria-label={`View ${label} details`}
                     onClick={openFinalScoreDetails}
-                    className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                    className={`group w-full rounded-2xl bg-gradient-to-br ${cardClass} p-5 text-left text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
+                    style={{ backgroundImage: cardBackground, color: '#fff' }}
                   >
                     <div className="mb-6 flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</span>
-                      <span className={`grid h-10 w-10 place-items-center rounded-xl ${iconClass}`}>
+                      <span className="text-xs font-bold uppercase tracking-wider text-white">{label}</span>
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/25 text-white">
                         <MetricIcon size={20} aria-hidden="true" />
                       </span>
                     </div>
-                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-slate-900">{value}</p>
+                    <p className="mb-0 text-3xl font-extrabold tracking-tight text-white">{value}</p>
                   </button>
                 ))}
                 <button
                   type="button"
                   aria-label="View placement status"
                   onClick={() => setTab('result')}
-                  className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+                  className="group w-full rounded-2xl bg-gradient-to-br from-purple-600 to-pink-700 p-5 text-left text-white shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                  style={{ backgroundImage: 'linear-gradient(135deg, #9333ea 0%, #be185d 100%)', color: '#fff' }}
                 >
                   <div className="mb-5 flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Placement stage</span>
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                    <span className="text-xs font-bold uppercase tracking-wider text-white">Placement stage</span>
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/25 text-white">
                       <Clock size={20} aria-hidden="true" />
                     </span>
                   </div>
-                  <p className="mb-0 break-words text-lg font-extrabold tracking-tight text-slate-900">{overviewPlacementStatus}</p>
-                  <p className="mb-0 mt-1 text-xs text-slate-500">Latest status from the Registrar</p>
+                  <p className="mb-0 break-words text-lg font-extrabold tracking-tight text-white">{overviewPlacementStatus}</p>
                 </button>
               </div>
               {finalScoreDetails && (
@@ -1574,22 +1648,24 @@ const StudentDashboard = () => {
           )}
 
           {tab === 'preferences' && (
-            <section className="container-fluid student-preferences-page">
-              <header className="student-preferences-heading">
-                <span className="student-section-eyebrow">PLACEMENT PREFERENCES</span>
-                <h1>{hasActiveAssignedPlacement ? 'Placement Result' : 'Rank Your Department Preferences'}</h1>
-                {!hasActiveAssignedPlacement && <p>{preferenceSemester === 2
-                  ? 'Rank the active departments available across colleges in your assigned stream.'
+            <section className="mx-auto w-full max-w-5xl space-y-5">
+              <header className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Placement preferences</span>
+                <h1 className="mb-0 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">{hasActiveAssignedPlacement ? 'Placement Result' : 'Rank Your Department Preferences'}</h1>
+                {!hasActiveAssignedPlacement && <p className="mb-0 text-sm leading-6 text-slate-600">{preferenceSemester === 2
+                  ? 'Rank the active departments available in your assigned college.'
                   : 'Choose your preferred placement group, then rank the active departments available to you.'}</p>}
               </header>
               {hasActiveAssignedPlacement ? (
-                <div className="student-placement-result-locked" role="status" data-testid="assigned-placement-choice-lock">
-                  <h2>Department placement already assigned</h2>
-                  <p>Assigned department: <strong>{latestPlacementDepartment || resultDepartment || 'Not available'}</strong></p>
-                  <p>Status: <strong>{currentPlacementStatus?.placement_status || profilePlacementStatus || placementResultStatus || 'Pending Approval'}</strong></p>
-                  <button type="button" className="student-preferences-submit" onClick={() => setTab('result')}>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" role="status" data-testid="assigned-placement-choice-lock">
+                  <h2 className="mb-3 text-xl font-bold text-slate-900">{isPlacementApproved ? 'Department placement approved' : 'Department placement pending approval'}</h2>
+                  {isPlacementApproved
+                    ? <p className="text-sm text-slate-700">Assigned department: <strong className="text-slate-900">{latestPlacementDepartment || resultDepartment || 'Not available'}</strong></p>
+                    : <p className="text-sm leading-6 text-slate-700">Your department placement is pending approval by the Registrar.</p>}
+                  <p className="text-sm text-slate-600">Status: <strong className="text-slate-900">{currentPlacementStatus?.placement_status || profilePlacementStatus || placementResultStatus || 'Pending Approval'}</strong></p>
+                  {isPlacementApproved && <button type="button" className="mt-2 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2" onClick={() => setTab('result')}>
                     View official placement result
-                  </button>
+                  </button>}
                 </div>
               ) : (
                 <>
@@ -1601,90 +1677,65 @@ const StudentDashboard = () => {
                       ? 'The Semester 2 choice portal is open.'
                       : 'The Semester 2 choice portal is closed. Preferences cannot be submitted right now.'
                   ),
-                  `student-preferences-message ${isSecondSemesterChoicePortalOpen ? 'is-success' : 'is-error'}`,
+                  isSecondSemesterChoicePortalOpen ? 'success' : 'error',
                   isSecondSemesterChoicePortalOpen ? 'status' : 'alert',
                 )
               )}
               {isPreferenceSemesterInactive && renderPreferenceAlert(
                 `Semester ${preferenceSemester} choices are locked while Semester ${activePlacementSemester} is active for placement.`,
               )}
-              {preferencesSubmitted && !editingPreferences && !isPreferenceWindowClosed && (
-                <div className="student-preferences-summary">
-                  <div role="status" className="alert bg-emerald-50 text-emerald-800 border border-emerald-200">Preferences submitted</div>
-                  <p>Preferences submitted. You can update or re-order your choices anytime until the placement results are published by the Registrar.</p>
-                  {assignedStream && <p>{assignedStream.split(' ')[0]}</p>}
-                  {firstSemesterPreferences.flatMap((choice) => {
-                    const departments = choice.department
-                      ? [choice.department]
-                      : (choice.departments || []).filter(Boolean);
-                    return departments.length
-                      ? departments.map((name) => {
-                        const department = allDepartments.find((item) => normalizeDepartmentName(item.name) === normalizeDepartmentName(name));
-                        return { group: choice.group, name, college: department?.college_name };
-                      })
-                      : [{ group: choice.group, name: preferenceGroupLabel(choice.group), college: '' }];
-                  }).map((row, index) => (
-                    <p key={`${row.group}-${row.name}-${index}`}>
-                      <span>Rank #{index + 1}</span> <span>{row.name}</span> <span>{row.college}</span>
-                    </p>
-                  ))}
-                  {firstSemesterPreferences.map((choice) => choice.college_name && (
-                    <p key={`college-${choice.group}`}>{choice.college_name}</p>
-                  ))}
-                  <button type="button" disabled={isPreferenceWindowClosed} onClick={() => {
-                    const hasWrongStreamPreference = firstSemesterPreferences.some((choice) => (
-                      (assignedStream === 'Natural Science' && ['law', 'other_social_science'].includes(choice.group))
-                      || (assignedStream === 'Social Science' && ['health_science', 'git', 'other_natural_science'].includes(choice.group))
-                    ));
-                    if (hasWrongStreamPreference) {
-                      setPrefError('You can only select departments within your assigned stream (Social Science / Natural Science).');
-                      return;
-                    }
-                    if (preferenceSemester === 2) {
-                      setSemesterTwoPreferences((current) => (
-                        Array(Math.max(current.length, semesterTwoChoiceCount)).fill('')
-                      ));
-                    } else {
-                      setFirstSemesterPreferences((current) => current.map((choice) => ({
-                        ...choice,
-                        department: '',
-                        departments: (choice.departments || []).map(() => ''),
-                      })));
-                    }
-                    setEditingPreferences(true);
-                    setPrefError('');
-                    setPrefSuccess('');
-                  }} className="student-preferences-submit">Update Preferences</button>
+              {(preferenceSemester === 1 ? savedSemesterOneChoices : savedSemesterTwoChoices).length > 0 && (
+                <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" data-testid="saved-semester-preferences">
+                  <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">Preferences submitted</div>
+                  {assignedStream && preferenceSemester !== 2 && <p>{assignedStream.split(' ')[0]}</p>}
+                  {[preferenceSemester].map((semester) => {
+                    const rows = semester === 1 ? semesterOneSummaryRows : semesterTwoSummaryRows;
+                    if (!rows.length) return null;
+                    const isCurrentSemester = preferenceSemester === semester;
+                    return (
+                      <section className="space-y-3" key={semester}>
+                        <h2 className="mb-0 text-lg font-bold text-slate-900">Semester {semester} Department Preferences</h2>
+                        <ol className="m-0 grid list-none gap-2 p-0" aria-label={`Semester ${semester} department preferences`}>
+                          {rows.map((row, index) => (
+                            <li className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:gap-4" key={`${row.college}-${row.name}-${row.priority}-${index}`}>
+                              <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-indigo-700">Choice #{row.priority}</span>
+                              <span className="font-semibold text-slate-900">{row.name}</span>
+                              {row.college && <span className="text-sm text-slate-500 sm:ml-auto">{row.college}</span>}
+                            </li>
+                          ))}
+                        </ol>
+                        {isCurrentSemester && preferencesSubmitted && !editingPreferences && !isPreferenceWindowClosed && (
+                          <button type="button" onClick={() => {
+                            if (preferenceSemester === 2) {
+                              setSemesterTwoPreferences(Array(semesterTwoChoiceCount).fill(''));
+                            } else {
+                              setFirstSemesterPreferences((current) => current.map((choice) => ({
+                                ...choice,
+                                department: '',
+                                departments: (choice.departments || []).map(() => ''),
+                              })));
+                            }
+                            setEditingPreferences(true);
+                            setPrefError('');
+                            setPrefSuccess('');
+                          }} className="inline-flex items-center justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2">Update Preferences</button>
+                        )}
+                      </section>
+                    );
+                  })}
                   {prefSuccess && <div role="status" className="alert bg-emerald-50 text-emerald-800 border border-emerald-200">{prefSuccess}</div>}
                   {renderPreferenceAlert(prefError)}
-                  {prefError.includes('assigned stream') && (
-                    <>
-                      <select aria-label="Registered Stream (Locked to your profile)" value={assignedStream.split(' ')[0]} disabled>
-                        <option value={assignedStream.split(' ')[0]}>{assignedStream.split(' ')[0]}</option>
-                      </select>
-                      <label>Choice #1
-                        <select aria-label="Choice #1" value="" disabled>
-                          <option value="">-- Select preference --</option>
-                        </select>
-                      </label>
-                    </>
-                  )}
                 </div>
               )}
               {placementAlreadyExecuted && renderPreferenceAlert(
                 'Placement has already been processed. Choice editing is locked.',
-                'student-preferences-message is-error',
+                'error',
                 'status',
               )}
               {isClosed && renderPreferenceAlert(
                 'Preference submission is now closed because placement results have already been published.',
                 '',
                 'status',
-              )}
-              {preferencesSubmitted && resultPublished && isClosed && (
-                <select aria-label="Registered Stream (Locked to your profile)" value={assignedStream.split(' ')[0]} disabled>
-                  <option value={assignedStream.split(' ')[0]}>{assignedStream.split(' ')[0]}</option>
-                </select>
               )}
               {isIneligible && (
                 <div role="alert">
@@ -1697,7 +1748,7 @@ const StudentDashboard = () => {
                 && renderPreferenceAlert(`The preference submission deadline closed on ${submissionDeadline}. New submissions are no longer accepted.`, '', 'alert')}
               {(!preferencesSubmitted || editingPreferences) && !isIneligible && !isPreferenceWindowClosed && !placementStatusError && (
                 <>
-                  {editingPreferences && <p className="student-preferences-editing" role="status">You are editing your submitted preferences.</p>}
+                  {editingPreferences && <p className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">Editing your submitted preferences</p>}
                   <SubmitPreferences
                     assignedStream={assignedStream}
                     preferenceSemester={preferenceSemester}
@@ -1726,14 +1777,15 @@ const StudentDashboard = () => {
                     )}
                   />
                   {hasDuplicateSelections && (
-                    <div className="student-preferences-message is-error" role="alert">
+                    <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
                       {duplicateSelectionMessage}
                     </div>
                   )}
                   {renderPreferenceAlert(prefError)}
-                  {prefSuccess && <div role="status" className="student-preferences-message is-success">{prefSuccess}</div>}
+                  {prefSuccess && <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{prefSuccess}</div>}
                   {!isPreferenceWindowClosed && <button
-                    className="student-preferences-submit"
+                    data-testid="submit-preferences-button"
+                    className="mt-4 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
                     onClick={handleSave}
                     disabled={isPreferenceWindowClosed || isSecondSemesterChoiceFormLocked || hasDuplicateSelections}
@@ -1746,7 +1798,7 @@ const StudentDashboard = () => {
           )}
 
           {tab === 'result' && (
-            <section className="student-placement-result-print mx-auto w-full max-w-5xl space-y-6 rounded-2xl bg-white p-4 shadow-sm sm:p-6 lg:p-8">
+            <section className="mx-auto w-full max-w-5xl space-y-6 rounded-2xl bg-white p-4 shadow-sm print:max-w-none print:shadow-none sm:p-6 lg:p-8">
               <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h1 className="mb-1 text-2xl font-bold text-slate-900 sm:text-3xl">Placement Result</h1>
@@ -1763,20 +1815,28 @@ const StudentDashboard = () => {
               </header>
               {resultLoading ? <p className="text-sm text-slate-600" role="status">Loading your placement result...</p>
                 : resultError ? <p className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">{resultError}</p>
-                  : isUnderReviewResult ? (
-                    <div className="flex items-start gap-3 rounded-xl border-l-4 border-blue-600 bg-blue-50 p-4 text-blue-950 sm:p-5" role="status">
-                      <AlertCircle className="mt-0.5 shrink-0 text-blue-700" size={22} aria-hidden="true" />
-                      <div>
-                        <h2 className="mb-1 text-lg font-bold">Placement Under Review</h2>
-                        <p className="mb-0 text-sm leading-6">Your department assignment is currently being verified and has not been published yet.</p>
-                      </div>
-                    </div>
-                  ) : isPendingSecondSemesterResult ? (
+                  : isPendingSecondSemesterResult ? (
                     <div className="flex items-start gap-3 rounded-xl border-l-4 border-amber-500 bg-amber-50 p-4 text-amber-950 sm:p-5" role="status">
                       <Clock className="mt-0.5 shrink-0 text-amber-700" size={22} aria-hidden="true" />
                       <div>
                         <h2 className="mb-1 text-lg font-bold">Pending 2nd Semester</h2>
                         <p className="mb-0 text-sm leading-6">Your second-semester placement is pending. Please check back for updates.</p>
+                      </div>
+                    </div>
+                  ) : isPlacementPendingApproval ? (
+                    <div className="flex items-start gap-3 rounded-xl border-l-4 border-amber-500 bg-amber-50 p-4 text-amber-950 sm:p-5" role="status">
+                      <Clock className="mt-0.5 shrink-0 text-amber-700" size={22} aria-hidden="true" />
+                      <div>
+                        <h2 className="mb-1 text-lg font-bold">Placement Pending Approval</h2>
+                        <p className="mb-0 text-sm leading-6">Your department placement process is currently pending approval by the Registrar. Please check back later.</p>
+                      </div>
+                    </div>
+                  ) : isUnderReviewResult ? (
+                    <div className="flex items-start gap-3 rounded-xl border-l-4 border-blue-600 bg-blue-50 p-4 text-blue-950 sm:p-5" role="status">
+                      <AlertCircle className="mt-0.5 shrink-0 text-blue-700" size={22} aria-hidden="true" />
+                      <div>
+                        <h2 className="mb-1 text-lg font-bold">Placement Under Review</h2>
+                        <p className="mb-0 text-sm leading-6">Your department assignment is currently being verified and has not been published yet.</p>
                       </div>
                     </div>
                   ) : isAssignedResult ? (

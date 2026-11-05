@@ -183,28 +183,15 @@ const placementStatusLabel = (status) => {
 export const filterChoiceMatrixRecordsForSemester = (records, semester) => {
   if (!Array.isArray(records) || semester !== 2) return Array.isArray(records) ? records : [];
 
-  return records.flatMap((record) => {
+  return records.filter((record) => {
     const choices = Array.isArray(record?.choices) ? record.choices : [];
-    const secondSemesterChoices = choices.filter((choice) => (
-      Number(choice?.semester ?? choice?.semester_number ?? 1) === 2
-    ));
-    const secondSemesterMap = record?.sem2_choices || record?.semester_2_choices || {};
-    const hasSecondSemesterMap = Object.keys(secondSemesterMap).length > 0;
+    const semesterOneMap = record?.sem1_choices || record?.semester_1_choices || {};
+    const semesterTwoMap = record?.sem2_choices || record?.semester_2_choices || {};
+    const hasSavedChoices = choices.length > 0
+      || Object.keys(semesterOneMap).length > 0
+      || Object.keys(semesterTwoMap).length > 0;
     const status = placementStatusLabel(record?.status || record?.placement_status);
-    if (normalizePlacementStatus(status) !== 'pending 2nd semester'
-      && !secondSemesterChoices.length
-      && !hasSecondSemesterMap) {
-      return [];
-    }
-
-    return [{
-      ...record,
-      status,
-      placement_status: status,
-      choices: secondSemesterChoices,
-      sem1_choices: {},
-      semester_1_choices: [],
-    }];
+    return hasSavedChoices || normalizePlacementStatus(status) === 'pending 2nd semester';
   });
 };
 
@@ -849,6 +836,7 @@ const RegistrarDashboard = () => {
       generalQuotaPercent: 80,
       reservedFemaleQuotaPercent: 20,
       minGpa: 1.75,
+      publicRules: null,
     };
     try {
       const raw = localStorage.getItem('placementRules');
@@ -1510,6 +1498,7 @@ const RegistrarDashboard = () => {
           generalQuotaPercent: Number(settings.general_quota_percent ?? 80),
           reservedFemaleQuotaPercent: Number(settings.reserved_female_quota_percent ?? 20),
           minGpa: Number(settings.min_gpa ?? 1.75),
+          publicRules: settings.public_rules,
         };
 
         const configuredSemester = Number(settings.active_semester || 1);
@@ -2827,9 +2816,79 @@ const RegistrarDashboard = () => {
   const placementRulesChanged = Boolean(placementRulesSnapshot.current)
     && Object.keys(placementRules).some((key) => placementRules[key] !== placementRulesSnapshot.current[key]);
 
+  const updatePublicRuleField = (section, field, value) => {
+    setPlacementRules((current) => ({
+      ...current,
+      publicRules: {
+        ...current.publicRules,
+        [section]: {
+          ...current.publicRules?.[section],
+          [field]: value,
+        },
+      },
+    }));
+  };
+  const updatePublicRuleList = (section, field, value) => {
+    updatePublicRuleField(section, field, value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean));
+  };
+  const updatePublicRuleEntry = (section, field, index, entryField, value) => {
+    const entries = [...(placementRules.publicRules?.[section]?.[field] || [])];
+    entries[index] = { ...entries[index], [entryField]: value };
+    updatePublicRuleField(section, field, entries);
+  };
+  const publicRuleTextField = (section, field, label, multiline = false) => {
+    const id = `public-rule-${section}-${field}`;
+    const value = placementRules.publicRules?.[section]?.[field] ?? '';
+    const controlClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
+    return (
+      <div key={id}>
+        <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+        {multiline ? (
+          <textarea
+            id={id}
+            className={controlClass}
+            rows={4}
+            value={value}
+            onChange={(event) => updatePublicRuleField(section, field, event.target.value)}
+            readOnly={!isEditingPlacementRules}
+          />
+        ) : (
+          <input
+            id={id}
+            className={controlClass}
+            value={value}
+            onChange={(event) => updatePublicRuleField(section, field, event.target.value)}
+            readOnly={!isEditingPlacementRules}
+          />
+        )}
+      </div>
+    );
+  };
+  const publicRuleListField = (section, field, label) => {
+    const id = `public-rule-${section}-${field}`;
+    const value = (placementRules.publicRules?.[section]?.[field] || []).join('\n');
+    return (
+      <div key={id}>
+        <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={id}>{label}</label>
+        <textarea
+          id={id}
+          className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm leading-6 text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          rows={5}
+          value={value}
+          onChange={(event) => updatePublicRuleList(section, field, event.target.value)}
+          readOnly={!isEditingPlacementRules}
+        />
+      </div>
+    );
+  };
+
   const savePlacementRules = async (event) => {
     event.preventDefault();
     if (!isEditingPlacementRules) return;
+    if (!placementRules.publicRules) {
+      setRulesError('Public placement policy content is unavailable. Apply the public rules database migration and reload.');
+      return;
+    }
     const baseWeightTotal = Number(placementRules.grade12Weight)
       + Number(placementRules.gpaWeight)
       + Number(placementRules.cocWeight);
@@ -2876,6 +2935,7 @@ const RegistrarDashboard = () => {
         general_quota_percent: placementRules.generalQuotaPercent,
         reserved_female_quota_percent: placementRules.reservedFemaleQuotaPercent,
         min_gpa: placementRules.minGpa,
+        public_rules: placementRules.publicRules,
       });
 
       if (!response.data?.success) {
@@ -2899,6 +2959,7 @@ const RegistrarDashboard = () => {
         generalQuotaPercent: Number(savedSettings.general_quota_percent ?? placementRules.generalQuotaPercent),
         reservedFemaleQuotaPercent: Number(savedSettings.reserved_female_quota_percent ?? placementRules.reservedFemaleQuotaPercent),
         minGpa: Number(savedSettings.min_gpa ?? placementRules.minGpa),
+        publicRules: savedSettings.public_rules ?? placementRules.publicRules,
       };
       setPlacementRules(savedRules);
       localStorage.setItem('placementRules', JSON.stringify(savedRules));
@@ -4327,6 +4388,118 @@ const RegistrarDashboard = () => {
                       Quota total: {Number(placementRules.generalQuotaPercent) + Number(placementRules.reservedFemaleQuotaPercent)}%
                     </div>
                   </section>
+                  <section className="mb-8 rounded-2xl border border-violet-200 bg-violet-50/50 p-5 dark:border-slate-700 dark:bg-slate-800/50">
+                    <h5 className="mb-2 text-lg font-semibold text-indigo-950 dark:text-slate-100">Public Rules &amp; Criteria</h5>
+                    <p className="mb-5 text-sm text-slate-600 dark:text-slate-300">
+                      These database-backed descriptions are shown to students on the Placement Information page.
+                    </p>
+                    {!placementRules.publicRules ? (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+                        Public policy content is not configured. Apply the dynamic public placement rules migration, then reload this page.
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Overview</h6>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            {publicRuleTextField('overview', 'title', 'Rules page title')}
+                            {publicRuleTextField('overview', 'summary', 'Rules page summary', true)}
+                          </div>
+                        </section>
+
+                        <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Formula</h6>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            {publicRuleTextField('formula', 'title', 'Formula card title')}
+                            {publicRuleTextField('formula', 'bonus_note', 'Formula explanation')}
+                          </div>
+                          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                            {(placementRules.publicRules.formula.components || []).map((component, index) => (
+                              <div key={component.weight_key}>
+                                <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`public-formula-component-${index}`}>
+                                  Formula component {index + 1}
+                                </label>
+                                <input
+                                  id={`public-formula-component-${index}`}
+                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                  value={component.label}
+                                  onChange={(event) => updatePublicRuleEntry('formula', 'components', index, 'label', event.target.value)}
+                                  readOnly={!isEditingPlacementRules}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+
+                        <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                          <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">Affirmative Action</h6>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            {publicRuleTextField('affirmative_action', 'title', 'Bonus card title')}
+                            {publicRuleTextField('affirmative_action', 'description', 'Bonus explanation', true)}
+                          </div>
+                          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            {(placementRules.publicRules.affirmative_action.bonus_points || []).map((bonus, index) => (
+                              <div key={bonus.value_key}>
+                                <label className="mb-2 block text-sm font-medium text-indigo-950 dark:text-slate-200" htmlFor={`public-bonus-label-${index}`}>
+                                  Bonus label {index + 1}
+                                </label>
+                                <input
+                                  id={`public-bonus-label-${index}`}
+                                  className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                  value={bonus.label}
+                                  onChange={(event) => updatePublicRuleEntry('affirmative_action', 'bonus_points', index, 'label', event.target.value)}
+                                  readOnly={!isEditingPlacementRules}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+
+                        {[
+                          {
+                            section: 'choice_preference',
+                            title: 'Department Choice Preference',
+                            lists: [['details', 'Preference rules (one per line)']],
+                          },
+                          {
+                            section: 'capacity_quota',
+                            title: 'Capacity and Quota',
+                            lists: [['details', 'Capacity rules (one per line)']],
+                          },
+                          {
+                            section: 'tie_breaking',
+                            title: 'Tie-Breaking',
+                            text: [['details', 'Tie-breaking explanation']],
+                            lists: [['criteria', 'Tie-breaking criteria (one per line)']],
+                          },
+                          {
+                            section: 'appeals',
+                            title: 'Appeals',
+                            text: [['submission', 'Appeal submission instructions'], ['deadline_note', 'Appeal deadline note']],
+                            lists: [['criteria', 'Appeal criteria (one per line)']],
+                          },
+                          {
+                            section: 'publishing',
+                            title: 'Result Publishing',
+                            text: [
+                              ['provisional', 'Provisional results explanation'],
+                              ['official', 'Official results explanation'],
+                              ['appeal', 'Published-results appeal explanation'],
+                            ],
+                          },
+                        ].map(({ section, title, text = [], lists = [] }) => (
+                          <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900" key={section}>
+                            <h6 className="mb-4 font-semibold text-indigo-900 dark:text-slate-100">{title}</h6>
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                              {publicRuleTextField(section, 'title', 'Section title')}
+                              {text.map(([field, label]) => publicRuleTextField(section, field, label, true))}
+                              {lists.map(([field, label]) => publicRuleListField(section, field, label))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    )}
+                  </section>
                   <div className="flex flex-wrap items-center gap-3">
                     {isEditingPlacementRules && (
                       <>
@@ -4345,7 +4518,7 @@ const RegistrarDashboard = () => {
                           Cancel
                         </button>
                         <button className="rounded-lg border border-slate-300 px-4 py-2.5 font-medium text-indigo-950 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" type="button" disabled={rulesSaving} onClick={() => {
-                          const defaults = { gpaWeight: 50, grade12Weight: 20, g12TotalBase: 600, cocWeight: 30, femaleBonusPoints: 5, disabilityBonusPoints: 5, minorityMaleBonusPoints: 5, minorityFemaleBonusPoints: 10, minorityDisabilityBonusPoints: 10, femaleDisabilityMinorityBonusPoints: 15, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75 };
+                          const defaults = { gpaWeight: 50, grade12Weight: 20, g12TotalBase: 600, cocWeight: 30, femaleBonusPoints: 5, disabilityBonusPoints: 5, minorityMaleBonusPoints: 5, minorityFemaleBonusPoints: 10, minorityDisabilityBonusPoints: 10, femaleDisabilityMinorityBonusPoints: 15, generalQuotaPercent: 80, reservedFemaleQuotaPercent: 20, minGpa: 1.75, publicRules: placementRules.publicRules };
                           setPlacementRules(defaults);
                           setRulesError('');
                         }}>Reset</button>

@@ -149,12 +149,12 @@
 }
 
 .dark-mode .role-sidebar {
-  background: var(--dtu-deep-blue);
-  border-color: #1e293b;
+  background: #4f46e5 !important;
+  border-color: rgba(224, 231, 255, 0.24) !important;
 }
 
 .dark-mode .role-sidebar-item {
-  color: #cbd5e1;
+  color: #fff !important;
 }
 
 .dark-mode .role-sidebar-item:hover,

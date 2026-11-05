@@ -9,11 +9,19 @@
   flex: 1 0 auto;
 }
 
+.public-layout-main:not(.login-route-main).home-route-main {
+  padding-top: 127px !important;
+}
+
+@media (max-width: 991.98px) {
+  .public-layout-main:not(.login-route-main).home-route-main {
+    padding-top: 0 !important;
+  }
+}
+
 .login-route-shell {
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .login-route-shell > .main-header-container {
@@ -22,9 +30,9 @@
 
 .login-route-shell > .login-route-main {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 0 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   margin: 0;
   padding: 0;
   box-sizing: border-box;

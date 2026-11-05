@@ -78,6 +78,36 @@ function normalizeStudentPlacementCollegeName(string $collegeName): string
     return trim($normalized);
 }
 
+function studentPlacementDepartmentBelongsToAllocatedCollege(array $department, array $allocation): bool
+{
+    $allocatedCollege = trim((string) (
+        $allocation['college_name']
+        ?? $allocation['college']
+        ?? $allocation['allocated_college']
+        ?? ''
+    ));
+    $departmentCollege = trim((string) (
+        $department['college_name']
+        ?? $department['college']
+        ?? $department['collegeName']
+        ?? ''
+    ));
+    $allocatedCollegeId = (int) ($allocation['college_id'] ?? 0);
+    $departmentCollegeId = (int) ($department['college_id'] ?? 0);
+    if ($allocatedCollegeId > 0 && $departmentCollegeId > 0 && $allocatedCollegeId === $departmentCollegeId) {
+        return true;
+    }
+    if ($allocatedCollege === '' || $departmentCollege === '') {
+        return false;
+    }
+
+    $normalizeCollege = static fn(string $college): string => normalizeStudentPlacementCollegeName(
+        str_replace('&', 'and', $college)
+    );
+
+    return $normalizeCollege($allocatedCollege) === $normalizeCollege($departmentCollege);
+}
+
 function studentPlacementAllocationIdentity(array $columns, string $studentId, string $admissionNumber, string $alias = ''): array
 {
     $prefix = $alias !== '' ? $alias . '.' : '';
@@ -197,9 +227,11 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
             }
             $collegeColumn = in_array('college_name', $allocationColumns, true) ? 'college_name' : "''";
             $collegeIdColumn = in_array('college_id', $allocationColumns, true) ? 'college_id' : 'NULL';
+            $streamColumn = in_array('stream', $allocationColumns, true) ? 'stream' : "''";
             $statement = $db->prepare(
                 'SELECT placement_group, ' . $collegeColumn . ' AS college_name,
-                        ' . $collegeIdColumn . ' AS college_id
+                        ' . $collegeIdColumn . ' AS college_id,
+                        ' . $streamColumn . ' AS stream
                  FROM placement_college_allocations WHERE ' . implode(' AND ', $where)
                  . (in_array('id', $allocationColumns, true) ? ' ORDER BY id DESC' : '')
                  . ' LIMIT 1'
@@ -221,6 +253,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
                                 'group' => $group,
                                 'college' => $collegeName,
                                 'college_id' => (int) ($row['college_id'] ?? 0),
+                                'stream' => trim((string) ($row['stream'] ?? '')),
                             ];
                         }
                     }
@@ -239,7 +272,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
         !$departmentIdColumn || !in_array('id', $departmentColumns, true)
         || !in_array('placement_group', $departmentColumns, true)
     ) {
-        return ['group' => '', 'college' => '', 'college_id' => 0];
+        return ['group' => '', 'college' => '', 'college_id' => 0, 'stream' => ''];
     }
 
     [$conditions, $values] = studentPlacementAllocationIdentity(
@@ -249,7 +282,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
         'pr'
     );
     if (!$conditions) {
-        return ['group' => '', 'college' => '', 'college_id' => 0];
+        return ['group' => '', 'college' => '', 'college_id' => 0, 'stream' => ''];
     }
     $semesterCondition = in_array('placement_semester', $resultColumns, true)
         ? ' AND pr.placement_semester = 1'
@@ -269,7 +302,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
         return ['group' => '', 'college' => '', 'college_id' => 0];
     }
     studentPlacementAllocationBind($statement, $values);
-    $allocation = ['group' => '', 'college' => '', 'college_id' => 0];
+    $allocation = ['group' => '', 'college' => '', 'college_id' => 0, 'stream' => ''];
     if ($statement->execute()) {
         $result = $statement->get_result();
         $row = $result ? $result->fetch_assoc() : null;
@@ -283,6 +316,7 @@ function getStudentAllocatedPlacementGroup(mysqli $db, string $studentId, string
                 ),
                 'college' => $collegeName,
                 'college_id' => (int) ($row['college_id'] ?? 0),
+                'stream' => trim((string) ($row['stream'] ?? '')),
             ];
         }
     }

@@ -1,14 +1,11 @@
 import React, { useEffect, useState } from "react";
 import {
   BadgeCheck,
+  Building2,
   Calculator,
-  FileText,
   ListOrdered,
-  Scale,
-  ShieldCheck,
 } from "lucide-react";
 import api from '../../services/api.js';
-import './PlacementInfo.css';
 
 const defaultPlacementSettings = {
   submissionStart: '2026-10-01',
@@ -26,8 +23,6 @@ const defaultPlacementSettings = {
   preferencesTabLabel: 'Rank Preferences',
   resultsTabLabel: 'Results & Appeal',
   scheduleTabLabel: 'Schedule',
-  rulesTitle: 'Placement Rules and Criteria',
-  rulesSummary: 'The university uses a transparent and fair merit-based placing process to assign students to departments based on academic performance and approved support points.',
   capacityTitle: 'Department Capacity Overview',
   capacitySummary: 'Each department has a fixed number of available seats determined by the university council and academic leadership.',
   capacityDescription: 'Capacity is limited and may vary by department, stream, and academic year. Students are ranked according to their placement score and department preferences.',
@@ -55,71 +50,6 @@ const defaultPlacementSettings = {
   scheduleSummary: 'The university follows a structured timeline to allow enough time for student decision-making, processing, and review.',
 };
 
-const defaultPlacementRules = {
-  formula: {
-    gpa_weight: 50,
-    grade_12_weight: 20,
-    coc_weight: 30,
-    g12_total_base: 600,
-  },
-  affirmative_action: {
-    female_bonus_points: 5,
-    disability_bonus_points: 5,
-    minority_male_bonus_points: 5,
-    minority_female_bonus_points: 10,
-    minority_disability_bonus_points: 10,
-    female_disability_minority_bonus_points: 15,
-    description: 'Without minority or emerging-region status, eligible female and disability bonuses are added together. For students with minority or emerging-region status, the applicable combined scenario amount is used instead of stacking separate bonuses.',
-  },
-  choice_preference: {
-    title: 'Department Choice Preference Order Policy',
-    details: [
-      'Eligible students are considered in descending order of total merit score.',
-      'For each student, the system checks the submitted department choices in preference order: 1st, then 2nd, then 3rd.',
-      'The student is assigned to the highest-ranked choice with an eligible stream, matching scope, and available quota/capacity.',
-      'If all listed choices are full or ineligible, the student remains unassigned for review.',
-    ],
-  },
-  capacity_quota: {
-    departments: [],
-  },
-  tie_breaking: {
-    title: 'Tie-Breaking Policy',
-    criteria: [
-      'Higher CGPA',
-      'Higher Grade 12 examination result',
-    ],
-    details: 'If these measures are also equal, the placement system applies its additional affirmative-action priority rules.',
-  },
-  appeals: {
-    title: 'Appeals Policy and Criteria',
-    criteria: [
-      'A suspected error in the placement score or its underlying academic records.',
-      'Missing or incorrect eligibility, affirmative-action, or student profile information.',
-      'A concern that submitted department choices or capacity rules were not applied correctly.',
-    ],
-    submission: 'Sign in to the student portal and submit an appeal to the Registrar with a clear explanation and supporting evidence.',
-    deadline_start: '2026-08-27',
-    deadline_end: '2026-08-30',
-    deadline_note: 'Appeals must be submitted within the published appeal window. Check the dates below and university announcements for any approved changes.',
-  },
-  publishing: {
-    title: 'Provisional and Official Result Publishing',
-    provisional: 'Placement outcomes produced during processing are provisional and remain subject to verification and Registrar review.',
-    official: 'Results become official only after the Registrar publishes them in the system. Students should rely on the published result in their portal.',
-    appeal: 'Use the appeal process during the published appeal window if you identify a result or record issue.',
-  },
-  schedule: {
-    submissionStart: '2026-10-01',
-    submissionDeadline: '2026-10-11',
-    processingStart: '2026-08-16',
-    processingEnd: '2026-08-24',
-    resultsDate: '2026-08-27',
-    appealStart: '2026-08-27',
-    appealEnd: '2026-08-30',
-  },
-};
-
 const getWithServiceUnavailableRetry = async (url, attempts = 3) => {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -136,32 +66,17 @@ const getWithServiceUnavailableRetry = async (url, attempts = 3) => {
 };
 
 const normalizePlacementRules = (value) => {
-  const source = value && typeof value === 'object' ? value : {};
-  const normalized = {
-    ...defaultPlacementRules,
-    ...source,
-    formula: { ...defaultPlacementRules.formula, ...(source.formula || {}) },
-    affirmative_action: { ...defaultPlacementRules.affirmative_action, ...(source.affirmative_action || {}) },
-    choice_preference: { ...defaultPlacementRules.choice_preference, ...(source.choice_preference || {}) },
-    capacity_quota: { ...defaultPlacementRules.capacity_quota, ...(source.capacity_quota || {}) },
-    tie_breaking: { ...defaultPlacementRules.tie_breaking, ...(source.tie_breaking || {}) },
-    appeals: { ...defaultPlacementRules.appeals, ...(source.appeals || {}) },
-    publishing: { ...defaultPlacementRules.publishing, ...(source.publishing || {}) },
-    schedule: { ...defaultPlacementRules.schedule, ...(source.schedule || {}) },
-  };
-  if (!Array.isArray(normalized.choice_preference.details)) {
-    normalized.choice_preference.details = defaultPlacementRules.choice_preference.details;
+  if (!value || typeof value !== 'object'
+    || !value.overview
+    || !Array.isArray(value.formula?.components)
+    || !Array.isArray(value.affirmative_action?.bonus_points)
+    || !Array.isArray(value.choice_preference?.details)
+    || !Array.isArray(value.capacity_quota?.details)
+    || !Array.isArray(value.tie_breaking?.criteria)
+    || !Array.isArray(value.appeals?.criteria)) {
+    throw new Error('Public placement rules are missing or incomplete.');
   }
-  if (!Array.isArray(normalized.tie_breaking.criteria)) {
-    normalized.tie_breaking.criteria = defaultPlacementRules.tie_breaking.criteria;
-  }
-  if (!Array.isArray(normalized.appeals.criteria)) {
-    normalized.appeals.criteria = defaultPlacementRules.appeals.criteria;
-  }
-  if (!Array.isArray(normalized.capacity_quota.departments)) {
-    normalized.capacity_quota.departments = [];
-  }
-  return normalized;
+  return value;
 };
 
 const formatPlacementDate = (value) => {
@@ -174,20 +89,32 @@ const formatPlacementDate = (value) => {
 };
 
 const guidanceTabs = [
-  { id: "rules", label: "Rules & Criteria" },
-  { id: "capacity", label: "Capacity Overview" },
-  { id: "login", label: "Login Guide" },
-  { id: "preferences", label: "Rank Preferences" },
-  { id: "results", label: "Results & Appeal" },
-  { id: "schedule", label: "Schedule" },
+  { id: "rules", label: "Rules & Criteria", inactiveStyle: "border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100" },
+  { id: "capacity", label: "Capacity Overview", inactiveStyle: "border-blue-200 bg-blue-50 text-blue-900 hover:bg-blue-100" },
+  { id: "login", label: "Login Guide", inactiveStyle: "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100" },
+  { id: "preferences", label: "Rank Preferences", inactiveStyle: "border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100" },
+  { id: "results", label: "Results & Appeal", inactiveStyle: "border-rose-200 bg-rose-50 text-rose-900 hover:bg-rose-100" },
+  { id: "schedule", label: "Schedule", inactiveStyle: "border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100" },
 ];
 
-function RuleCard({ icon: Icon, title, children }) {
+function RuleCard({ icon: Icon, title, children, accent = 'indigo' }) {
+  const accentStyles = {
+    indigo: { border: 'border-l-indigo-600', icon: 'text-indigo-700', iconBg: 'bg-indigo-100' },
+    emerald: { border: 'border-l-emerald-600', icon: 'text-emerald-700', iconBg: 'bg-emerald-100' },
+    blue: { border: 'border-l-blue-600', icon: 'text-blue-700', iconBg: 'bg-blue-100' },
+    amber: { border: 'border-l-amber-500', icon: 'text-amber-700', iconBg: 'bg-amber-100' },
+    rose: { border: 'border-l-rose-600', icon: 'text-rose-700', iconBg: 'bg-rose-100' },
+    teal: { border: 'border-l-teal-600', icon: 'text-teal-700', iconBg: 'bg-teal-100' },
+  };
+  const styles = accentStyles[accent] || accentStyles.indigo;
+
   return (
-    <section className="border rounded-4 h-100 p-3 bg-white shadow-sm" aria-label={title}>
-      <div className="d-flex align-items-center gap-2 mb-3">
-        <Icon size={20} aria-hidden="true" style={{ color: '#0a2d6d', flexShrink: 0 }} />
-        <h3 className="h6 fw-bold mb-0" style={{ color: '#0a2d6d' }}>{title}</h3>
+    <section className={`h-full rounded-xl border border-slate-200 border-l-4 ${styles.border} bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6`} aria-label={title}>
+      <div className="mb-4 flex items-center gap-3">
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${styles.iconBg} ${styles.icon}`}>
+          <Icon size={20} aria-hidden="true" />
+        </span>
+        <h3 className="mb-0 text-lg font-bold leading-snug text-slate-800">{title}</h3>
       </div>
       {children}
     </section>
@@ -198,81 +125,56 @@ function PlacementRulesContent({ rules }) {
   const formula = rules.formula;
   const bonuses = rules.affirmative_action;
   const choices = rules.choice_preference;
-  const tieBreaking = rules.tie_breaking;
-  const appeals = rules.appeals;
-  const publishing = rules.publishing;
-  const bonusRows = [
-    ['Female students', bonuses.female_bonus_points],
-    ['Students with a disability', bonuses.disability_bonus_points],
-    ['Minority / emerging-region students', bonuses.minority_male_bonus_points],
-  ];
+  const capacity = rules.capacity_quota;
   const list = (items) => (
-    <ul className="small text-muted ps-3 mb-0">
-      {items.map((item, index) => <li className="mb-2" key={`${index}-${item}`}>{item}</li>)}
+    <ul className="mb-0 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+      {items.map((item, index) => <li className="pl-1" key={`${index}-${item}`}>{item}</li>)}
     </ul>
   );
 
   return (
-    <div className="row g-3">
-      <div className="col-12">
-        <RuleCard icon={Calculator} title="Placement Formula and Merit Score">
-          <p className="small text-muted mb-2">
-            Total score = (CGPA / 4.0 × {formula.gpa_weight})
-            {' + '} (Grade 12 mark / {formula.g12_total_base} × {formula.grade_12_weight})
-            {' + '} (COC / 30 × {formula.coc_weight})
-            {' + '} applicable affirmative-action bonus.
-          </p>
-          <p className="small text-muted mb-0">
-            Each academic component is limited to its stated maximum before weighting. Bonus eligibility and amounts are applied using the rules below.
-          </p>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="lg:col-span-2">
+        <RuleCard icon={Calculator} title={formula.title} accent="indigo">
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {formula.components.map((component) => (
+              <div className="rounded-lg bg-indigo-50 px-4 py-3" key={component.weight_key}>
+                <p className="mb-1 text-sm font-bold text-indigo-950">{component.label}</p>
+                <p className="mb-0 text-sm text-indigo-900">
+                  {component.denominator ? `Score / ${component.denominator} × ` : ''}
+                  {component.weight}%
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mb-0 text-sm leading-6 text-slate-700">{formula.bonus_note}</p>
         </RuleCard>
       </div>
 
-      <div className="col-12 col-lg-6">
-        <RuleCard icon={BadgeCheck} title="Affirmative-Action Bonus Points">
-          <ul className="small text-muted ps-3 mb-3">
-            {bonusRows.map(([label, points]) => (
-              <li className="mb-2" key={label}>{label}: <strong>+{points} points</strong></li>
+      <div>
+        <RuleCard icon={BadgeCheck} title={bonuses.title} accent="emerald">
+          <ul className="mb-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+            {bonuses.bonus_points.map(({ label, points, value_key: valueKey }) => (
+              <li className="pl-1" key={valueKey}>{label}: <strong className="font-bold text-emerald-800">+{points} points</strong></li>
             ))}
           </ul>
-          <p className="small text-muted mb-0">{bonuses.description}</p>
+          <p className="mb-0 text-sm leading-6 text-slate-700">{bonuses.description}</p>
         </RuleCard>
       </div>
 
-      <div className="col-12 col-lg-6">
-        <RuleCard icon={ListOrdered} title={choices.title}>
+      <div>
+        <RuleCard icon={ListOrdered} title={choices.title} accent="blue">
           {list(choices.details)}
         </RuleCard>
       </div>
 
-      <div className="col-12 col-lg-6">
-        <RuleCard icon={Scale} title={tieBreaking.title}>
-          <ol className="small text-muted ps-3 mb-2">
-            {tieBreaking.criteria.slice(0, 2).map((criterion, index) => (
-              <li className="mb-2" key={`${index}-${criterion}`}>{criterion}</li>
-            ))}
-          </ol>
-          <p className="small text-muted mb-0">{tieBreaking.details}</p>
-        </RuleCard>
-      </div>
-
-      <div className="col-12 col-lg-6">
-        <RuleCard icon={FileText} title={appeals.title}>
-          {list(appeals.criteria)}
-          <p className="small text-muted mt-3 mb-2">{appeals.submission}</p>
-          <p className="small fw-semibold mb-1" style={{ color: '#0a2d6d' }}>
-            Submission window: {formatPlacementDate(appeals.deadline_start || rules.schedule.appealStart)}
-            {' – '}{formatPlacementDate(appeals.deadline_end || rules.schedule.appealEnd)}
+      <div>
+        <RuleCard icon={Building2} title={capacity.title} accent="teal">
+          <p className="mb-3 text-sm leading-6 text-slate-700">
+            General quota: <strong>{capacity.general_quota_percent}%</strong>
+            {' · '}Reserved female quota: <strong>{capacity.reserved_female_quota_percent}%</strong>
           </p>
-          <p className="small text-muted mb-0">{appeals.deadline_note}</p>
-        </RuleCard>
-      </div>
-
-      <div className="col-12 col-lg-6">
-        <RuleCard icon={ShieldCheck} title={publishing.title}>
-          <p className="small text-muted"><strong>Provisional:</strong> {publishing.provisional}</p>
-          <p className="small text-muted"><strong>Official:</strong> {publishing.official}</p>
-          <p className="small text-muted mb-0">{publishing.appeal}</p>
+          {list(capacity.details)}
         </RuleCard>
       </div>
 
@@ -282,8 +184,8 @@ function PlacementRulesContent({ rules }) {
 
 const placementGuidance = {
   rules: {
-    titleKey: 'rulesTitle',
-    summaryKey: 'rulesSummary',
+    titleKey: null,
+    summaryKey: null,
     body: (settings) => (
       <PlacementRulesContent rules={settings.rulesData} />
     ),
@@ -293,43 +195,43 @@ const placementGuidance = {
     summaryKey: 'capacitySummary',
     body: (settings) => (
       <div>
-        <p className="text-muted mb-3">
+        <p className="mb-4 text-sm leading-6 text-slate-600">
           {settings.capacityDescription}
         </p>
         {settings.capacitiesLoading ? (
-          <div className="alert alert-info mb-0" role="status">Loading department capacities...</div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900" role="status">Loading department capacities...</div>
         ) : settings.capacitiesError ? (
-          <div className="alert alert-danger d-flex flex-wrap justify-content-between align-items-center gap-2" role="alert">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="alert">
             <span>{settings.capacitiesError}</span>
-            <button type="button" className="btn btn-sm btn-outline-danger" onClick={settings.onRetryCapacities}>
+            <button type="button" className="rounded-lg border border-rose-300 bg-white px-3 py-2 font-semibold text-rose-800 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500" onClick={settings.onRetryCapacities}>
               Try again
             </button>
           </div>
         ) : settings.capacityDepartments.length === 0 ? (
-          <div className="alert alert-secondary mb-0" role="status">No department capacities are currently available.</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700" role="status">No department capacities are currently available.</div>
         ) : (
-          <div className="table-responsive border rounded-4 shadow-sm">
-            <table className="table table-hover align-middle mb-0">
-              <thead className="table-light">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-700">
                 <tr>
-                  <th scope="col" className="px-3 py-3">Department ID</th>
-                  <th scope="col" className="py-3">Stream / College</th>
-                  <th scope="col" className="py-3">Department Name</th>
-                  <th scope="col" className="text-end px-3 py-3">Maximum Student Quota</th>
+                  <th scope="col" className="px-4 py-3">Department ID</th>
+                  <th scope="col" className="px-4 py-3">Stream / College</th>
+                  <th scope="col" className="px-4 py-3">Department Name</th>
+                  <th scope="col" className="px-4 py-3 text-right">Maximum Student Quota</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {settings.capacityDepartments.map((department) => (
-                  <tr key={department.id}>
-                    <td className="px-3">{department.id}</td>
-                    <td>
+                  <tr className="transition-colors hover:bg-indigo-50/50" key={department.id}>
+                    <td className="whitespace-nowrap px-4 py-3">{department.id}</td>
+                    <td className="px-4 py-3">
                       <div>{department.stream || '—'}</div>
                       {department.college_name && (
-                        <div className="small text-muted">{department.college_name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{department.college_name}</div>
                       )}
                     </td>
-                    <td className="fw-semibold">{department.name}</td>
-                    <td className="text-end px-3 fw-bold">{department.capacity}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">{department.name}</td>
+                    <td className="px-4 py-3 text-right font-bold text-indigo-900">{department.capacity}</td>
                   </tr>
                 ))}
               </tbody>
@@ -344,8 +246,13 @@ const placementGuidance = {
     summaryKey: 'loginSummary',
     body: (settings) => (
       <div>
-        <ol className="ps-3 mb-0">
-          {[settings.loginStep1, settings.loginStep2, settings.loginStep3, settings.loginStep4, settings.loginStep5].map((step) => <li className="mb-3" key={step}>{step}</li>)}
+        <ol className="space-y-3">
+          {[settings.loginStep1, settings.loginStep2, settings.loginStep3, settings.loginStep4, settings.loginStep5].map((step, index) => (
+            <li className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 shadow-sm" key={step}>
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-800">{index + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
         </ol>
       </div>
     ),
@@ -355,25 +262,25 @@ const placementGuidance = {
     summaryKey: 'preferencesSummary',
     body: (settings) => (
       <div>
-        <div className="row g-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {[
             settings.preferenceStep1,
             settings.preferenceStep2,
             settings.preferenceStep3,
             settings.preferenceStep4,
           ].map((step, index) => (
-            <div className="col-md-6" key={step}>
-              <div className="border rounded-4 p-3 h-100 bg-white shadow-sm">
-                <div className="d-flex align-items-center mb-2">
-                  <span className="badge rounded-circle me-2 d-inline-flex align-items-center justify-content-center" style={{ width: "2rem", height: "2rem", background: "#0a2d6d", color: "#f9d770" }}>{index + 1}</span>
-                  <strong style={{ color: "#0a2d6d" }}>Step {index + 1}</strong>
+            <div key={step}>
+              <div className="h-full rounded-xl border border-slate-200 bg-gradient-to-br from-white to-indigo-50/70 p-5 shadow-sm">
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-indigo-700 text-sm font-bold text-white">{index + 1}</span>
+                  <strong className="text-indigo-950">Step {index + 1}</strong>
                 </div>
-                <p className="small text-muted mb-0">{step}</p>
+                <p className="mb-0 text-sm leading-6 text-slate-700">{step}</p>
               </div>
             </div>
           ))}
         </div>
-        <div className="alert alert-warning border-0 rounded-4 mt-3 mb-0" style={{ background: "rgba(215, 183, 90, 0.15)", color: "#0a2d6d" }}>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
           <strong>Important:</strong> {settings.preferencesImportantNote}
         </div>
       </div>
@@ -383,17 +290,17 @@ const placementGuidance = {
     titleKey: 'resultsTitle',
     summaryKey: 'resultsSummary',
     body: (settings) => (
-      <div className="row g-3">
-        <div className="col-md-6">
-          <div className="border rounded-4 p-3 h-100 bg-white shadow-sm">
-            <h6 className="fw-bold mb-2" style={{ color: "#0a2d6d" }}>{settings.viewResultsTitle}</h6>
-            <p className="small text-muted mb-0">{settings.viewResultsText}</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <div className="h-full rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-gradient-to-br from-white to-blue-50 p-5 shadow-sm">
+            <h3 className="mb-2 text-lg font-bold text-blue-950">{settings.viewResultsTitle}</h3>
+            <p className="mb-0 text-sm leading-6 text-slate-700">{settings.viewResultsText}</p>
           </div>
         </div>
-        <div className="col-md-6">
-          <div className="border rounded-4 p-3 h-100 bg-white shadow-sm">
-            <h6 className="fw-bold mb-2" style={{ color: "#0a2d6d" }}>{settings.submitAppealTitle}</h6>
-            <p className="small text-muted mb-0">{settings.submitAppealText}</p>
+        <div>
+          <div className="h-full rounded-xl border border-rose-200 border-l-4 border-l-rose-600 bg-gradient-to-br from-white to-rose-50 p-5 shadow-sm">
+            <h3 className="mb-2 text-lg font-bold text-rose-950">{settings.submitAppealTitle}</h3>
+            <p className="mb-0 text-sm leading-6 text-slate-700">{settings.submitAppealText}</p>
           </div>
         </div>
       </div>
@@ -403,19 +310,19 @@ const placementGuidance = {
     titleKey: 'scheduleTitle',
     summaryKey: 'scheduleSummary',
     body: (placementSettings) => (
-      <div className="row g-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Preference Submission", value: `${formatPlacementDate(placementSettings.submissionStart)} - ${formatPlacementDate(placementSettings.submissionDeadline)}`, tone: "info" },
           { label: "Placement Processing Period", value: `${formatPlacementDate(placementSettings.processingStart)} - ${formatPlacementDate(placementSettings.processingEnd)}`, tone: "primary" },
           { label: "Results Announcement Date", value: formatPlacementDate(placementSettings.resultsDate), tone: "success" },
           { label: "Appeal Window", value: `${formatPlacementDate(placementSettings.appealStart)} - ${formatPlacementDate(placementSettings.appealEnd)}`, tone: "danger" },
         ].map((item) => (
-          <div className="col-md-6 col-xl-4" key={item.label}>
-            <div className="border rounded-4 p-3 h-100 bg-white shadow-sm">
-              <span className={`badge rounded-pill mb-2 ${item.tone === "info" ? "bg-primary-subtle text-primary" : item.tone === "warning" ? "bg-warning-subtle text-dark" : item.tone === "success" ? "bg-success-subtle text-success" : item.tone === "danger" ? "bg-danger-subtle text-danger" : "bg-secondary-subtle text-dark"}`}>
+          <div key={item.label}>
+            <div className="h-full rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <span className={`mb-3 inline-flex rounded-full px-3 py-1 text-xs font-bold ${item.tone === "info" ? "bg-blue-100 text-blue-800" : item.tone === "warning" ? "bg-amber-100 text-amber-900" : item.tone === "success" ? "bg-emerald-100 text-emerald-800" : item.tone === "danger" ? "bg-rose-100 text-rose-800" : "bg-slate-100 text-slate-700"}`}>
                 {item.label}
               </span>
-              <div className="fw-bold" style={{ color: "#0a2d6d" }}>{item.value}</div>
+              <div className="text-sm font-bold leading-6 text-slate-900">{item.value}</div>
             </div>
           </div>
         ))}
@@ -427,7 +334,7 @@ const placementGuidance = {
 function PlacementInfo() {
   const [activeTab, setActiveTab] = useState("rules");
   const [placementSettings, setPlacementSettings] = useState(defaultPlacementSettings);
-  const [rulesData, setRulesData] = useState(defaultPlacementRules);
+  const [rulesData, setRulesData] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsError, setSettingsError] = useState('');
   const [capacityDepartments, setCapacityDepartments] = useState([]);
@@ -485,31 +392,38 @@ function PlacementInfo() {
         ? portalResult.value.data?.settings?.placement || {}
         : {};
       const response = rulesResult.status === 'fulfilled' ? rulesResult.value.data : null;
-      const rulesFailed = rulesResult.status === 'rejected' || !response?.success;
-      const liveRules = !rulesFailed
-        ? normalizePlacementRules(response.data)
-        : defaultPlacementRules;
+      let liveRules = null;
+      let rulesErrorMessage = '';
+      try {
+        if (rulesResult.status === 'rejected') throw rulesResult.reason;
+        if (!response?.success) {
+          throw new Error(response?.message || 'Live placement rules are not configured.');
+        }
+        liveRules = normalizePlacementRules(response.data);
+      } catch (error) {
+        rulesErrorMessage = error.response?.data?.message || error.message || 'Live placement rules are unavailable.';
+      }
+      const rulesFailed = liveRules === null;
       const schedule = {
-        ...defaultPlacementRules.schedule,
-        ...liveRules.schedule,
+        ...(liveRules?.schedule || {}),
         ...dates,
       };
-      setRulesData({
+      setRulesData(liveRules ? {
         ...liveRules,
         schedule,
         appeals: {
           ...liveRules.appeals,
-          deadline_start: dates.appealStart || liveRules.appeals.deadline_start || schedule.appealStart,
-          deadline_end: dates.appealEnd || liveRules.appeals.deadline_end || schedule.appealEnd,
+          deadline_start: dates.appealStart || liveRules.appeals.deadline_start || schedule.appealStart || '',
+          deadline_end: dates.appealEnd || liveRules.appeals.deadline_end || schedule.appealEnd || '',
         },
-      });
+      } : null);
       setPlacementSettings((current) => ({
         ...current,
         ...schedule,
         ...dates,
       }));
       setSettingsError(rulesFailed
-        ? 'Placement rules are temporarily unavailable. Complete default rules are shown.'
+        ? rulesErrorMessage
         : failedRequests.length > 0
           ? 'Some portal schedule details could not be loaded. Available placement rules are shown.'
           : '');
@@ -528,29 +442,32 @@ function PlacementInfo() {
   }, []);
 
   return (
-    <div className="container placement-info-page py-5 pt-5" style={{ maxWidth: "1200px", paddingTop: "40px" }}>
-      <div className="text-center mb-4 pt-3">
-        <span className="badge rounded-pill px-3 py-2 mb-3" style={{ background: "rgba(10, 45, 109, 0.08)", color: "#0a2d6d" }}>Student Guidance</span>
-        <h1 className="mb-4 text-2xl font-bold text-slate-800" style={{ color: "#0a2d6d" }}>{placementSettings.guideTitle}</h1>
-        <p className="placement-info-description mx-auto mb-6 max-w-2xl text-center text-sm text-slate-600">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:py-14">
+      <header className="mb-8 text-center">
+        <span className="mb-4 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-800">Student Guidance</span>
+        <h1 className="mb-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{placementSettings.guideTitle}</h1>
+        <p className="mx-auto mb-0 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
           {placementSettings.guideDescription}
         </p>
-      </div>
+      </header>
 
       {settingsLoading && (
-        <div className="alert alert-info" role="status">Connecting to server...</div>
+        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900" role="status">Connecting to server...</div>
       )}
-      {!settingsLoading && settingsError && (
-        <div className="alert alert-warning" role="status">{settingsError}</div>
+      {!settingsLoading && settingsError && (rulesData || activeTab !== 'rules') && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status">{settingsError}</div>
       )}
 
-      <div className="card border-0 shadow-sm rounded-4 overflow-hidden" style={{ background: "#ffffff" }}>
-        <div className="card-header placement-info-tabs flex flex-wrap items-center justify-center gap-3 p-3" role="group" aria-label="Placement information sections" style={{ background: "linear-gradient(135deg, #0a2d6d, #123f8a)" }}>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/5">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-indigo-100 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-100 p-4 sm:gap-3 sm:p-5" role="group" aria-label="Placement information sections">
             {guidanceTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                className="placement-info-tab inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                className={`inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border px-4 py-2.5 text-sm font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${activeTab === tab.id ? 'border-transparent bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-indigo-900/25' : `${tab.inactiveStyle} shadow-sm hover:-translate-y-0.5 hover:shadow-md`}`}
+                style={activeTab === tab.id
+                  ? { backgroundImage: "linear-gradient(to right, #2563eb, #4f46e5)", color: "#ffffff" }
+                  : undefined}
                 aria-pressed={activeTab === tab.id}
                 onClick={() => setActiveTab(tab.id)}
               >
@@ -559,13 +476,36 @@ function PlacementInfo() {
             ))}
         </div>
 
-        <div className="card-body p-4 p-lg-5">
-          <div className="mb-4">
-            <h2 className="placement-info-section-title mb-4 text-2xl font-bold text-slate-800">{placementSettings[activeContent.titleKey] || activeContent.title}</h2>
-            <p className="placement-info-section-description mb-0 text-sm leading-relaxed text-slate-600">{placementSettings[activeContent.summaryKey] || activeContent.summary}</p>
-          </div>
+        <div className="p-5 sm:p-8">
+          {(activeTab !== 'rules' || rulesData) && (
+            <div className="mb-6 border-b border-slate-200 pb-5">
+              <h2 className="mb-3 text-2xl font-bold text-slate-900 sm:text-3xl">
+                {activeTab === 'rules'
+                  ? rulesData.overview.title
+                  : placementSettings[activeContent.titleKey] || activeContent.title}
+              </h2>
+              <p className="mb-0 max-w-4xl text-sm leading-6 text-slate-600 sm:text-base">
+                {activeTab === 'rules'
+                  ? rulesData.overview.summary
+                  : placementSettings[activeContent.summaryKey] || activeContent.summary}
+              </p>
+            </div>
+          )}
 
-          {typeof activeContent.body === 'function'
+          {activeTab === 'rules' && settingsLoading ? (
+            <div className="space-y-4" role="status" aria-label="Loading placement rules">
+              <span className="sr-only">Loading placement rules</span>
+              <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+                <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+              </div>
+            </div>
+          ) : activeTab === 'rules' && !rulesData ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="alert">
+              {settingsError || 'Live placement rules are not configured.'}
+            </div>
+          ) : typeof activeContent.body === 'function'
             ? activeContent.body({
               ...placementSettings,
               rulesData,
@@ -576,8 +516,8 @@ function PlacementInfo() {
             })
             : activeContent.body}
         </div>
-      </div>
-    </div>
+        </section>
+      </main>
   );
 }
 

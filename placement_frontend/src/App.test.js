@@ -178,18 +178,15 @@ describe('Login', () => {
     expect(within(footer).getByText('© 2026 Debre Tabor University. All Rights Reserved.')).toBeInTheDocument();
   });
 
-  test('updates public navigation language immediately and persists the selection', async () => {
+  test('omits the public language selector while keeping public navigation available', async () => {
     mockAppApiResponses();
     window.history.pushState({}, '', '/login');
 
     render(<App />);
 
-    const languageSelect = await screen.findByRole('combobox', { name: 'Select language' });
-    fireEvent.change(languageSelect, { target: { value: 'am' } });
-
-    expect(within(screen.getByRole('navigation')).getByRole('link', { name: 'መነሻ' })).toBeInTheDocument();
-    expect(localStorage.getItem('language')).toBe('am');
-    expect(document.documentElement).toHaveAttribute('lang', 'am');
+    const navigation = await screen.findByRole('navigation');
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toBeInTheDocument();
+    expect(within(navigation).queryByRole('combobox', { name: 'Select language' })).not.toBeInTheDocument();
   });
 
   test('opens the password reset tab from the login page', async () => {

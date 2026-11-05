@@ -1,8 +1,21 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import api from '../../services/api.js';
 import { parseSourceImportCsv, parseSourceImportGrid } from './SourceImport.jsx';
+import SourceImport from './SourceImport.jsx';
 import { ministryImportColumns } from './MinistryImport.jsx';
 import { normalizeSimsImportRows, simsImportColumns } from './SIMSImport.jsx';
 
+jest.mock('../../services/api.js', () => ({
+  __esModule: true,
+  default: { post: jest.fn() },
+}));
+
 describe('source import spreadsheet formats', () => {
+  beforeEach(() => {
+    api.post.mockReset();
+  });
+
   it('parses the official MoSHE columns, ignoring title rows and header casing', () => {
     const parsed = parseSourceImportGrid([
       ['Debre Tabor University MoSHE Placement File'],
@@ -122,6 +135,7 @@ describe('source import spreadsheet formats', () => {
       CGPA: '3.2',
       'COC Score': '21',
     }]);
+    expect(simsImportColumns.find(({ header }) => header === 'Admission Number').showInPreview).toBe(false);
   });
 
   it('does not treat a University Student ID as a Ministry Admission Number', () => {
@@ -164,5 +178,119 @@ describe('source import spreadsheet formats', () => {
       CGPA: '3.2',
       'COC Score': '21',
     }]);
+  });
+
+  it('hides Ministry ID in the SIMS preview but includes it in the import request', async () => {
+    api.post.mockResolvedValueOnce({ data: { success: true, message: 'Imported.' } });
+    const csv = 'Student ID,admission_number,CGPA,COC Score\nDTU16R2021,MOE10021,3.2,21';
+    const file = new File([csv], 'sims.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => new TextEncoder().encode(csv).buffer,
+    });
+
+    const { container } = render(
+      <SourceImport
+        title="Registrar SIMS Import"
+        endpoint="api/registrar/import_sims.php"
+        columns={simsImportColumns}
+        normalizeRows={normalizeSimsImportRows}
+      />,
+    );
+
+    fireEvent.change(container.querySelector('input[type="file"]'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview file' }));
+
+    expect(await screen.findByText('DTU16R2021')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Admission Number' })).not.toBeInTheDocument();
+    expect(screen.queryByText('MOE10021')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 rows' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      'api/registrar/import_sims.php',
+      {
+        students: [{
+          'Student ID': 'DTU16R2021',
+          'Admission Number': 'MOE10021',
+          CGPA: '3.2',
+          'COC Score': '21',
+        }],
+      },
+    ));
+  });
+
+  it('shows a green completion alert when the response confirms updated records', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        message: 'SIMS import completed: 2 record(s) updated.',
+        updated_count: 2,
+        unchanged_count: 0,
+        row_errors: [{ row: 3, message: 'A separate row was skipped.' }],
+      },
+    });
+    const csv = 'Student ID,CGPA,COC Score\nDTU16R2021,3.2,21';
+    const file = new File([csv], 'sims.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => new TextEncoder().encode(csv).buffer,
+    });
+
+    const { container } = render(
+      <SourceImport
+        title="Registrar SIMS Import"
+        endpoint="api/registrar/import_sims.php"
+        columns={simsImportColumns}
+        normalizeRows={normalizeSimsImportRows}
+      />,
+    );
+
+    fireEvent.change(container.querySelector('input[type="file"]'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview file' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Import 1 rows' }));
+
+    const successAlert = await screen.findByRole('status');
+    expect(successAlert).toHaveClass('alert-success');
+    expect(successAlert).toHaveTextContent('SIMS import completed: 2 record(s) updated.');
+    expect(successAlert).toHaveTextContent('Row 3: A separate row was skipped.');
+  });
+
+  it('shows a neutral informational alert when records already exist unchanged', async () => {
+    api.post.mockResolvedValueOnce({
+      data: {
+        success: true,
+        status: 'info',
+        message: '2 record(s) already exist with no changes.',
+        imported_count: 2,
+        updated_count: 0,
+        unchanged_count: 2,
+      },
+    });
+    const csv = 'Student ID,CGPA,COC Score\nDTU16R2021,3.2,21';
+    const file = new File([csv], 'sims.csv', { type: 'text/csv' });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => new TextEncoder().encode(csv).buffer,
+    });
+
+    const { container } = render(
+      <SourceImport
+        title="Registrar SIMS Import"
+        endpoint="api/registrar/import_sims.php"
+        columns={simsImportColumns}
+        normalizeRows={normalizeSimsImportRows}
+      />,
+    );
+
+    fireEvent.change(container.querySelector('input[type="file"]'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview file' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Import 1 rows' }));
+
+    const infoAlert = await screen.findByRole('status');
+    expect(infoAlert).toHaveClass('alert-info');
+    expect(infoAlert).toHaveTextContent('2 record(s) already exist with no changes.');
   });
 });

@@ -124,7 +124,7 @@ function studentIdentityFilter(array $columns, string $studentId, string $admiss
     $values = [];
     $types = '';
     if (in_array('admission_number', $columns, true) && $admissionNumber !== '') {
-        $conditions[] = 'admission_number = ?';
+        $conditions[] = 'TRIM(admission_number) = TRIM(?)';
         $values[] = $admissionNumber;
         $types .= 's';
     }
@@ -164,7 +164,10 @@ try {
         $activeSemester = getActivePlacementSemester($db);
 
         $allocation = getStudentAllocatedPlacementGroup($db, $studentId, $admissionNumber);
-        $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
+        $assignedStream = trim((string) ($allocation['stream'] ?? ''));
+        if ($assignedStream === '') {
+            $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
+        }
         $secondSemesterPortal = getStudentSecondSemesterChoicePortalState(
             $db,
             $studentId,
@@ -199,6 +202,8 @@ try {
             : (!$choiceEditable && isStudentChoiceEditingLocked($db, $studentId, $admissionNumber));
         $departments = getActiveDepartments($db, $semester);
         $choices = [];
+        $semesterOneChoices = [];
+        $semesterTwoChoices = [];
         $choiceColumns = getTableColumns($db, 'student_choices');
         if (in_array('dept_id', $choiceColumns, true) && in_array('priority', $choiceColumns, true)) {
             [$conditions, $values, $types] = studentIdentityFilter($choiceColumns, $studentId, $admissionNumber);
@@ -230,11 +235,6 @@ try {
                                {$choiceSemester} AS semester
                         FROM student_choices sc{$departmentJoin} WHERE ("
                     . implode(' OR ', $conditions) . ')';
-                if (in_array('semester', $choiceColumns, true)) {
-                    $sql .= ' AND sc.semester = ?';
-                    $values[] = (string) $semester;
-                    $types .= 's';
-                }
                 $sql .= ' ORDER BY sc.priority ASC, semester ASC, sc.dept_id ASC';
                 $statement = $db->prepare($sql);
                 bindStatementValues($statement, $types, $values);
@@ -250,17 +250,10 @@ try {
                         $choiceCollegeName = 'School of Law';
                     }
                     $choiceStream = (string) ($row['stream'] ?? '');
-                    if ($semester === 2 && !placementDepartmentMatchesAllocation(
-                        [
-                            'college_id' => (int) ($row['college_id'] ?? 0),
-                            'college_name' => $choiceCollegeName,
-                            'stream' => $choiceStream,
-                        ],
-                        $allocation
-                    )) {
-                        continue;
-                    }
-                    $choices[] = [
+                    $choiceSemesterValue = in_array((int) ($row['semester'] ?? 1), [1, 2], true)
+                        ? (int) $row['semester']
+                        : 1;
+                    $savedChoice = [
                         'dept_id' => $choiceDepartmentId,
                         'dept_name' => $choiceDepartmentName,
                         'department_name' => $choiceDepartmentName,
@@ -270,33 +263,44 @@ try {
                                 : 'broad_group')
                             : 'department',
                         'college_name' => $choiceCollegeName,
+                        'college_id' => (int) ($row['college_id'] ?? 0),
                         'stream' => $choiceStream,
-                        'semester' => in_array((int) ($row['semester'] ?? 1), [1, 2], true)
-                            ? (int) $row['semester']
-                            : 1,
+                        'semester' => $choiceSemesterValue,
                         'offered_semester' => isset($row['offered_semester'])
                             ? (int) $row['offered_semester']
                             : null,
                         'priority' => (int) $row['priority'],
                     ];
+                    if ($choiceSemesterValue === 2) {
+                        $semesterTwoChoices[] = $savedChoice;
+                        if ($semester === 2 && studentPlacementDepartmentBelongsToAllocatedCollege(
+                            $savedChoice,
+                            $allocation
+                        )) {
+                            $choices[] = $savedChoice;
+                        }
+                    } else {
+                        $semesterOneChoices[] = $savedChoice;
+                        if ($semester === 1) {
+                            $choices[] = $savedChoice;
+                        }
+                    }
                 }
                 $result->free();
                 $statement->close();
             }
         }
 
-        $availableDepartments = array_values(array_filter($departments, static function (array $department) use ($semester, $assignedStream): bool {
+        $availableDepartments = array_values(array_filter($departments, static function (array $department) use ($semester): bool {
             if ($semester === 1) {
                 return placementDepartmentOfferedInSemester($department, 1);
             }
-            return placementDepartmentOfferedInSemester($department, 2)
-                && placementDepartmentStream($department)
-                    === placementNormalizeStream($assignedStream);
+            return placementDepartmentOfferedInSemester($department, 2);
         }));
         if ($semester === 2) {
             $availableDepartments = array_values(array_filter(
                 $availableDepartments,
-                static fn(array $department): bool => placementDepartmentMatchesAllocation($department, $allocation)
+                static fn(array $department): bool => studentPlacementDepartmentBelongsToAllocatedCollege($department, $allocation)
             ));
         }
 
@@ -308,6 +312,8 @@ try {
         sendJsonResponse([
             'success' => true,
             'choices' => $choices,
+            'semester1_choices' => $semesterOneChoices,
+            'semester2_choices' => $semesterTwoChoices,
             'is_submitted' => !empty($choices),
             'semester' => $semester,
             'activeSemester' => $activeSemester,
@@ -432,24 +438,12 @@ try {
     $identityValues = [$admissionNumber];
     $identityTypes = 's';
 
-    $assignedStream = $semester === 2
-        ? getStudentAssignedPlacementStream($db, $studentId, $admissionNumber)
-        : '';
-    $normalizedAssignedStream = placementNormalizeStream($assignedStream);
-    if ($semester === 2 && $normalizedAssignedStream === '') {
-        sendJsonResponse([
-            'success' => false,
-            'message' => 'Unable to verify your assigned stream. Please contact the Registrar Office.',
-        ], 400);
-    }
     $activeDepartments = getActiveDepartments($db, $semester);
     if ($semester === 2) {
         $activeDepartments = array_values(array_filter(
             $activeDepartments,
             static fn(array $department): bool => placementDepartmentOfferedInSemester($department, 2)
-                && placementDepartmentStream($department)
-                    === $normalizedAssignedStream
-                && placementDepartmentMatchesAllocation($department, $allocation)
+                && studentPlacementDepartmentBelongsToAllocatedCollege($department, $allocation)
         ));
     } else {
         $assignedStream = getStudentAssignedPlacementStream($db, $studentId, $admissionNumber);
@@ -595,15 +589,6 @@ try {
             $available = placementDepartmentOfferedInSemester($department, $semester);
             if (!$available) {
                 sendJsonResponse(['success' => false, 'message' => 'A selected department is not available in this semester.'], 400);
-            }
-            if ($semester === 2) {
-                if (placementDepartmentStream($department)
-                    !== $normalizedAssignedStream) {
-                    sendJsonResponse([
-                        'success' => false,
-                        'message' => 'Selected departments must belong to your assigned stream.',
-                    ], 400);
-                }
             }
             if (isset($seenDepartments[$departmentId])) {
                 sendJsonResponse(['success' => false, 'message' => 'Each department can only be selected once.'], 400);

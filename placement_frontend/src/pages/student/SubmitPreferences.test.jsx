@@ -148,7 +148,7 @@ describe('SubmitPreferences', () => {
     expect(firstChoice.querySelector('optgroup')).toHaveAttribute('label', 'Other Natural Science');
   });
 
-  it('disables Semester 2 departments selected in another slot and re-enables released selections', () => {
+  it('starts edit mode with every option active, then disables selections elsewhere', () => {
     const props = {
       assignedStream: 'Natural Science',
       preferenceSemester: 2,
@@ -197,8 +197,8 @@ describe('SubmitPreferences', () => {
     const firstChoice = screen.getByRole('combobox', { name: 'Choice #1' });
     const secondChoice = screen.getByRole('combobox', { name: 'Choice #2' });
     expect(firstChoice.querySelector('option[value="department:21"]')).toBeEnabled();
-    expect(firstChoice.querySelector('option[value="department:22"]')).toBeDisabled();
-    expect(secondChoice.querySelector('option[value="department:21"]')).toBeDisabled();
+    expect(firstChoice.querySelector('option[value="department:22"]')).toBeEnabled();
+    expect(secondChoice.querySelector('option[value="department:21"]')).toBeEnabled();
     expect(secondChoice.querySelector('option[value="department:22"]')).toBeEnabled();
 
     fireEvent.change(firstChoice, { target: { value: 'department:23' } });
@@ -206,6 +206,10 @@ describe('SubmitPreferences', () => {
     expect(secondChoice.querySelector('option[value="department:21"]')).toBeEnabled();
     expect(secondChoice.querySelector('option[value="department:23"]')).toBeDisabled();
     expect(firstChoice.querySelector('option[value="department:23"]')).toBeEnabled();
+
+    fireEvent.change(secondChoice, { target: { value: 'department:23' } });
+    expect(firstChoice).toHaveValue('department:22');
+    expect(secondChoice).toHaveValue('department:23');
 
     fireEvent.change(firstChoice, { target: { value: '' } });
     expect(secondChoice.querySelector('option[value="department:23"]')).toBeEnabled();
@@ -379,7 +383,7 @@ describe('SubmitPreferences', () => {
     expect(screen.queryByRole('option', { name: 'Biology' })).not.toBeInTheDocument();
   });
 
-  it('renders Semester 2 departments across colleges and excludes first-semester-only departments', () => {
+  it('renders Semester 2 departments only from the assigned college', () => {
     render(<SubmitPreferences
       assignedStream="Social Science"
       preferenceSemester={2}
@@ -401,21 +405,22 @@ describe('SubmitPreferences', () => {
       semesterTwoPreferences={[]}
       semesterTwoChoiceCount={2}
       allocatedPlacementGroup="other_social_science"
+      allocatedCollege="Other Social Science"
       onSemesterTwoPreferenceChange={jest.fn()}
     />);
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Semester 2 Preferences: Showing active departments across colleges in your assigned stream.',
+      'Active departments in your assigned college.',
     );
     expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(2);
     expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(2);
     expect(screen.getAllByRole('option', { name: 'Social Studies' })).toHaveLength(2);
-    expect(screen.getAllByRole('option', { name: 'Law' })).toHaveLength(2);
+    expect(screen.queryByRole('option', { name: 'Law' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'First-semester Law' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('group', { name: 'School of Law' })).toHaveLength(2);
+    expect(screen.queryByRole('group', { name: 'School of Law' })).not.toBeInTheDocument();
   });
 
-  it('renders Semester 2 options from every college provided by the assigned-stream lookup', () => {
+  it('renders Semester 2 options only from the allocated college even if the lookup includes others', () => {
     render(<SubmitPreferences
       assignedStream="Social Science"
       preferenceSemester={2}
@@ -442,7 +447,31 @@ describe('SubmitPreferences', () => {
     expect(screen.getByRole('option', { name: 'Economics' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Special Needs' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Sociology' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Community Development' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Community Development' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('College or placement group')).not.toBeInTheDocument();
+  });
+
+  it('matches allocated college names that use ampersands instead of and', () => {
+    render(<SubmitPreferences
+      assignedStream="Social Science"
+      preferenceSemester={2}
+      groupValues={[]}
+      groupLabel={() => 'Other Social Science'}
+      preferences={[]}
+      onChoiceChange={jest.fn()}
+      onDepartmentsLoaded={jest.fn()}
+      onDepartmentLoadError={jest.fn()}
+      disabled={false}
+      semesterTwoDepartments={[
+        { id: 51, name: 'Management', college_name: 'College of Business and Economics', status: 'active', offered_semester: 2 },
+      ]}
+      semesterTwoPreferences={[]}
+      semesterTwoChoiceCount={1}
+      allocatedPlacementGroup="other_social_science"
+      allocatedCollege="College of Business & Economics"
+      onSemesterTwoPreferenceChange={jest.fn()}
+    />);
+
+    expect(screen.getByRole('option', { name: 'Management' })).toBeInTheDocument();
   });
 });

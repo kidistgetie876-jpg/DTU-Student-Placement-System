@@ -241,6 +241,31 @@ describe('ChoiceMatrix', () => {
     expect(cells[7]).toHaveTextContent('Early Childhood Care and Education');
   });
 
+  it('shows Semester 1 and Semester 2 choices side by side when Semester 2 is active', () => {
+    render(<ChoiceMatrix
+      students={[{
+        ...student,
+        student_id: '',
+        admission_number: 'MOE10042',
+        choices: [
+          { priority: 1, semester: 1, dept_name: 'Medicine', college_name: 'Health Science' },
+          { priority: 2, semester: 1, dept_name: 'Nursing', college_name: 'Health Science' },
+          { priority: 1, semester: 2, dept_name: 'Public Health', college_name: 'Health Science' },
+        ],
+      }]}
+      totalStudentCount={1}
+      totalRecordCount={1}
+      activeSemester={2}
+    />);
+
+    const cells = within(screen.getByRole('row', { name: /Aster Student/ })).getAllByRole('cell');
+    expect(cells[5]).toHaveTextContent('Medicine');
+    expect(cells[6]).toHaveTextContent('Nursing');
+    expect(cells[7]).toHaveTextContent('Public Health');
+    expect(cells[5]).not.toHaveTextContent('—');
+    expect(cells[7]).not.toHaveTextContent('—');
+  });
+
   it('normalizes pending semester status labels in the matrix', () => {
     render(<ChoiceMatrix
       students={[{

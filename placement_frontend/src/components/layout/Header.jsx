@@ -43,7 +43,7 @@ function Header() {
     systemSubtitle: 'Student Department Placement System',
   });
   const [publicLinks, setPublicLinks] = useState(defaultPublicLinks);
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin')
@@ -106,7 +106,7 @@ function Header() {
   const isAuthenticated = user !== null;
 
   return (
-    <header className="main-header-container">
+    <header className={`main-header-container${hasDashboardHeader ? ' dashboard-shell-header' : ''}`}>
       {/* TIER 1: University Branding (Sefa yalena Blue) */}
       <div className={`top-branding-tier${hasDashboardHeader ? ' has-dashboard-utilities' : ''}${hasAdminDashboardHeader ? ' admin-dashboard-header' : ''}`}>
         <div className="container top-branding-content">
@@ -170,17 +170,6 @@ function Header() {
 
               {!hasDashboardHeader && (
                 <div className="auth-action-wrapper ms-auto d-flex align-items-center gap-3">
-                  <label className="visually-hidden" htmlFor="site-language-select">{t('Select language')}</label>
-                  <select
-                    id="site-language-select"
-                    className="form-select form-select-sm w-auto"
-                    aria-label={t('Select language')}
-                    value={language}
-                    onChange={(event) => setLanguage(event.target.value)}
-                  >
-                    <option value="en">English</option>
-                    <option value="am">አማርኛ</option>
-                  </select>
                   {isAuthenticated && isDashboardRoute ? (
                     <div className="d-flex align-items-center gap-3">
                       {user.role === 'admin' && <Link to="/admin-dashboard" className="dashboard-link">{t('Dashboard')}</Link>}

@@ -85,6 +85,7 @@ export const parseSourceImportCsv = (csvText, columns) => {
 
 const SourceImport = ({ title, endpoint, columns, normalizeRows = (sourceRows) => sourceRows, onImportSuccess }) => {
   const fileInputRef = useRef(null);
+  const previewColumns = columns.filter(({ showInPreview = true }) => showInPreview);
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -133,17 +134,34 @@ const SourceImport = ({ title, endpoint, columns, normalizeRows = (sourceRows) =
     setStatus(null);
     try {
       const response = await api.post(endpoint, { students: rows });
-      const rowErrors = Array.isArray(response.data?.row_errors) ? response.data.row_errors : [];
+      const responseData = response.data || {};
+      const rowErrors = Array.isArray(responseData.row_errors) ? responseData.row_errors : [];
       const rowErrorDetails = rowErrors
         .map(({ row, message }) => `Row ${row}: ${message}`)
         .join(' ');
-      if (response.data?.success !== true) {
-        throw new Error([response.data?.message, rowErrorDetails].filter(Boolean).join(' '));
+      const importedCount = Number(
+        responseData.imported_count
+          ?? responseData.updated_count
+          ?? responseData.inserted_count
+          ?? responseData.created_count
+          ?? 0,
+      );
+      const updatedCount = Number(responseData.updated_count ?? importedCount);
+      const unchangedCount = Number(responseData.unchanged_count ?? 0);
+      const hasUpdatedRecords = Number.isFinite(updatedCount) && updatedCount > 0;
+      const hasUnchangedRecords = Number.isFinite(unchangedCount) && unchangedCount > 0;
+      if (responseData.success !== true && !hasUpdatedRecords && !hasUnchangedRecords) {
+        throw new Error([responseData.message, rowErrorDetails].filter(Boolean).join(' '));
       }
       setStatus({
-        type: 'success',
+        type: !hasUpdatedRecords && hasUnchangedRecords ? 'info' : 'success',
         message: [
-          response.data.message || `Imported ${response.data.imported_count ?? rows.length} row(s).`,
+          responseData.message
+            || (hasUpdatedRecords
+              ? `SIMS import completed: ${updatedCount} record(s) updated.`
+              : hasUnchangedRecords
+                ? `${unchangedCount} record(s) already exist with no changes.`
+                : `Imported ${responseData.imported_count ?? rows.length} row(s).`),
           rowErrorDetails,
         ].filter(Boolean).join(' '),
       });
@@ -192,12 +210,12 @@ const SourceImport = ({ title, endpoint, columns, normalizeRows = (sourceRows) =
           <div className="table-responsive">
             <table className="table table-sm table-striped align-middle">
               <thead>
-                <tr>{columns.map(({ header }) => <th key={header}>{header}</th>)}</tr>
+                <tr>{previewColumns.map(({ header }) => <th key={header}>{header}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.slice(0, 10).map((row, index) => (
                   <tr key={`${row[columns[0].header]}-${index}`}>
-                    {columns.map(({ header }) => <td key={header}>{row[header] || '—'}</td>)}
+                    {previewColumns.map(({ header }) => <td key={header}>{row[header] || '—'}</td>)}
                   </tr>
                 ))}
               </tbody>

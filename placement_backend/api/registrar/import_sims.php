@@ -310,7 +310,8 @@ try {
             && $unmatchedImportCount === count($fallbackCandidates);
     }
 
-    $imported = 0;
+    $updated = 0;
+    $unchanged = 0;
     $linkedCount = 0;
     $matchedStudentDataIds = [];
     $seenUniversityIds = [];
@@ -526,14 +527,18 @@ try {
             throw new RuntimeException('Unable to update student scores on row ' . ($index + 1) . ': ' . $scoreAndIdentifierUpdate->error);
         }
 
-        if (
-            in_array('student_id', $studentColumns, true)
-            && ($matchedByUniversityId || $hasExplicitUniversityId)
-            && ($matchedStudentId === '' || $storedIdIsMinistryNumber)
-        ) {
-            $linkedCount++;
+        if ($scoreAndIdentifierUpdate->affected_rows > 0) {
+            $updated++;
+            if (
+                in_array('student_id', $studentColumns, true)
+                && ($matchedByUniversityId || $hasExplicitUniversityId)
+                && ($matchedStudentId === '' || $storedIdIsMinistryNumber)
+            ) {
+                $linkedCount++;
+            }
+        } else {
+            $unchanged++;
         }
-        $imported++;
     }
 
     if (!$db->commit()) {
@@ -545,7 +550,8 @@ try {
         $auditActor['id'],
         $auditActor['name'],
         'data.import',
-        'Imported SIMS student scores: ' . $imported . ' record(s) updated; '
+        'Imported SIMS student scores: ' . $updated . ' record(s) updated; '
+            . $unchanged . ' record(s) unchanged; '
             . count($rowErrors) . ' row(s) skipped.'
     );
     $studentLookup->close();
@@ -553,15 +559,22 @@ try {
     $db->close();
 
     simsImportRespond([
-        'success' => $imported > 0,
-        'message' => $imported === 0
-            ? 'No SIMS records were imported. See row_errors for details.'
-            : 'SIMS import completed: ' . $imported . ' record(s) updated.'
+        'success' => ($updated + $unchanged) > 0,
+        'status' => $updated > 0 ? 'success' : ($unchanged > 0 ? 'info' : 'error'),
+        'message' => $updated > 0
+            ? 'SIMS import completed: ' . $updated . ' record(s) updated.'
+                . ($unchanged > 0
+                    ? ' ' . $unchanged . ' record(s) already existed with no changes.'
+                    : '')
                 . (count($rowErrors) > 0
                     ? ' ' . count($rowErrors) . ' row(s) were skipped.'
-                    : ''),
-        'imported_count' => $imported,
-        'updated_count' => $imported,
+                    : '')
+            : ($unchanged > 0
+                ? $unchanged . ' record(s) already exist with no changes.'
+                : 'No SIMS records were imported. See row_errors for details.'),
+        'imported_count' => $updated + $unchanged,
+        'updated_count' => $updated,
+        'unchanged_count' => $unchanged,
         'linked_count' => $linkedCount,
         'skipped_count' => count($rowErrors),
         'row_errors' => $rowErrors,

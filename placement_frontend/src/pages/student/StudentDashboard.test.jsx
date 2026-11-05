@@ -60,11 +60,20 @@ describe('StudentDashboard', () => {
 
     expect(await screen.findAllByText(/Welcome, /i)).toHaveLength(1);
     expect(screen.getByText('CGPA')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View CGPA details' }))
+      .toHaveClass('bg-gradient-to-br', 'from-blue-600', 'to-indigo-700');
+    expect(screen.getByRole('button', { name: 'View CGPA details' }))
+      .toHaveStyle({ backgroundImage: 'linear-gradient(135deg, #2563eb 0%, #3730a3 100%)', color: 'rgb(255, 255, 255)' });
+    expect(screen.getByRole('button', { name: 'View Grade 12 details' }))
+      .toHaveClass('bg-gradient-to-br', 'from-emerald-600', 'to-teal-700');
+    expect(screen.getByRole('button', { name: 'View COC score details' }))
+      .toHaveClass('bg-gradient-to-br', 'from-amber-500', 'to-orange-600');
+    expect(screen.getByRole('button', { name: 'View placement status' }))
+      .toHaveClass('bg-gradient-to-br', 'from-purple-600', 'to-pink-700');
     expect(screen.getByText(/Stream/i)).toBeInTheDocument();
-    expect(screen.getByText('Current placement status')).toBeInTheDocument();
-    expect(screen.getByText('Student placement overview')).toBeInTheDocument();
+    expect(screen.getByText('Placement status')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your placement overview' })).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Disability' })).not.toBeInTheDocument();
-    expect(screen.getByText(/ID:/)).toHaveTextContent('Not available');
     expect(api.get).toHaveBeenCalledWith(
       'api/student/placement_status.php',
       { params: { student_id: '1' } },
@@ -193,11 +202,9 @@ describe('StudentDashboard', () => {
 
     render(<StudentDashboard />);
 
-    expect(await screen.findAllByText('Deferred to 2nd Semester - Pending Placement')).toHaveLength(3);
+    expect(await screen.findAllByText('Deferred to 2nd Semester - Pending Placement')).toHaveLength(2);
     expect(screen.queryByText('Assigned to Semester 1 - Pending Approval')).not.toBeInTheDocument();
-    expect(screen.getByTestId('placement-status-banner')).toHaveTextContent(
-      'Your department placement process will take place during the 2nd Semester placement run.',
-    );
+    expect(screen.queryByTestId('placement-status-banner')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
     expect(await screen.findByText('Placement run completed')).toBeInTheDocument();
     expect(screen.getByText('Semester 2')).toBeInTheDocument();
@@ -303,12 +310,12 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
     expect(await screen.findByRole('combobox', { name: 'Choice #1' })).toBeEnabled();
-    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(2);
-    expect(screen.getAllByRole('option', { name: 'Law' })).toHaveLength(2);
+    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(1);
+    expect(screen.queryByRole('option', { name: 'Law' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('College or placement group')).not.toBeInTheDocument();
     expect(screen.queryByText('The Semester 2 choice portal is closed. Your choices are locked.')).not.toBeInTheDocument();
     expect(screen.queryByText('Placement has already been processed. Choice editing is locked.')).not.toBeInTheDocument();
-    expect(document.querySelector('.student-preferences-submit')).toBeEnabled();
+    expect(screen.getByTestId('submit-preferences-button')).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Update Preferences' })).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('api/student/get_active_departments.php', expect.objectContaining({
       params: expect.objectContaining({
@@ -317,7 +324,7 @@ describe('StudentDashboard', () => {
     }));
   });
 
-  it('locks the second-semester form when a Semester 1 department is already assigned', async () => {
+  it('hides the assigned department and result action while placement is pending approval', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
       if (url.includes('student_data_api.php')) {
@@ -370,9 +377,16 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(await screen.findByTestId('assigned-placement-choice-lock')).toHaveTextContent('Medicine');
+    const placementLock = await screen.findByTestId('assigned-placement-choice-lock');
+    expect(placementLock).toHaveTextContent(
+      'Your department placement is pending approval by the Registrar.',
+    );
+    expect(placementLock).toHaveTextContent('Pending Approval');
+    expect(placementLock).not.toHaveTextContent('Medicine');
+    expect(screen.queryByRole('button', { name: 'View official placement result' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Choice #1' })).not.toBeInTheDocument();
     expect(screen.queryByText('The Semester 2 choice portal is open.')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('placement-status-banner')).not.toBeInTheDocument();
   });
 
   it('uses the active first semester form for editable students and shows no duplicate lock warnings', async () => {
@@ -465,7 +479,7 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
     expect(await screen.findByRole('combobox', { name: 'Choice #1' })).toBeEnabled();
-    expect(document.querySelector('.student-preferences-submit')).toBeEnabled();
+    expect(screen.getByTestId('submit-preferences-button')).toBeEnabled();
   });
 
   it('keeps unplaced Pending 1st Semester students on Semester 1 when Semester 2 is active', async () => {
@@ -512,7 +526,7 @@ describe('StudentDashboard', () => {
     expect(screen.queryByText(
       'Semester 1 choices are locked while Semester 2 is active for placement.',
     )).not.toBeInTheDocument();
-    expect(document.querySelector('.student-preferences-submit')).toBeEnabled();
+    expect(screen.getByTestId('submit-preferences-button')).toBeEnabled();
   });
 
   it('opens Semester 2 preferences for students allocated during Semester 1 placement', async () => {
@@ -677,7 +691,7 @@ describe('StudentDashboard', () => {
     expect(await screen.findByText('2nd Semester choice portal is currently closed.'))
       .toBeInTheDocument();
     expect(await screen.findByRole('combobox', { name: 'Choice #1' })).toBeDisabled();
-    expect(document.querySelector('.student-preferences-submit')).toBeDisabled();
+    expect(screen.getByTestId('submit-preferences-button')).toBeDisabled();
   });
 
   it('uses the allocation to identify Semester 2 even when the saved status still says Semester 1 placed', async () => {
@@ -972,6 +986,7 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Notifications/ }));
 
     expect(await screen.findByRole('button', { name: 'Mark all as read' })).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('api/student/get_student_notifications.php');
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('api/student/mark_all_notifications_read.php'));
@@ -1158,7 +1173,7 @@ describe('StudentDashboard', () => {
     ));
   });
 
-  it('hides Pending placement details until the Registrar publishes the result', async () => {
+  it('hides pending placement details and shows an approval notice', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
       if (url.includes('student_data_api.php')) {
@@ -1181,7 +1196,8 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /placement result/i }));
 
-    expect(await screen.findByText(/Placement Under Review/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Placement Pending Approval/i)).toBeInTheDocument();
+    expect(screen.getByText(/pending approval by the Registrar/i)).toBeInTheDocument();
     expect(screen.queryByText('Computer Science')).not.toBeInTheDocument();
     expect(screen.queryByText(/Congratulations!/i)).not.toBeInTheDocument();
   });
@@ -1713,7 +1729,7 @@ describe('StudentDashboard', () => {
     expect(screen.getByLabelText('Choice #2')).toHaveValue('other_social_science');
   });
 
-  it('uses the server-assigned stream for Semester 2 preference options', async () => {
+  it('uses the allocated college for Semester 2 preference options regardless of stream metadata', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) {
         return Promise.resolve({ data: [] });
@@ -1736,10 +1752,12 @@ describe('StudentDashboard', () => {
           data: {
             success: true,
             assigned_stream: 'Social Science',
+            allocated_college: 'College of Business & Economics',
+            placementGroup: 'other_social_science',
             departments: [
               { id: 1, name: 'Law', stream: 'Social Science', college_name: 'School of Law', placement_group: 'law', status: 'active', offered_semester: 2 },
-              { id: 2, name: 'Economics', college_name: 'Other Social Science', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
-              { id: 3, name: 'Sociology', stream: 'Social Science', college_name: 'Other Social Science', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
+              { id: 2, name: 'Economics', stream: 'Natural Science', college_name: 'college of business and economics', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
+              { id: 3, name: 'Sociology', stream: 'Social Science', college_name: 'College of Business and Economics', placement_group: 'other_social_science', status: 'active', offered_semester: 2 },
               { id: 4, name: 'Medicine', stream: 'Natural Science', college_name: 'Health Science', placement_group: 'health_science', status: 'active', offered_semester: 2 },
             ],
           },
@@ -1764,11 +1782,11 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
     expect(await screen.findByText(
-      'Semester 2 Preferences: Showing active departments across colleges in your assigned stream.',
+      'Active departments in your assigned college.',
     )).toBeInTheDocument();
-    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(3);
-    expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(3);
-    expect(screen.getAllByRole('option', { name: 'Law' })).toHaveLength(3);
+    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(2);
+    expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(2);
+    expect(screen.queryByRole('option', { name: 'Law' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Medicine' })).not.toBeInTheDocument();
     expect(screen.queryByText('College or placement group')).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('api/student/get_active_departments.php', expect.objectContaining({
@@ -1838,7 +1856,8 @@ describe('StudentDashboard', () => {
     expect(api.get).not.toHaveBeenCalledWith('api/student/get_active_departments.php', expect.anything());
   });
 
-  it('allows same-stream department preferences across colleges in Semester 2', async () => {
+  it('restricts Semester 2 preferences to the allocated college', async () => {
+    let preferencesSaved = false;
     api.get.mockImplementation((url) => {
       if (url.includes('departments_api.php')) return Promise.resolve({ data: [] });
       if (url.includes('student_data_api.php')) {
@@ -1868,6 +1887,12 @@ describe('StudentDashboard', () => {
         });
       }
       if (url.includes('student_preferences.php')) {
+        const semesterTwoChoices = preferencesSaved
+          ? [
+            { dept_id: 1, dept_name: 'Economics', college_name: 'Other Social Science', semester: 2, priority: 1 },
+            { dept_id: 2, dept_name: 'Sociology', college_name: 'Other Social Science', semester: 2, priority: 2 },
+          ]
+          : [];
         return Promise.resolve({
           data: {
             success: true,
@@ -1875,13 +1900,20 @@ describe('StudentDashboard', () => {
             activeSemester: 2,
             secondSemesterChoiceEligible: true,
             isSecondSemesterChoiceOpen: true,
-            choices: [],
+            semester1_choices: [
+              { dept_id: 5, dept_name: 'Biology', college_name: 'Natural Science', semester: 1, priority: 1 },
+            ],
+            semester2_choices: semesterTwoChoices,
+            choices: semesterTwoChoices,
           },
         });
       }
       return Promise.resolve({ data: {} });
     });
-    api.post.mockResolvedValue({ data: { success: true, semester: 2, saved_count: 3 } });
+    api.post.mockImplementation(() => {
+      preferencesSaved = true;
+      return Promise.resolve({ data: { success: true, semester: 2, saved_count: 2 } });
+    });
 
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
@@ -1889,18 +1921,17 @@ describe('StudentDashboard', () => {
     expect(await screen.findByRole('combobox', { name: 'Choice #1' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Choice #1' })).toBeEnabled();
     expect(screen.getByText(
-      'Semester 2 Preferences: Showing active departments across colleges in your assigned stream.',
+      'Active departments in your assigned college.',
     )).toBeInTheDocument();
     expect(screen.queryByText(/active placement semester is/i)).not.toBeInTheDocument();
-    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(3);
-    expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(3);
-    expect(screen.getAllByRole('option', { name: 'Law' })).toHaveLength(3);
+    expect(screen.getAllByRole('option', { name: 'Economics' })).toHaveLength(2);
+    expect(screen.getAllByRole('option', { name: 'Sociology' })).toHaveLength(2);
+    expect(screen.queryByRole('option', { name: 'Law' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Agriculture' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /^-- Select department or college queue --$/ })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Choice #1'), { target: { value: 'department:1' } });
     fireEvent.change(screen.getByLabelText('Choice #2'), { target: { value: 'department:2' } });
-    fireEvent.change(screen.getByLabelText('Choice #3'), { target: { value: 'department:3' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Submit Preferences' }).slice(-1)[0]);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       'api/student/student_preferences.php',
@@ -1911,12 +1942,21 @@ describe('StudentDashboard', () => {
         choices: [
           { dept_id: 1, priority: 1 },
           { dept_id: 2, priority: 2 },
-          { dept_id: 3, priority: 3 },
         ],
       },
     ));
-    expect(screen.getByText('Semester 2 preferences saved and verified (3 choices).'))
+    expect(screen.getByText('Semester 2 preferences saved and verified (2 choices).'))
       .toBeInTheDocument();
+    expect(api.get.mock.calls.filter(([url]) => url.includes('student_preferences.php')).length)
+      .toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('heading', { name: 'Semester 1 Department Preferences' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Semester 2 Department Preferences' })).toBeInTheDocument();
+    expect(screen.queryByText('Biology')).not.toBeInTheDocument();
+    expect(screen.getByText('Choice #1')).toBeInTheDocument();
+    expect(screen.getByText('Economics')).toBeInTheDocument();
+    expect(screen.getByText('Choice #2')).toBeInTheDocument();
+    expect(screen.getByText('Sociology')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Update Preferences' }));
     expect(screen.getByLabelText('Choice #1')).toHaveValue('');
@@ -1925,7 +1965,11 @@ describe('StudentDashboard', () => {
     expect(screen.getByLabelText('Choice #2').querySelector('option[value="department:1"]')).toBeEnabled();
     expect(screen.getByLabelText('Choice #1').querySelector('option[value="department:2"]')).toBeEnabled();
     expect(screen.getByLabelText('Choice #2').querySelector('option[value="department:2"]')).toBeEnabled();
-    expect(screen.getByLabelText('Choice #1').querySelector('option[value="department:3"]')).toBeEnabled();
+    expect(screen.getByLabelText('Choice #1').querySelector('option[value="department:3"]')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Choice #1'), { target: { value: 'department:1' } });
+    expect(screen.getByLabelText('Choice #1')).toHaveValue('department:1');
+    expect(screen.getByLabelText('Choice #2').querySelector('option[value="department:1"]')).toBeDisabled();
   });
 
   it('uses Field of Study instead of a mismatched saved choice stream', async () => {
@@ -2226,7 +2270,7 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Update Preferences' }));
 
-    expect(await screen.findByText('You are editing your submitted preferences.')).toBeInTheDocument();
+    expect(await screen.findByText('Editing your submitted preferences')).toBeInTheDocument();
     expect(screen.queryByText('Each placement group can only be selected once.')).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -2324,14 +2368,15 @@ describe('StudentDashboard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
     expect(screen.getByText('Preferences submitted')).toBeInTheDocument();
-    expect(screen.getByText('Preferences submitted. You can update or re-order your choices anytime until the placement results are published by the Registrar.')).toBeInTheDocument();
+    expect(screen.queryByText(/You can update or re-order your choices anytime/)).not.toBeInTheDocument();
     expect(screen.getAllByRole('status')[0]).toHaveClass('bg-emerald-50', 'text-emerald-800', 'border-emerald-200');
     expect(screen.getByText('Natural')).toBeInTheDocument();
-    expect(screen.getAllByText('Gafat Institute of Technology')).toHaveLength(3);
-    expect(screen.getByText('Rank #1')).toBeInTheDocument();
+    expect(screen.getAllByText('Gafat Institute of Technology')).toHaveLength(2);
+    expect(screen.getByText('Choice #1')).toBeInTheDocument();
     expect(screen.getByText('Computer Science')).toBeInTheDocument();
-    expect(screen.getByText('Rank #2')).toBeInTheDocument();
+    expect(screen.getByText('Choice #2')).toBeInTheDocument();
     expect(screen.getByText('Electrical Engineering')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Update Preferences' }));
     expect(screen.getAllByRole('combobox')[1]).toBeEnabled();
@@ -2426,9 +2471,75 @@ describe('StudentDashboard', () => {
       'Preference submission is now closed because placement results have already been published.',
     )).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Update Preferences' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0);
-    screen.getAllByRole('combobox').forEach((select) => expect(select).toBeDisabled());
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByText('Choice #1')).toBeInTheDocument();
+    expect(screen.getByText('Computer Science')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('displays only the active semester preferences while editing that semester', async () => {
+    mockLocation = { pathname: '/student-dashboard', search: '?tab=preferences' };
+    api.get.mockImplementation((url) => {
+      if (url.includes('placement_status.php')) {
+        return Promise.resolve({ data: { success: true, status: 'pending', active_semester: 1, is_choice_editable: true } });
+      }
+      if (url.includes('departments_api.php')) {
+        return Promise.resolve({ data: [
+          { id: 1, name: 'Computer Science', stream: 'Natural Science', college_name: 'Gafat Institute of Technology', status: 'active', offered_semester: 1 },
+          { id: 2, name: 'Electrical Engineering', stream: 'Natural Science', college_name: 'Gafat Institute of Technology', status: 'active', offered_semester: 1 },
+        ] });
+      }
+      if (url.includes('student_data_api.php')) {
+        return Promise.resolve({ data: { success: true, student: { id: '1', id_number: 'DTU16R1001', username: 'Alice', stream: 'Natural Science', gpa: 3, cgpa: 3 } } });
+      }
+      if (url.includes('student_preferences.php')) {
+        return Promise.resolve({ data: {
+          success: true,
+          semester: 1,
+          activeSemester: 1,
+          isDeadlineActive: true,
+          isResultPublished: false,
+          semester1_choices: [{
+            dept_id: 1,
+            dept_name: 'Computer Science',
+            college_name: 'Gafat Institute of Technology',
+            stream: 'Natural Science',
+            semester: 1,
+            priority: 1,
+          }],
+          semester2_choices: [{
+            dept_id: 3,
+            dept_name: 'Chemical Engineering',
+            college_name: 'College of Engineering',
+            semester: 2,
+            priority: 1,
+          }],
+          choices: [{
+            dept_id: 1,
+            dept_name: 'Computer Science',
+            college_name: 'Gafat Institute of Technology',
+            stream: 'Natural Science',
+            semester: 1,
+            priority: 1,
+          }],
+        } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StudentDashboard />);
+
+    expect(await screen.findByRole('heading', { name: 'Semester 1 Department Preferences' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Semester 2 Department Preferences' })).not.toBeInTheDocument();
+    expect(screen.getByText('Computer Science')).toBeInTheDocument();
+    expect(screen.queryByText('Chemical Engineering')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update Preferences' }));
+
+    expect(screen.getByRole('heading', { name: 'Semester 1 Department Preferences' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Semester 2 Department Preferences' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Chemical Engineering')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Choice #1' })).toBeInTheDocument();
   });
 
   it('keeps preferences open while the configured submission window is active', async () => {
@@ -2587,7 +2698,7 @@ describe('StudentDashboard', () => {
     render(<StudentDashboard />);
     fireEvent.click(await screen.findByRole('button', { name: /submit preferences/i }));
 
-    expect(await screen.findByText(/Preferences submitted\. You can update or re-order/)).toBeInTheDocument();
+    expect(await screen.findByText('Preferences submitted')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update Preferences' })).toBeInTheDocument();
     expect(screen.getByText('Computer Science')).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();

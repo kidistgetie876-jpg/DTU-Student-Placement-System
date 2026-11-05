@@ -150,45 +150,45 @@ const StudentAppeal = ({ studentId, placement }) => {
   };
 
   return (
-    <section className="student-appeal" aria-labelledby="student-appeal-title">
-      <div className="student-appeal-heading">
+    <section className="mx-auto w-full max-w-5xl space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" aria-labelledby="student-appeal-title">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <span className="student-section-eyebrow">REGISTRAR SUPPORT</span>
-          <h2 id="student-appeal-title">Submit Appeal</h2>
-          <p>Share your placement concern with the Registrar for review.</p>
+          <span className="text-xs font-bold uppercase tracking-[.18em] text-indigo-700">Registrar support</span>
+          <h2 id="student-appeal-title" className="mb-1 mt-1 text-2xl font-extrabold text-slate-900">Submit Appeal</h2>
+          <p className="mb-0 text-sm text-slate-600">Share a placement concern with the Registrar.</p>
         </div>
-        <span className="badge rounded-pill text-bg-warning px-3 py-2">Registrar review</span>
+        <span className="w-fit rounded-full bg-amber-100 px-3 py-2 text-xs font-bold text-amber-900">Registrar review</span>
       </div>
 
       {placement && (
-        <div className="student-appeal-placement">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           Current placement: <strong>{placement.assigned_department || placement.department || 'Not available'}</strong>
         </div>
       )}
 
       {!hasStudentIdentity && (
-        <div className="alert alert-warning" role="alert">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
           Your student account could not be verified. Please sign in again before submitting an appeal.
         </div>
       )}
 
-      <form className="student-appeal-form" onSubmit={handleSubmit}>
-        <div className="mb-3">
-          <label className="form-label fw-semibold" htmlFor="appeal-subject">Subject</label>
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <div className="grid gap-2">
+          <label className="text-sm font-semibold text-slate-700" htmlFor="appeal-subject">Subject</label>
           <input
             id="appeal-subject"
-            className="form-control"
+            className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
             maxLength={255}
             required
           />
         </div>
-        <div className="mb-3">
-          <label className="form-label fw-semibold" htmlFor="appeal-message">Complaint details</label>
+        <div className="grid gap-2">
+          <label className="text-sm font-semibold text-slate-700" htmlFor="appeal-message">Complaint details</label>
           <textarea
             id="appeal-message"
-            className="form-control"
+            className="w-full resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
             rows={5}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
@@ -196,41 +196,41 @@ const StudentAppeal = ({ studentId, placement }) => {
             required
           />
         </div>
-        <div className="d-flex align-items-center gap-3 flex-wrap">
-          <button type="submit" className="btn btn-primary fw-semibold px-4 py-2 rounded-3" disabled={submitting || !hasStudentIdentity}>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" disabled={submitting || !hasStudentIdentity}>
             {submitting ? 'Submitting...' : 'Submit Appeal'}
           </button>
           {feedback && (
-            <div className={`alert alert-${feedback.type} py-2 px-3 small rounded-3 shadow-sm mb-0`} role={feedback.type === 'danger' ? 'alert' : 'status'}>
+            <div className={`rounded-lg border px-3 py-2 text-sm shadow-sm ${feedback.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : feedback.type === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-rose-200 bg-rose-50 text-rose-800'}`} role={feedback.type === 'danger' ? 'alert' : 'status'}>
               {feedback.text}
             </div>
           )}
         </div>
       </form>
 
-      <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mt-4 mb-3">
-        <h3 className="h5 fw-bold text-primary mb-0">My Appeals</h3>
-        <span className="small text-muted">{appeals.length} submitted</span>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+        <h3 className="mb-0 text-lg font-bold text-slate-900">My Appeals</h3>
+        <span className="text-sm text-slate-500">{appeals.length} submitted</span>
       </div>
       {loading ? (
-        <div className="student-notification-empty" role="status">Loading appeal history…</div>
+        <div className="rounded-xl bg-slate-50 p-5 text-sm text-slate-600" role="status">Loading appeal history…</div>
       ) : appeals.length === 0 ? (
-        <div className="student-notification-empty">
-          <h3>No appeals yet</h3>
-          <p>Your submitted appeals and Registrar responses will appear here.</p>
+        <div className="rounded-xl bg-slate-50 p-5">
+          <h3 className="mb-1 text-base font-bold text-slate-900">No appeals yet</h3>
+          <p className="mb-0 text-sm text-slate-600">Your submitted appeals and Registrar responses will appear here.</p>
         </div>
       ) : (
-        <div className="student-appeal-history">
+        <div className="space-y-3">
           {appeals.map((appeal) => (
-            <article className="student-appeal-record" key={appeal.id}>
-              <div className="d-flex justify-content-between gap-2 flex-wrap mb-2">
-                <strong>{appeal.subject}</strong>
-                <div className="d-flex align-items-center gap-2">
-                  <span className="badge bg-secondary">{appeal.status}</span>
+            <article className="rounded-xl border border-slate-200 p-4" key={appeal.id}>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <strong className="text-slate-900">{appeal.subject}</strong>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{appeal.status}</span>
                   {String(appeal.status).toLowerCase() === 'received' && (
                     <button
                       type="button"
-                      className="btn btn-sm btn-outline-danger"
+                      className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => handleDelete(appeal)}
                       disabled={deletingAppealId === appeal.id}
                     >
@@ -239,9 +239,9 @@ const StudentAppeal = ({ studentId, placement }) => {
                   )}
                 </div>
               </div>
-              <p className="student-appeal-message mb-2 text-muted">{appeal.message}</p>
-              {appeal.response && <div className="alert alert-info mb-0"><strong>Registrar response:</strong> {appeal.response}</div>}
-              <small className="text-muted">Submitted {appeal.created_at}</small>
+              <p className="mb-2 whitespace-pre-wrap text-sm text-slate-700">{appeal.message}</p>
+              {appeal.response && <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900"><strong>Registrar response:</strong> {appeal.response}</div>}
+              <small className="text-xs text-slate-500">Submitted {appeal.created_at}</small>
             </article>
           ))}
         </div>

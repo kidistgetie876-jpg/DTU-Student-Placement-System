@@ -811,3 +811,46 @@
     min-width: 0;
   }
 }
+
+.dashboard-topbar {
+  border-color: rgba(224, 231, 255, 0.35);
+  background: #4f46e5;
+  color: #fff;
+}
+
+.dashboard-topbar-copy h2,
+.dashboard-topbar-copy h2 span,
+.dashboard-topbar-copy p {
+  color: #fff !important;
+}
+
+.dashboard-topbar-actions .dashboard-control-button,
+.dashboard-topbar-actions .dashboard-profile-trigger {
+  border-color: rgba(224, 231, 255, 0.5);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.dashboard-topbar-actions .dashboard-control-button:hover,
+.dashboard-topbar-actions .dashboard-profile-trigger:hover,
+.dashboard-topbar-actions .dashboard-control-button[aria-expanded="true"],
+.dashboard-topbar-actions .dashboard-profile-trigger[aria-expanded="true"] {
+  border-color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.dashboard-topbar-actions .dashboard-profile-trigger-copy small {
+  color: #eef2ff;
+}
+
+.dashboard-topbar-actions .dashboard-profile-avatar {
+  border-color: rgba(224, 231, 255, 0.65);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.dashboard-topbar-actions :is(.dashboard-control-button, .dashboard-profile-trigger):focus-visible {
+  outline-color: #fff;
+  outline-offset: 3px;
+}

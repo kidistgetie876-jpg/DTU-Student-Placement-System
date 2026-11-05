@@ -949,6 +949,9 @@ function computeMeritScore(array $student, array $rules): float
     $departmentSelectColumns[] = in_array('is_first_semester_only', $departmentColumns, true)
         ? 'departments.is_first_semester_only AS is_first_semester_only'
         : '0 AS is_first_semester_only';
+    $departmentSelectColumns[] = in_array('placement_group', $departmentColumns, true)
+        ? 'departments.placement_group AS placement_group'
+        : "'' AS placement_group";
     $departmentSelectColumns[] = $departmentStatusColumn !== ''
         ? "CASE WHEN LOWER(TRIM(COALESCE(departments.`{$departmentStatusColumn}`, ''))) = 'active' THEN 1 ELSE 0 END AS is_active"
         : '1 AS is_active';
@@ -1882,6 +1885,13 @@ function computeMeritScore(array $student, array $rules): float
             }
             return (int) ($left['dept_id'] ?? 0) <=> (int) ($right['dept_id'] ?? 0);
         });
+        $student['first_choice_college_allocation'] = $activeSemester === 1
+            ? placementFirstChoiceCollegeAllocationTarget(
+                $normalizedPreferences,
+                array_values($departmentMap),
+                (string) $student['stream']
+            )
+            : null;
 
         $collegeAllocation = null;
         if ($activeSemester === 2) {
@@ -1911,15 +1921,6 @@ function computeMeritScore(array $student, array $rules): float
                     'message' => 'Student has no pending college allocation for semester two.',
                 ];
                 continue;
-            }
-            $choiceAllocation = placementSecondSemesterChoiceAllocation(
-                $normalizedPreferences,
-                array_values($departmentMap),
-                (string) ($student['stream'] ?? '')
-            );
-            if ($choiceAllocation !== null) {
-                $collegeAllocation = $choiceAllocation;
-                savePlacementCollegeAllocation($db, $student, $collegeAllocation);
             }
             if (
                 $selectedCollege !== ''
@@ -2018,6 +2019,7 @@ function computeMeritScore(array $student, array $rules): float
             'is_minority' => normalizeYesNo($student['minority'] ?? $student['is_minority'] ?? false),
             'preferences' => $normalizedPreferences,
             'college_allocation' => $collegeAllocation,
+            'first_choice_college_allocation' => $student['first_choice_college_allocation'] ?? null,
             'final_merit_score' => $meritScore,
         ];
     }
@@ -2394,6 +2396,17 @@ function computeMeritScore(array $student, array $rules): float
                 continue;
             }
 
+            if (
+                $activeSemester === 1
+                && $student['first_choice_college_allocation'] !== null
+                && !placementDepartmentMatchesAllocation(
+                    $preferenceDepartment,
+                    $student['first_choice_college_allocation']
+                )
+            ) {
+                continue;
+            }
+
             if (!studentPlacementStreamsMatch($student['stream'] ?? '', $preferenceDepartment['stream'] ?? '')) {
                 continue;
             }
@@ -2669,18 +2682,19 @@ function computeMeritScore(array $student, array $rules): float
             }
 
             if ($activeSemester === 1) {
-                $pendingTarget = placementFirstSemesterAllocationTarget(
-                    (string) $student['stream'],
-                    $student['preferences'],
-                    array_values($allDepartmentMap),
-                    $semesterTwoGroupCapacityMap,
-                    $groupCapacityMap,
-                    $collegeCapacityMap,
-                    $semesterTwoCollegeCapacityMap,
-                    $preferenceCollegeCapacityMap,
-                    $preferenceGroupCapacityMap,
-                    true
-                );
+                $pendingTarget = $student['first_choice_college_allocation']
+                    ?? placementFirstSemesterAllocationTarget(
+                        (string) $student['stream'],
+                        $student['preferences'],
+                        array_values($allDepartmentMap),
+                        $semesterTwoGroupCapacityMap,
+                        $groupCapacityMap,
+                        $collegeCapacityMap,
+                        $semesterTwoCollegeCapacityMap,
+                        $preferenceCollegeCapacityMap,
+                        $preferenceGroupCapacityMap,
+                        true
+                    );
                 $pendingCollege = trim((string) ($pendingTarget['college_name'] ?? ''));
                 if ($pendingTarget === null || $pendingCollege === '') {
                     throw new RuntimeException(

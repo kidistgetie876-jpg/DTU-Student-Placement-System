@@ -226,7 +226,7 @@ const LoginPage = () => {
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-28 -right-16 h-96 w-96 rounded-full bg-blue-300/20 blur-3xl" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(129,140,248,0.10),transparent_45%)]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-md">
+      <div className="relative z-10 mx-auto w-full max-w-sm sm:max-w-md lg:max-w-lg">
         <div className="login-card w-full animate-login-enter rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/15 motion-reduce:animate-none">
           <div className="mb-4 text-center">
             <img

@@ -26,6 +26,54 @@ assertSemesterValue(
     normalizeStudentPlacementGroup('', 'Social Science'),
     'The Social Science college naming variant maps to the allocated placement group.'
 );
+assertSemesterRule(
+    true,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'College of Health Sciences', 'college_id' => 3],
+        ['college' => 'Health Science', 'college_id' => 3]
+    ),
+    'College name aliases for the same allocated college are accepted.'
+);
+assertSemesterRule(
+    true,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'College of Health Sciences'],
+        ['college' => 'Health Science']
+    ),
+    'College name aliases are matched when catalog IDs are unavailable.'
+);
+assertSemesterRule(
+    true,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'Social Science', 'college_id' => 12],
+        ['college' => 'Other Social Science', 'college_id' => 28]
+    ),
+    'Known college aliases are matched even when the catalog contains separate IDs for each name.'
+);
+assertSemesterRule(
+    false,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'School of Law', 'college_id' => 4],
+        ['college' => 'Other Social Science', 'college_id' => 5]
+    ),
+    'A department from another college is rejected even when it shares the assigned stream.'
+);
+assertSemesterRule(
+    true,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'Social Science', 'placement_group' => 'other_social_science'],
+        ['college' => 'Other Social Science', 'group' => 'other_social_science']
+    ),
+    'The legacy Social Science name is treated as an alias of the allocated Other Social Science college.'
+);
+assertSemesterRule(
+    false,
+    studentPlacementDepartmentBelongsToAllocatedCollege(
+        ['college_name' => 'College of Business and Economics', 'placement_group' => 'other_social_science'],
+        ['college' => 'Other Social Science', 'group' => 'other_social_science']
+    ),
+    'A different college is not accepted merely because its placement group matches.'
+);
 assertSemesterValue(
     'natural',
     placementDepartmentStream([
@@ -114,7 +162,7 @@ assertSemesterRule(
     'An explicit second-semester offering takes precedence over the college-group default.'
 );
 assertSemesterRule(
-    false,
+    true,
     placementDepartmentOfferedInSemester([
         'name' => 'Economics',
         'college_name' => 'Other Social Science',
@@ -228,6 +276,40 @@ $secondSemesterChoiceAllocation = placementSecondSemesterChoiceAllocation(
         ],
     ],
     'Natural Science'
+);
+ $firstChoiceCollegeAllocation = placementFirstChoiceCollegeAllocationTarget(
+    [
+        ['dept_id' => 80, 'department' => 'Architecture', 'priority' => 1],
+        ['dept_id' => 91, 'department' => 'Software Engineering', 'priority' => 2],
+    ],
+    [
+        [
+            'id' => 80,
+            'name' => 'Architecture',
+            'college_id' => 80,
+            'college_name' => 'College of Built Environment',
+            'stream' => 'Natural',
+            'placement_group' => 'built_environment',
+            'offered_semester' => 1,
+        ],
+        [
+            'id' => 91,
+            'name' => 'Software Engineering',
+            'college_id' => 91,
+            'college_name' => 'College of Computing',
+            'stream' => 'Natural',
+            'placement_group' => 'computing',
+            'offered_semester' => 1,
+        ],
+    ],
+    'Natural Science'
+);
+assertSemesterRule(
+    true,
+    ($firstChoiceCollegeAllocation['college_id'] ?? null) === 80
+        && ($firstChoiceCollegeAllocation['college_name'] ?? '') === 'College of Built Environment'
+        && ($firstChoiceCollegeAllocation['placement_group'] ?? '') === 'built_environment',
+    'First-choice retention resolves a configured college dynamically and does not adopt a lower-ranked college.'
 );
 assertSemesterRule(
     true,
@@ -624,13 +706,13 @@ assertSemesterRule(
     'Other Social Science departments can receive first-semester assignments.'
 );
 assertSemesterRule(
-    false,
+    true,
     placementDepartmentCanReceiveFinalAssignment([
         'name' => 'Political Science',
         'college_name' => 'School of Law',
         'stream' => 'Social',
     ], 1),
-    'Only the Law department can receive a first-semester Law placement.'
+    'Any configured department can receive a first-semester placement when it is offered in that semester.'
 );
 assertSemesterRule(
     false,
@@ -816,7 +898,7 @@ $broadSocialTarget = placementBroadChoiceAllocationTarget(
 );
 if (($broadSocialTarget['placement_group'] ?? '') !== 'other_social_science'
     || ($broadSocialTarget['choice_rank'] ?? 0) !== 1
-    || ($broadSocialTarget['college_name'] ?? '') !== 'College of Other Social Sciences'
+    || ($broadSocialTarget['college_name'] ?? '') !== 'Business and Economics'
     || placementBroadChoiceAllocationTarget(
         'Social',
         $broadSocialChoice,
@@ -837,7 +919,7 @@ if (($broadSocialTarget['placement_group'] ?? '') !== 'other_social_science'
         ['other_social_science' => 2]
     );
     if (($pendingBroadTarget['placement_group'] ?? '') !== 'other_social_science'
-        || ($pendingBroadTarget['college_name'] ?? '') !== 'College of Other Social Sciences'
+        || ($pendingBroadTarget['college_name'] ?? '') !== 'Business and Economics'
         || ($pendingBroadTarget['choice_rank'] ?? 0) !== 1) {
         throw new RuntimeException('A broad student choice must retain its selected second-semester group pool and rank.');
     }
@@ -961,14 +1043,14 @@ assertSemesterValue(
     'A missing catalog college name stays missing instead of using a hardcoded group label.'
 );
 assertSemesterRule(
-    true,
+    false,
     placementDepartmentOfferedInSemester([
         'name' => 'Medicine',
         'college_name' => 'Health Science',
         'stream' => 'Natural',
         'offered_semester' => 2,
     ], 1),
-    'Health Science departments are inferred to be offered in semester one.'
+    'Configured offered-semester values take precedence over college-name inference.'
 );
 assertSemesterRule(
     true,
@@ -1011,7 +1093,7 @@ assertSemesterRule(
     'Other Social Science departments respect the configured offered semester.'
 );
 assertSemesterRule(
-    true,
+    false,
     placementDepartmentOfferedInSemester([
         'name' => 'Computer Science',
         'college_name' => 'Gafat Institute of Technology',
@@ -1019,7 +1101,7 @@ assertSemesterRule(
         'offered_semester' => 2,
         'placement_group' => 'legacy_group',
     ], 1),
-    'GIT departments are inferred to be offered in semester one regardless of stale metadata.'
+    'Configured department groups and semester offerings take precedence over college-name inference.'
 );
 assertSemesterRule(
     true,

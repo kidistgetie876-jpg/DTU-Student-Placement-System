@@ -908,7 +908,7 @@ const HeadDashboard = () => {
               )}
 
               <div className="row g-4">
-                <div className="col-lg-6">
+                <div className={recentPlacements.length > 0 ? 'col-lg-6' : 'col-12'}>
                   <div className="card analytics-card h-100">
                     <div className="card-body">
                       <div className="d-flex justify-content-between align-items-start mb-3">
@@ -927,29 +927,30 @@ const HeadDashboard = () => {
                   </div>
                 </div>
 
-                <div className="col-lg-6">
-                  <div className="card analytics-card h-100">
-                    <div className="card-body">
-                      <div className="d-flex justify-content-between align-items-start mb-3">
-                        <h5 className="card-title">Latest Placement Activity</h5>
-                        <button className="btn btn-sm btn-outline-primary">View All</button>
-                      </div>
-                      <div className="activity-list">
-                        {recentPlacements.map(item => (
-                          <div key={item.student} className="activity-item">
-                            <div>
-                              <div className="fw-semibold">{item.student}</div>
-                              <div className="text-muted small">{item.program}</div>
+                {recentPlacements.length > 0 && (
+                  <div className="col-lg-6">
+                    <div className="card analytics-card h-100">
+                      <div className="card-body">
+                        <div className="d-flex justify-content-between align-items-start mb-3">
+                          <h5 className="card-title">Latest Placement Activity</h5>
+                        </div>
+                        <div className="activity-list">
+                          {recentPlacements.map((item, index) => (
+                            <div key={`${item.student}-${index}`} className="activity-item">
+                              <div>
+                                <div className="fw-semibold">{item.student || 'Student'}</div>
+                                <div className="text-muted small">{item.program || department.name}</div>
+                              </div>
+                              <span className={`status-tag ${item.status === 'Confirmed' ? 'status-success' : item.status === 'Matched' ? 'status-primary' : 'status-warning'}`}>
+                                {item.status || 'Pending'}
+                              </span>
                             </div>
-                            <span className={`status-tag ${item.status === 'Confirmed' ? 'status-success' : item.status === 'Matched' ? 'status-primary' : 'status-warning'}`}>
-                              {item.status}
-                            </span>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </>
           )}

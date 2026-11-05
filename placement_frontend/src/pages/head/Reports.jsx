@@ -10,9 +10,15 @@ const handleOpenAttachment = (filePath, notificationId) => {
   if (attachmentUrl !== '#') window.open(attachmentUrl, '_blank', 'noopener,noreferrer');
 };
 
+const isPlacementBatchAnnouncement = (report) => (
+  String(report.sender_role || '').trim().toLowerCase() === 'registrar'
+  && /^official placement approved:\s*new students assigned$/i.test(String(report.title || '').trim())
+);
+
 const Reports = ({ leader, department, students = [] }) => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [error, setError] = useState('');
   const [recipientType, setRecipientType] = useState('student');
   const [studentId, setStudentId] = useState('');
@@ -32,9 +38,12 @@ const Reports = ({ leader, department, students = [] }) => {
     try {
       const response = await api.get('api/head/get_head_reports.php');
       if (!response.data?.success) throw new Error(response.data?.message || 'Unable to load reports.');
-      setReports(Array.isArray(response.data.reports) ? response.data.reports.filter(Boolean) : []);
+      if (!Array.isArray(response.data.reports)) {
+        throw new Error('The reports service returned an invalid response.');
+      }
+      setReports(response.data.reports.filter(Boolean));
+      setHasLoadedReports(true);
     } catch (requestError) {
-      setReports([]);
       setError(requestError.response?.data?.message || requestError.message || 'Unable to load reports.');
     } finally {
       setLoading(false);
@@ -150,18 +159,18 @@ const Reports = ({ leader, department, students = [] }) => {
   };
 
   const unreadCount = reports.filter((report) => report.direction !== 'sent' && !Number(report.is_read)).length;
+  const visibleReports = reports.filter((report) => !isPlacementBatchAnnouncement(report));
 
   return (
-    <div className="card analytics-card">
-      <div className="card-body">
-        <div className="d-flex justify-content-between align-items-center mb-3">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h5 className="card-title mb-1">Report Notifications</h5>
-            <p className="text-muted mb-0">Send messages to the Registrar or students in your department.</p>
+            <h2 className="mb-0 text-xl font-bold text-slate-900">Report Notifications</h2>
           </div>
-          <div className="d-flex align-items-center gap-2">
-            {unreadCount > 0 && <span className="badge bg-primary">{unreadCount} unread</span>}
-            <button type="button" className="btn btn-sm btn-outline-danger" onClick={clearHistory} disabled={!reports.length || clearingHistory || loading}>
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">{unreadCount} unread</span>}
+            <button type="button" className="rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50" onClick={clearHistory} disabled={!reports.length || clearingHistory || loading}>
               {clearingHistory ? 'Deleting...' : 'Clear History'}
             </button>
           </div>
@@ -257,47 +266,50 @@ const Reports = ({ leader, department, students = [] }) => {
               </div>
             </div>
           </div>
-          {recipientType === 'student' && students.length === 0 && <small className="text-muted d-block mt-2">No students are currently assigned to this department.</small>}
         </form>
 
-        {loading && <div className="alert alert-info mb-0">Loading reports...</div>}
-        {!loading && error && <div className="alert alert-danger mb-0">{error}</div>}
-        {!loading && !error && reports.length === 0 && <div className="alert alert-light border mb-0">No reports have been sent or received.</div>}
-        {!loading && !error && reports.length > 0 && (
-          <div className="list-group">
-            {reports.map((report, index) => {
+        {loading && <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">Loading reports...</div>}
+        {!loading && error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">{error}</div>}
+        {!loading && hasLoadedReports && !error && reports.length === 0 && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">No reports have been sent or received.</div>}
+        {!loading && visibleReports.length > 0 && (
+          <div className="space-y-3">
+            {visibleReports.map((report, index) => {
               const isExpanded = expandedReportId === report.id;
               const category = report.file_path ? 'Report' : 'Message';
               const sender = report.direction === 'sent'
                 ? 'You'
                 : report.sender_role || 'Office';
-              const summary = String(report.message || '').replace(/\s+/g, ' ').trim();
+              const normalizedSender = String(sender).replace(/[_-]+/g, ' ');
+              const reportType = `${report.title || ''} ${report.message || ''}`;
+              const isApprovedPlacement = /approved.*placement|placement.*approved/i.test(reportType);
+              const categoryClasses = isApprovedPlacement
+                ? 'bg-emerald-100 text-emerald-800'
+                : category === 'Message'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-amber-100 text-amber-900';
 
               return (
                 <article
-                  className={`list-group-item p-0 ${report.direction !== 'sent' && !Number(report.is_read) ? 'border-start border-4 border-primary' : ''}`}
+                  className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md ${report.direction !== 'sent' && !Number(report.is_read) ? 'border-l-4 border-l-blue-600' : ''}`}
                   key={`${report.id ?? 'report'}-${index}`}
                 >
-                  <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap p-3">
-                    <div className="flex-grow-1 overflow-hidden">
-                      <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                        <strong className="text-truncate">{report.title || (category === 'Report' ? 'Department Report' : 'Report Message')}</strong>
-                        <span className="badge bg-primary-subtle text-primary-emphasis">{category}</span>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <h3 className="mb-0 text-base font-bold text-slate-900">{report.title || (category === 'Report' ? 'Department Report' : 'Report Message')}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${categoryClasses}`}>{isApprovedPlacement ? 'Approved Placement' : category}</span>
                         {report.direction !== 'sent' && !Number(report.is_read) && (
-                          <span className="badge bg-info-subtle text-info-emphasis">Unread</span>
+                          <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-800">Unread</span>
                         )}
                       </div>
-                      <div className="small text-muted mb-1">
-                        <span>Created {report.created_at || 'date unavailable'}</span>
-                        <span> · Generated by {sender}</span>
+                      <div className="mb-3 text-xs text-slate-500">
+                        {report.created_at || 'Date unavailable'} <span aria-hidden="true">·</span> From {normalizedSender}
                       </div>
-                      <div className="small text-muted text-truncate" title={summary}>
-                        {summary || 'No description provided.'}
-                      </div>
+                      <p className="mb-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{report.message || 'No message provided.'}</p>
                     </div>
                     <button
                       type="button"
-                      className="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2 flex-shrink-0"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       aria-expanded={isExpanded}
                       aria-controls={`report-details-${report.id}`}
                       onClick={() => {
@@ -307,7 +319,7 @@ const Reports = ({ leader, department, students = [] }) => {
                       }}
                     >
                       <Eye size={16} aria-hidden="true" />
-                      {isExpanded ? 'Hide Details' : 'View Details'}
+                      {isExpanded ? 'Hide actions' : 'More actions'}
                       {isExpanded
                         ? <ChevronUp size={16} aria-hidden="true" />
                         : <ChevronDown size={16} aria-hidden="true" />}
@@ -316,35 +328,24 @@ const Reports = ({ leader, department, students = [] }) => {
                   {isExpanded && (
                     <section
                       id={`report-details-${report.id}`}
-                      className="border-top p-3"
+                      className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4"
                       aria-label={`Details for ${report.title || category}`}
                     >
-                      <h6 className="fw-semibold mb-2">Full details</h6>
-                      <p className="mb-3 text-break" style={{ whiteSpace: 'pre-wrap' }}>
-                        {report.message || 'No description provided.'}
-                      </p>
-                      <div className="small text-muted d-flex flex-wrap gap-2 mb-3">
-                        <span>Direction: {report.direction === 'sent' ? 'Sent' : 'Received'}</span>
-                        <span>Generated by: {report.sender_role || 'Office'}</span>
-                        <span>Recipient: {report.recipient_role || 'Not specified'}</span>
-                        <span>Created: {report.created_at || 'Date unavailable'}</span>
-                        <span>Status: {Number(report.is_read) ? 'Read' : 'Unread'}</span>
-                        <span>Notification ID: {report.id}</span>
-                      </div>
-                      <div className="d-flex align-items-center gap-2 flex-wrap">
-                        {report.file_path && (
+                      {report.recipient_role && <span className="mr-auto text-xs text-slate-500">To {String(report.recipient_role).replace(/[_-]+/g, ' ')}</span>}
+                      {!report.recipient_role && <span className="mr-auto" aria-hidden="true" />}
+                      {report.file_path && (
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-primary"
+                            className="rounded-lg border border-indigo-200 px-3 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
                             onClick={() => handleOpenAttachment(report.file_path, report.id)}
                           >
                             Open attachment
                           </button>
-                        )}
-                        {report.direction === 'sent' && (
+                      )}
+                      {report.direction === 'sent' && (
                           <button
                             type="button"
-                            className="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-2"
+                            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Delete message"
                             onClick={() => deleteReport(report)}
                             disabled={deletingId === report.id}
@@ -352,8 +353,7 @@ const Reports = ({ leader, department, students = [] }) => {
                             <FaTrash aria-hidden="true" />
                             {deletingId === report.id ? 'Deleting...' : 'Delete'}
                           </button>
-                        )}
-                      </div>
+                      )}
                     </section>
                   )}
                 </article>

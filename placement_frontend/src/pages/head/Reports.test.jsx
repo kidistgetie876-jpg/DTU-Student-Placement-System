@@ -37,7 +37,7 @@ describe('Reports attachment', () => {
     const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
 
     render(<Reports leader={{ id: 7 }} />);
-    fireEvent.click(await screen.findByRole('button', { name: /View Details/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /More actions/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Open attachment' }));
 
     expect(openSpy).toHaveBeenCalledWith(
@@ -51,19 +51,70 @@ describe('Reports attachment', () => {
     openSpy.mockRestore();
   });
 
-  it('shows compact report cards and toggles the full details', async () => {
+  it('shows one message body and concise metadata without debug details', async () => {
     render(<Reports leader={{ id: 7 }} />);
 
     expect(await screen.findByText('Department Report')).toBeInTheDocument();
     expect(screen.getByText('Please review this file.')).toBeInTheDocument();
     expect(screen.queryByText('Direction: Received')).not.toBeInTheDocument();
+    expect(screen.queryByText('No students are currently assigned to this department.')).not.toBeInTheDocument();
+    expect(screen.getByText(/From registrar/i)).toBeInTheDocument();
+    expect(screen.getByText(/2026-10-13 10:00:00/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /View Details/ }));
-    expect(await screen.findByText('Direction: Received')).toBeInTheDocument();
-    expect(screen.getByText('Recipient: head')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /More actions/ }));
+    expect(screen.getByText('To head')).toBeInTheDocument();
+    expect(screen.getAllByText('Please review this file.')).toHaveLength(1);
+    expect(screen.queryByText(/Notification ID:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Direction:/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Hide Details/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Hide actions/ }));
     expect(screen.queryByText('Direction: Received')).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state only after the API returns an empty report list', async () => {
+    api.get.mockResolvedValue({ data: { success: true, reports: [] } });
+    render(<Reports leader={{ id: 7 }} />);
+
+    expect(await screen.findByText('No reports have been sent or received.')).toBeInTheDocument();
+  });
+
+  it('does not present an API failure as an empty report list', async () => {
+    api.get.mockRejectedValue(new Error('Reports service unavailable'));
+    render(<Reports leader={{ id: 7 }} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reports service unavailable');
+    expect(screen.queryByText('No reports have been sent or received.')).not.toBeInTheDocument();
+  });
+
+  it('hides Registrar placement-batch announcements from the report list', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        success: true,
+        reports: [
+          {
+            id: 2,
+            direction: 'received',
+            sender_role: 'registrar',
+            title: 'Official Placement Approved: New Students Assigned',
+            message: 'The Office of the University Registrar has approved the placement batch. 1 new students have been officially assigned to your department: Yohannes Haile (DTU16R1003). Please review your placed students roster.',
+          },
+          {
+            id: 3,
+            direction: 'received',
+            sender_role: 'registrar',
+            title: 'Placement clarification',
+            message: 'Please confirm the updated capacity.',
+          },
+        ],
+      },
+    });
+
+    render(<Reports leader={{ id: 7 }} />);
+
+    expect(await screen.findByText('Placement clarification')).toBeInTheDocument();
+    expect(screen.queryByText('Official Placement Approved: New Students Assigned')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Yohannes Haile \(DTU16R1003\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText('No reports have been sent or received.')).not.toBeInTheDocument();
   });
 
   it('renders reports and student options safely when identifiers are missing or duplicated', async () => {

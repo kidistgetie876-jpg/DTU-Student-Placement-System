@@ -139,6 +139,13 @@ try {
     ) {
         $profileConditions[] = 'TRIM(sd.admission_number) = TRIM(sc.admission_number)';
     }
+    foreach (['moe_admission_number', 'id_number'] as $profileIdentifierColumn) {
+        if ($profileColumns && in_array($profileIdentifierColumn, $profileColumns, true)
+            && in_array('admission_number', $choiceColumns, true)
+        ) {
+            $profileConditions[] = "TRIM(sd.`{$profileIdentifierColumn}`) = TRIM(sc.admission_number)";
+        }
+    }
     if ($profileColumns && in_array('admission_number', $profileColumns, true)
         && in_array('id_number', $joinedUserColumns, true)
         && in_array('student_id', $choiceColumns, true)
@@ -181,7 +188,7 @@ try {
         $admissionExpressions
     )) . ", NULLIF({$studentIdExpression}, ''), '')";
     $universityStudentIdentifier = choiceMatrixTextExpression($joinedProfileColumns, 'sd', ['student_id']);
-    $studentIdentifier = "COALESCE(NULLIF({$universityStudentIdentifier}, ''), NULLIF({$admissionIdentifier}, ''), '')";
+    $studentIdentifier = "COALESCE(NULLIF({$admissionIdentifier}, ''), NULLIF({$universityStudentIdentifier}, ''), '')";
 
     $nameParts = [];
     foreach (['given_name', 'father_name', 'grandfather_name'] as $column) {
@@ -304,10 +311,6 @@ try {
                    {$semesterExpression} AS semester,
                    " . choiceMatrixColumn($choiceColumns, 'sc', 'dept_id', 'NULL') . " AS department_id
             FROM student_choices sc{$joins}";
-    if ($activeSemester === 2) {
-        $sql .= " WHERE ({$semesterExpression}) = 2
-                   OR {$normalizedStatusExpression} = 'pending 2nd semester'";
-    }
     $sql .= ' ORDER BY 1 ASC, sc.priority ASC';
     $result = $db->query($sql);
     if (!$result) {
@@ -323,12 +326,6 @@ try {
         $universityStudentId = trim((string) ($row['university_student_id'] ?? ''));
         $semester = (int) ($row['semester'] ?? 1);
         $status = placementStudentStatusLabel((string) ($row['status'] ?? ''));
-        $normalizedStatus = placementNormalizeStudentStatus($status);
-        if ($activeSemester === 2
-            && $semester !== 2
-            && $normalizedStatus !== 'pending 2nd semester') {
-            continue;
-        }
 
         $key = strtolower($matrixIdentity);
         if (!isset($matrix[$key])) {
@@ -354,9 +351,6 @@ try {
         $priority = (int) ($row['priority'] ?? 0);
         $departmentName = trim((string) ($row['department_name'] ?? ''));
         if ($priority < 1 || $departmentName === '') {
-            continue;
-        }
-        if ($activeSemester === 2 && $semester !== 2) {
             continue;
         }
         $choiceKey = 'choice_' . $priority;

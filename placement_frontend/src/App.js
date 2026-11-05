@@ -213,7 +213,9 @@ function AppRoutes() {
     return (
       <PublicLayout
         isLogin={isLoginRoute}
-        mainClassName={isLoginRoute ? 'login-route-main' : 'app-main container pt-0'}
+        mainClassName={isLoginRoute
+          ? 'login-route-main'
+          : `app-main container pt-0${location.pathname === '/' ? ' home-route-main' : ''}`}
       >
         {routes}
       </PublicLayout>

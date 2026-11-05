@@ -91,7 +91,7 @@ describe('isDeferredPlacement', () => {
 });
 
 describe('filterChoiceMatrixRecordsForSemester', () => {
-  it('keeps only deferred students or records with semester-two choices when semester two is active', () => {
+  it('preserves both semesters for students with saved preferences when semester two is active', () => {
     const records = filterChoiceMatrixRecordsForSemester([
       {
         student_id: 'DTU16R1001',
@@ -114,10 +114,15 @@ describe('filterChoiceMatrixRecordsForSemester', () => {
       },
     ], 2);
 
-    expect(records.map((record) => record.student_id)).toEqual(['DTU16R1001', 'DTU16R1002']);
-    expect(records[0].choices).toEqual([]);
-    expect(records[0].sem1_choices).toEqual({});
-    expect(records[1].choices.map((choice) => choice.dept_name)).toEqual(['Biology']);
+    expect(records.map((record) => record.student_id)).toEqual([
+      'DTU16R1001',
+      'DTU16R1002',
+      'DTU16R1003',
+    ]);
+    expect(records[0].choices[0].dept_name).toBe('Medicine');
+    expect(records[0].sem1_choices).toEqual({ choice1: 'Medicine' });
+    expect(records[1].choices.map((choice) => choice.dept_name)).toEqual(['Nursing', 'Biology']);
+    expect(records[2].choices[0].dept_name).toBe('Law');
   });
 });
 

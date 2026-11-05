@@ -78,6 +78,8 @@ try {
     $settings = $result->fetch_assoc();
     $fallback = $settings === null;
     $settings = array_merge(defaultPlacementSettings(), $settings ?: []);
+    $publicRules = json_decode((string) ($settings['public_rules_json'] ?? ''), true);
+    $settings['public_rules'] = is_array($publicRules) ? $publicRules : null;
     $settings['gpa_weight'] = (float) ($settings['gpa_weight'] ?? 50);
     $settings['grade_12_weight'] = (float) ($settings['grade_12_weight'] ?? 20);
     $settings['coc_weight'] = (float) ($settings['coc_weight'] ?? 30);

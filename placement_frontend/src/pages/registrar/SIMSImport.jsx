@@ -7,6 +7,7 @@ export const simsImportColumns = [
     header: 'Admission Number',
     aliases: ['moe_admission_number', 'admission_number', 'AdmissionNumber', 'admission', 'admission_'],
     requiredGroup: 'student_identifier',
+    showInPreview: false,
   },
   { header: 'CGPA' },
   { header: 'COC Score' },
