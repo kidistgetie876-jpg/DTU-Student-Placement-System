@@ -91,7 +91,7 @@ try {
         ? "LOWER(TRIM(COALESCE(pr.status, '')))"
         : "''";
     $statusPublishedCondition = $hasPublishFlag
-        ? 'pr.is_published = 1'
+        ? "(pr.is_published = 1 OR {$placementStatus} = 'approved')"
         : "{$placementStatus} IN ('approved', 'published', 'placed')";
     $departmentFilter = "pr.`{$placementDepartmentColumn}` = ?";
     $assignedStatement = $db->prepare(

@@ -169,6 +169,7 @@ function roleFeatureEndpointMap(): array
         'head/head_preferences.php' => ['head.approvals'],
         'head/head_approval.php' => ['head.approvals'],
         'head/approve_placement.php' => ['head.approvals'],
+        'head/reject_placement.php' => ['head.approvals'],
         'head/get_department_capacity.php' => ['head.capacity'],
         'head/get_placed_students.php' => ['head.students'],
         'head/get_head_reports.php' => ['head.reports'],

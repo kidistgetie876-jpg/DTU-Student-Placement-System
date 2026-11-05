@@ -140,7 +140,8 @@ try {
         studentPlacementColumnExpression($placementColumns, 'pr', ['placed_at']) . ' AS placed_at',
     ];
     $publishedFilter = in_array('is_published', $placementColumns, true)
-        ? " AND pr.is_published = 1 AND LOWER(TRIM(pr.status)) IN ('placed', 'approved', 'published')"
+        ? " AND (pr.is_published = 1 OR LOWER(TRIM(pr.status)) = 'approved')"
+            . " AND LOWER(TRIM(pr.status)) IN ('placed', 'approved', 'published')"
         : " AND LOWER(TRIM(pr.status)) IN ('placed', 'approved', 'published')";
     $orderBy = in_array('placed_at', $placementColumns, true)
         ? 'pr.placed_at DESC'

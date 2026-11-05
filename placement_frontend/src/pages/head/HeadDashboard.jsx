@@ -68,6 +68,7 @@ const HeadDashboard = () => {
   const [placedStudents, setPlacedStudents] = useState([]);
   const [pendingApprovalStudents, setPendingApprovalStudents] = useState([]);
   const [approvalSavingId, setApprovalSavingId] = useState(null);
+  const [approvalAction, setApprovalAction] = useState('');
   const [approvalError, setApprovalError] = useState('');
   const [approvalErrorId, setApprovalErrorId] = useState(null);
   const [capacityDraft, setCapacityDraft] = useState({});
@@ -141,7 +142,7 @@ const HeadDashboard = () => {
     doc.setLineWidth(1);
     doc.line(14, 35, pageWidth - 14, 35);
 
-    const headers = ['#', 'Student ID', 'Full Name', 'Gender', 'GPA', 'Final Score', 'Choice Rank', 'Disability', 'Phone', 'Status'];
+    const headers = ['#', 'Student ID', 'Full Name', 'Gender', 'GPA', 'Final Score', 'Choice Rank', 'Disability', 'Status'];
     const rows = placedStudents.map((student, index) => {
       const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.username || '—';
       const hasDisability = ['yes', 'y', 'true', '1', 'on'].includes(String(student.disability ?? '').toLowerCase());
@@ -154,7 +155,6 @@ const HeadDashboard = () => {
         Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—',
         student.choice_rank ? `Choice #${student.choice_rank}` : '—',
         hasDisability ? 'Yes' : 'No',
-        student.phone || '-',
         student.status || 'Pending',
       ];
     });
@@ -422,6 +422,7 @@ const HeadDashboard = () => {
 
   const approvePlacement = async (placement) => {
     setApprovalSavingId(placement.placement_id);
+    setApprovalAction('approve');
     setApprovalError('');
     setApprovalErrorId(null);
     try {
@@ -454,12 +455,50 @@ const HeadDashboard = () => {
         program: placement.dept_name || department.name,
         status: 'Approved',
       }, ...current.filter((item) => item.student !== placement.username)].slice(0, 5));
-      setStats((current) => ({ ...current, approvalRequests: Math.max(0, current.approvalRequests - 1) }));
+      setStats((current) => ({
+        ...current,
+        placedStudents: current.placedStudents + 1,
+        approvalRequests: Math.max(0, current.approvalRequests - 1),
+      }));
     } catch (error) {
       setApprovalError(error.response?.data?.message || error.message || 'Unable to approve placement.');
       setApprovalErrorId(placement.placement_id);
     } finally {
       setApprovalSavingId(null);
+      setApprovalAction('');
+    }
+  };
+
+  const rejectPlacement = async (placement) => {
+    setApprovalSavingId(placement.placement_id);
+    setApprovalAction('reject');
+    setApprovalError('');
+    setApprovalErrorId(null);
+    try {
+      const response = await api.post('api/head/reject_placement.php', {
+        placement_id: placement.placement_id,
+        department_id: department.id,
+      }, {
+        withCredentials: true,
+      });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Unable to reject placement.');
+      }
+
+      setPendingApprovalStudents((current) => current.filter(
+        (student) => student.placement_id !== placement.placement_id
+      ));
+      setStats((current) => ({
+        ...current,
+        totalStudents: Math.max(0, current.totalStudents - 1),
+        approvalRequests: Math.max(0, current.approvalRequests - 1),
+      }));
+    } catch (error) {
+      setApprovalError(error.response?.data?.message || error.message || 'Unable to reject placement.');
+      setApprovalErrorId(placement.placement_id);
+    } finally {
+      setApprovalSavingId(null);
+      setApprovalAction('');
     }
   };
 
@@ -962,30 +1001,65 @@ const HeadDashboard = () => {
                 {pendingApprovalStudents.filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at).length === 0 ? (
                   <p className="text-muted mb-0">No pending placement approvals for {department.name}.</p>
                 ) : (
-                  <div className="task-grid">
-                    {pendingApprovalStudents.filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at).map((student) => (
-                    <div key={student.placement_id} className="task-card">
-                      <div>
-                        <p className="task-label mb-1">{student.username}</p>
-                        <small className="text-muted">{student.dept_name} · score {Number(student.final_score).toFixed(2)}</small>
-                      </div>
-                      <div className="d-flex flex-column align-items-end">
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-success"
-                          onClick={() => approvePlacement(student)}
-                          disabled={approvalSavingId === student.placement_id}
-                        >
-                          {approvalSavingId === student.placement_id ? 'Approving...' : 'Approve'}
-                        </button>
-                        {approvalErrorId === student.placement_id && approvalError && (
-                          <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">
-                            {approvalError}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    ))}
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle">
+                      <thead className="table-light">
+                        <tr>
+                          <th scope="col">Student</th>
+                          <th scope="col">Student ID</th>
+                          <th scope="col">Department</th>
+                          <th scope="col">Score</th>
+                          <th scope="col">Status</th>
+                          <th scope="col">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingApprovalStudents
+                          .filter((student) => String(student.status || '').trim().toLowerCase() === 'pending' && !student.approved_at)
+                          .map((student) => {
+                            const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
+                              || student.username
+                              || student.name
+                              || '—';
+                            const isSaving = approvalSavingId === student.placement_id;
+
+                            return (
+                              <tr key={`approval-${student.placement_id}`}>
+                                <td className="fw-semibold">{fullName}</td>
+                                <td>{student.id_number || student.admission_number || student.student_id || '—'}</td>
+                                <td>{student.dept_name || department.name || '—'}</td>
+                                <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
+                                <td><span className="badge bg-warning text-dark">Pending Approval</span></td>
+                                <td>
+                                  <div className="d-flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-success"
+                                      onClick={() => approvePlacement(student)}
+                                      disabled={isSaving}
+                                    >
+                                      {isSaving && approvalAction === 'approve' ? 'Approving...' : 'Approve'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-danger"
+                                      onClick={() => rejectPlacement(student)}
+                                      disabled={isSaving}
+                                    >
+                                      {isSaving && approvalAction === 'reject' ? 'Rejecting...' : 'Reject'}
+                                    </button>
+                                  </div>
+                                  {approvalErrorId === student.placement_id && approvalError && (
+                                    <div className="alert alert-danger mt-2 py-2 px-3 small rounded-3 shadow-sm mb-0" role="alert">
+                                      {approvalError}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -1137,7 +1211,6 @@ const HeadDashboard = () => {
                           <th>FINAL SCORE</th>
                           <th>CHOICE RANK</th>
                           <th>DISABILITY</th>
-                          <th>PHONE</th>
                           <th>STATUS</th>
                         </tr>
                       </thead>
@@ -1173,7 +1246,6 @@ const HeadDashboard = () => {
                               <td>{Number.isFinite(Number(student.final_score)) ? Number(student.final_score).toFixed(2) : '—'}</td>
                               <td>{student.choice_rank ? <span className="badge badge-choice">Choice {student.choice_rank}</span> : '—'}</td>
                               <td><span className={`badge ${hasDisability ? 'badge-disability' : 'bg-secondary'}`}>{hasDisability ? 'Yes' : 'No'}</span></td>
-                              <td>{student.phone || '-'}</td>
                               <td><span className={`badge ${approved ? 'bg-success' : 'bg-warning text-dark'}`}>{student.status || 'Pending'}</span></td>
                             </tr>
                           );
