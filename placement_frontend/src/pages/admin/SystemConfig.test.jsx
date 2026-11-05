@@ -67,6 +67,20 @@ describe('SystemConfig maintenance settings', () => {
     expect(await screen.findByRole('button', { name: '🔴 ON' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('keeps the settings dialog scrollable and within the viewport', async () => {
+    render(<SystemConfig />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Homepage & Navigation Settings' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Homepage & Navigation Settings' });
+    const overlay = dialog.parentElement;
+    expect(overlay).toHaveClass('overflow-y-auto', 'align-items-start');
+    expect(overlay.parentElement).toBe(document.body);
+    expect(overlay).toHaveStyle({ zIndex: 9999 });
+    expect(dialog).toHaveClass('my-auto');
+    expect(dialog).toHaveStyle({ maxHeight: '90vh', overflowY: 'auto' });
+  });
+
   it('fills the title and public message from a predefined reason', async () => {
     render(<SystemConfig />);
 

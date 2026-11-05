@@ -122,6 +122,11 @@ try {
 
     $input = json_decode(file_get_contents('php://input'), true) ?? [];
     if (isset($input['action']) && $input['action'] === 'update') {
+        $sessionRole = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+        if ($sessionRole !== 'registrar') {
+            respond(['success' => false, 'message' => 'Only registrars can update appeals.'], 403);
+        }
+
         $appealId = (int) ($input['appeal_id'] ?? 0);
         $status = trim((string) ($input['status'] ?? ''));
         $responseText = trim((string) ($input['response'] ?? ''));

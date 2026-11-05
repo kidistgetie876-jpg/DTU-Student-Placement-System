@@ -76,16 +76,16 @@ function normalizeImportedUserRole(string $role, string $idNumber): string
     }
 
     $normalizedId = strtolower(trim($idNumber));
-    if (str_starts_with($normalizedId, 'dtu-reg-')) {
+    if (strpos($normalizedId, 'dtu-reg-') === 0) {
         return 'registrar';
     }
-    if (str_starts_with($normalizedId, 'dtu-hod-')) {
+    if (strpos($normalizedId, 'dtu-hod-') === 0) {
         return 'head';
     }
-    if (str_starts_with($normalizedId, 'dtu16r')) {
+    if (strpos($normalizedId, 'dtu16r') === 0) {
         return 'student';
     }
-    if (str_starts_with($normalizedId, 'dtu-adm-') || str_contains($normalizedId, 'admin')) {
+    if (strpos($normalizedId, 'dtu-adm-') === 0 || str_contains($normalizedId, 'admin')) {
         return 'admin';
     }
     return 'student';

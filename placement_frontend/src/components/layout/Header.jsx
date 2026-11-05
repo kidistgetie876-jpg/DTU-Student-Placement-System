@@ -15,8 +15,6 @@ const defaultPublicLinks = [
   { id: 'contact', label: 'Contact', path: '/contact', enabled: true },
 ];
 
-const requiredPublicLinkIds = new Set(['home', 'services', 'placement-info', 'announcements', 'contact']);
-
 const getStoredUser = () => {
   try {
     const storedUser = JSON.parse(localStorage.getItem('user') || 'null');
@@ -31,7 +29,7 @@ const mergePublicLinks = (navigation) => defaultPublicLinks.map((defaultLink) =>
   const mergedLink = { ...defaultLink, ...(savedLink || {}), path: defaultLink.path };
   return {
     ...mergedLink,
-    enabled: requiredPublicLinkIds.has(defaultLink.id) || mergedLink.enabled === true,
+    enabled: mergedLink.enabled === true,
   };
 });
 

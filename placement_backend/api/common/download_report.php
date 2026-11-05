@@ -197,7 +197,7 @@ try {
             $resolvedPath !== false
             && file_exists($resolvedPath)
             && is_file($resolvedPath)
-            && str_starts_with($resolvedPath, $reportDirectory . DIRECTORY_SEPARATOR)
+            && strpos($resolvedPath, $reportDirectory . DIRECTORY_SEPARATOR) === 0
         ) {
             $filePath = $resolvedPath;
         }
@@ -215,7 +215,7 @@ try {
             $filePath === false
             || !file_exists($filePath)
             || !is_file($filePath)
-            || !str_starts_with($filePath, $reportDirectory . DIRECTORY_SEPARATOR)
+            || strpos($filePath, $reportDirectory . DIRECTORY_SEPARATOR) !== 0
         ) {
             throw new RuntimeException('The generated DOCX report could not be found.');
         }
@@ -247,6 +247,9 @@ try {
     header('Content-Type: ' . $contentTypes[$extension]);
     header('Content-Disposition: attachment; filename="' . $filename . '"; filename*=UTF-8\'\'' . rawurlencode($filename));
     header('Content-Length: ' . filesize($filePath));
+    header('Expires: 0');
+    header('Cache-Control: must-revalidate');
+    header('Pragma: public');
     header('X-Content-Type-Options: nosniff');
     readfile($filePath);
 } catch (Throwable $error) {

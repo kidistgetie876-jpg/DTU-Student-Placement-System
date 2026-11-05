@@ -161,6 +161,11 @@
   margin-bottom: 0.75rem
 }
 
+.my-auto {
+  margin-top: auto;
+  margin-bottom: auto
+}
+
 .mb-0 {
   margin-bottom: 0px
 }

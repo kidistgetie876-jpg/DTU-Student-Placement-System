@@ -102,6 +102,47 @@ describe('PlacedStudents', () => {
     expect(within(screen.getByRole('table', { name: '2nd Semester placed students' })).getByText('Mekdes Alemu')).toBeInTheDocument();
   });
 
+  it('paginates each semester table in groups of ten and resets after filtering', async () => {
+    api.get.mockImplementation((path) => Promise.resolve({
+      data: path === departmentsEndpoint
+        ? { success: true, departments: [] }
+        : {
+          success: true,
+          students: Array.from({ length: 23 }, (_, index) => ({
+            ...placedStudents[0],
+            account_id: index + 100,
+            student_id: `DTU16R${String(index + 3000)}`,
+            university_student_id: `DTU16R${String(index + 3000)}`,
+            name: `Student ${index + 1}`,
+            placement_semester: 1,
+          })),
+          count: 23,
+        },
+    }));
+
+    render(<PlacedStudents />);
+
+    const table = await screen.findByRole('table', { name: '1st Semester placed students' });
+    expect(within(table).getAllByRole('row')).toHaveLength(11);
+    expect(screen.getByText('Showing 1 to 10 of 23 entries')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Page 1' })).toHaveAttribute('aria-current', 'page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(within(table).getByText('Student 11')).toBeInTheDocument();
+    expect(within(table).queryByText('Student 1')).not.toBeInTheDocument();
+    expect(screen.getByText('Showing 11 to 20 of 23 entries')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Page 3' }));
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(table).getByText('Student 23')).toBeInTheDocument();
+    expect(screen.getByText('Showing 21 to 23 of 23 entries')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Search by student name or ID'), { target: { value: 'Student 2' } });
+    expect(within(table).getByText('Student 2')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Page 3' })).not.toBeInTheDocument();
+  });
+
   it('exports the filtered results to the selected format', async () => {
     const workbook = { SheetNames: [], Sheets: {} };
     XLSX.utils.book_new.mockReturnValue(workbook);

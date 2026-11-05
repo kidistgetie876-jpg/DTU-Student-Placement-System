@@ -195,7 +195,7 @@ function Home() {
 
     const loadHomepageStatistics = async () => {
       try {
-        const response = await api.get("api/common/dashboard_overview_api.php");
+        const response = await api.get("api/common/public_overview_api.php");
         const statistics = response.data?.success ? response.data.data : null;
         const activeStudents = Number(statistics?.activeStudents);
         const departments = Number(statistics?.departments);

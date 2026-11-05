@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FiCalendar,
   FiChevronRight,
@@ -566,11 +567,11 @@ const SystemConfig = () => {
         ))}
       </div>
 
-      {activeEditor && (
-        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3" style={{ zIndex: 1050, background: 'rgba(12, 24, 38, 0.55)' }}>
+      {activeEditor && createPortal(
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-start justify-content-center p-3 overflow-y-auto" style={{ zIndex: 9999, background: 'rgba(12, 24, 38, 0.55)' }}>
           <section
-            className="bg-white shadow-lg w-100"
-            style={{ maxWidth: '960px', maxHeight: '92vh', overflowY: 'auto', borderRadius: '8px' }}
+            className="bg-white shadow-lg w-100 my-auto"
+            style={{ maxWidth: '960px', maxHeight: '90vh', overflowY: 'auto', borderRadius: '8px' }}
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-editor-title"
@@ -901,7 +902,8 @@ const SystemConfig = () => {
               )}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

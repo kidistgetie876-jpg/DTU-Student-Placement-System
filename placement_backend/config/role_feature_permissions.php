@@ -86,7 +86,7 @@ function roleFeatureEndpointMap(): array
         'student/get_student_result.php' => ['student.results'],
         'student/submit_appeal.php' => [
             'GET' => ['student.appeals', 'registrar.appeals'],
-            'POST' => ['student.appeals'],
+            'POST' => ['student.appeals', 'registrar.appeals'],
         ],
         'student/get_student_notifications.php' => ['student.notifications'],
         'student/get_active_departments.php' => ['student.preferences'],

@@ -65,7 +65,19 @@ const statusClass = (status) => {
 };
 
 const SemesterTable = ({ semester, students }) => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(students.length / itemsPerPage);
+  const page = Math.min(currentPage, Math.max(totalPages, 1));
+  const indexOfLastItem = page * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = students.slice(indexOfFirstItem, indexOfLastItem);
   const heading = `${semester === 1 ? '1st' : '2nd'} Semester`;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [students]);
+
   return (
     <section className="mb-6 last:mb-0" aria-labelledby={`semester-${semester}-heading`}>
       <div className="mb-3 flex items-center gap-3">
@@ -94,7 +106,7 @@ const SemesterTable = ({ semester, students }) => {
                   No students in this semester.
                 </td>
               </tr>
-            ) : students.map((student, index) => {
+            ) : currentItems.map((student, index) => {
               const score = Number(student.final_score ?? student.cumulativeScore);
               const choiceRank = Number(student.choice_rank);
               return (
@@ -128,6 +140,47 @@ const SemesterTable = ({ semester, students }) => {
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <div className="flex flex-col gap-3 border-t border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-sm text-slate-600">
+            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, students.length)} of {students.length} entries
+          </span>
+          <nav className="flex flex-wrap items-center justify-end gap-2" aria-label={`${heading} pagination`}>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((previousPage) => Math.max(previousPage - 1, 1))}
+              disabled={page === 1}
+              className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+              <button
+                type="button"
+                key={pageNumber}
+                onClick={() => setCurrentPage(pageNumber)}
+                aria-label={`Page ${pageNumber}`}
+                aria-current={pageNumber === page ? 'page' : undefined}
+                className={`rounded border px-3 py-1 text-sm ${
+                  pageNumber === page
+                    ? 'border-blue-700 bg-blue-700 text-white'
+                    : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setCurrentPage((previousPage) => Math.min(previousPage + 1, totalPages))}
+              disabled={page === totalPages}
+              className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </nav>
+        </div>
+      )}
     </section>
   );
 };
